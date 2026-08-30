@@ -1,0 +1,9 @@
+region,sales rep,order amount,order date,notes
+North,Alice Zhang,"$1,250.00",2026-04-03,
+north,Bob Ли,1250,03/15/2026,duplicate of row 2?
+ "South",Carmen Díaz, "$980.50" ,2026-05-11,ok
+West,Dan Wu,,2026-05-30,missing amount
+North,Alice Z,"$310",2026-06-02,
+East,Emre Kaya,€410.20,not-a-date,weird format
+South,Carmen D,980.5,2026-05-11,near-duplicate
+west,Farida Noor,"$2,400.00",2026-06-18,

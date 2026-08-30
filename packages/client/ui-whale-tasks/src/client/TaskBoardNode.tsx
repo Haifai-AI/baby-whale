@@ -1,0 +1,95 @@
+/**
+ * Whale task board chat node: a compact scheduled-task list rendered from the
+ * immutable `whale/task-board` snapshot.
+ * @module @deepseek-ai/dsh-client-ui-whale-tasks/src/client/TaskBoardNode
+ */
+
+import { memo, useEffect } from 'react'
+import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { WhaleTaskView } from './task-board.ts'
+import type { NS } from './locales.ts'
+import css from './TaskBoardNode.module.css'
+
+type TaskBoardNodeProps =
+  PropsRuntime<'conversation.chat.node', 'whale-task-board'>
+  & PropsLocale<typeof NS>
+
+/** Closed-union exhaustiveness fence for the wire status set. */
+/* v8 ignore next 3 -- closed-union backstop; only reached if a status is forged */
+function assertNever(_value: never): never {
+  throw new Error('unhandled task status')
+}
+
+/** A due-but-undelivered window: anything past its run time by this much reads as missed. */
+const OVERDUE_GRACE_MS = 90_000
+
+/** True when an active task's scheduled instant passed materially earlier. */
+function isOverdue(task: WhaleTaskView, now: number): boolean {
+  if (task.status !== 'active' || task.nextRunAt === null) return false
+  const at = Date.parse(task.nextRunAt)
+  return !Number.isNaN(at) && now - at > OVERDUE_GRACE_MS
+}
+
+/**
+ * Local-desktop stand-in for cloud push: fire one notification when a snapshot
+ * lands containing a fresh delivery the tab may not be showing.
+ */
+function useCompletionNotification(tasks: readonly WhaleTaskView[]): void {
+  useEffect(() => {
+    if (typeof Notification !== 'function' || Notification.permission !== 'granted') return
+    const mountedAt = Date.now()
+    for (const task of tasks) {
+      const ran = task.lastRunAt === null ? NaN : Date.parse(task.lastRunAt)
+      if (!Number.isNaN(ran) && mountedAt - ran < OVERDUE_GRACE_MS && document.hidden) {
+        new Notification('Whale', { body: `${task.name} — ${task.scheduleSummary}` })
+        break
+      }
+    }
+  }, [tasks])
+}
+
+function statusClass(status: WhaleTaskView['status']): string | undefined {
+  switch (status) {
+    case 'active': return css.active
+    case 'paused': return css.paused
+    case 'done': return css.done
+    /* v8 ignore next -- closed wire status union */
+    default: return assertNever(status)
+  }
+}
+
+/** One compact task row. */
+function TaskRow({ task, t }: { task: WhaleTaskView; t: TranslateNS<typeof NS> }) {
+  const time = new Date(task.nextRunAt ?? '')
+  const overdue = isOverdue(task, Date.now())
+  const nextRun = Number.isNaN(time.getTime())
+    ? t('board.none')
+    : overdue ? t('board.overdue') : time.toLocaleString()
+  return (
+    <li className={css.row}>
+      <span className={`${css.dot} ${statusClass(task.status)}`} data-overdue={overdue || undefined} />
+      <div className={css.body}>
+        <div className={css.name}>
+          {task.name}
+          {overdue && <span className={css.late}>{t('board.missed')}</span>}
+        </div>
+        <div className={css.meta}>{task.scheduleSummary} · {t(`status.${task.status}`)}</div>
+        <div className={css.meta}>{t('board.runAt', { time: nextRun })}</div>
+      </div>
+    </li>
+  )
+}
+
+/** The board row: a titled card with the workspace's scheduled tasks. */
+export const TaskBoardNode = memo(function TaskBoardNode({ node, t }: TaskBoardNodeProps) {
+  const tasks: readonly WhaleTaskView[] = node.data.tasks
+  useCompletionNotification(tasks)
+  return (
+    <div className={css.card} data-whale-task-board="">
+      <div className={css.head}>{t('board.title')}</div>
+      {tasks.length === 0
+        ? <div className={css.empty}>{t('board.empty')}</div>
+        : <ul className={css.list}>{tasks.map(task => <TaskRow key={task.id} task={task} t={t} />)}</ul>}
+    </div>
+  )
+})

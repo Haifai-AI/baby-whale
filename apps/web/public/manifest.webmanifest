@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Baby Whale",
+  "short_name": "Baby Whale",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x56",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

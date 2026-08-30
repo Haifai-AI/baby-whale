@@ -1,0 +1,346 @@
+.split {
+  /* Absolutely fill the view area: immune to ancestor flex growth, so the
+     whole page can never scroll the split — each column owns its scroller. */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1 1 46%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.splitOpen .root {
+  max-width: 46%;
+  border-right: 1px solid var(--dsw-alias-border-l2);
+}
+
+.empty {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 480px;
+  margin: 24px auto;
+  text-align: center;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.count {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.refresh {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.card.selected {
+  border-color: var(--dsw-accent, #2f6fb2);
+  box-shadow: 0 0 0 1px var(--dsw-accent, #2f6fb2) inset;
+}
+
+.icon {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 6px;
+  padding: 6px 7px;
+  min-width: 40px;
+  text-align: center;
+  color: #fff;
+  background: #5b7db1;
+}
+
+.icon_xlsx { background: #1f6f43; }
+.icon_docx { background: #2f6fb2; }
+.icon_pptx { background: #c25e2c; }
+.icon_csv { background: #4c9f70; }
+.icon_pdf { background: #b04a5a; }
+.icon_image { background: #7a5fb0; }
+.icon_text { background: #6b7a8d; }
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  font-weight: 600;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.previewBtn,
+.open {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12.5px;
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.previewBtn:hover,
+.open:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.pane {
+  flex: 1 1 54%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.paneHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.paneTitle {
+  font-weight: 600;
+  font-size: 13.5px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paneBody {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* Studio mode: height-bounded flex column so the artifact studios keep their
+   chrome pinned (sheet tabs, formula bar) and scroll their grid internally. */
+.paneStudio {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.truncNote {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* ── Workbook preview: Data / Charts / Original tabs ─────────────────────── */
+
+.workbook {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wbTabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  flex: none;
+}
+
+.wbTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  border-bottom: 2px solid transparent;
+}
+
+.wbTab:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.wbTabActive {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  border-bottom-color: var(--dsw-static-blue-500);
+}
+
+.wbBadge {
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--dsw-static-blue-500);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+.wbBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Chart cards (Charts tab) ────────────────────────────────────────────── */
+
+.chartsWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.chartCard {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 12px 14px;
+  flex: none;
+}
+
+.chartHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chartTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chartSheet {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0 2px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.chartSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.closePane {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.pdfFrame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.rawImage {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}

@@ -1,0 +1,337 @@
+/* Turn-tail produced-files summary: one measured chip lane plus an optional
+   native-folder action below it. */
+
+.root {
+  position: relative;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 6px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.label {
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.row {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* One produced file. A link by behavior (it opens the file), a chip by shape:
+   full paths are long, while the measured lane stays on one row. */
+.file {
+  flex: 0 0 auto;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.file:hover {
+  color: var(--dsw-alias-label-primary);
+  text-decoration: underline;
+}
+
+.file:focus-visible,
+.showFolder:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+/* Overflow count: the row never silently drops files it did not show. */
+.more {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.showFolder {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.showFolder:hover {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: underline;
+}
+
+/* Exact browser-native probes for every candidate shown count. They share the
+   visible styles but never affect layout, accessibility, or scroll width. */
+.measure {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.probe {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: max-content;
+}
+
+.cardRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.deliveredCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 5px;
+  padding: 3px 5px;
+  color: #fff;
+  background: #5b7db1;
+}
+
+.badge_xlsx { background: #1f6f43; }
+.badge_docx { background: #2f6fb2; }
+.badge_pptx { background: #c25e2c; }
+.badge_csv { background: #4c9f70; }
+.badge_pdf { background: #b04a5a; }
+.badge_py { background: #3572a5; }
+
+.cardName {
+  border: none;
+  background: none;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.cardName:hover { text-decoration: underline; }
+
+.cardOpen {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 11.5px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── Split button: main Preview action + Download/Open dropdown ──────────── */
+
+.split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+}
+
+.splitMain {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 11.5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+}
+
+.splitMain:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+.splitChevron {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 0 6px 6px 0;
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 0 6px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  display: inline-flex;
+  align-items: center;
+}
+
+.splitChevron:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  gap: 2px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+.menuItem {
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menuItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+/* ── In-chat preview modal ───────────────────────────────────────────────── */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vh 4vw;
+}
+
+.modal {
+  width: min(920px, 92vw);
+  height: min(86vh, 780px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.modalHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  flex: none;
+}
+
+.modalTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modalActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.modalAction {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+  text-decoration: none;
+}
+
+.modalAction:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+.modalClose {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.modalBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modalNote {
+  margin: auto;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.modalFrame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.modalStudio {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+}
+
+.modalImage {
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}

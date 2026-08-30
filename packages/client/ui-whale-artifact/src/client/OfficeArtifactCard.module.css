@@ -1,0 +1,340 @@
+.card {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  flex: none;
+}
+
+.iconXlsx {
+  background: var(--dsw-static-green-500);
+}
+
+.iconPptx {
+  background: var(--dsw-static-amber-500);
+}
+
+.iconDocx {
+  background: var(--dsw-static-blue-500);
+}
+
+.iconOther {
+  background: var(--dsw-static-neutral-bluish-700);
+}
+
+.headText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-brand-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--dsw-alias-brand-text);
+  opacity: 0.6;
+}
+
+.open {
+  flex: none;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-brand-text);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.open:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.body {
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  padding: 12px;
+  background: var(--dsw-alias-bg-base);
+}
+
+.truncated {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--dsw-static-neutral-bluish-600);
+  text-align: center;
+}
+
+/* ── spreadsheet chrome ─────────────────────────────────────────────────── */
+
+.sheet {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dsw-static-neutral-bluish-00);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  background: var(--dsw-alias-bg-module-platform);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.tab {
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--dsw-alias-brand-text);
+  opacity: 0.65;
+  padding: 5px 12px;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--dsw-alias-button-elevated-fill);
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-brand-text);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.gridWrap {
+  overflow: auto;
+  max-height: 320px;
+}
+
+.grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.rowHead,
+.colHead {
+  position: sticky;
+  background: var(--dsw-static-blue-900);
+  color: #ffffff;
+  font-weight: 600;
+  text-align: left;
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-static-blue-950);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.colHead {
+  top: 0;
+}
+
+.rowHead {
+  left: 0;
+  width: 34px;
+  min-width: 34px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-brand-text);
+  opacity: 0.75;
+}
+
+tbody .rowNum {
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-brand-text);
+  opacity: 0.6;
+  font-size: 10px;
+  text-align: right;
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-left: none;
+  white-space: nowrap;
+}
+
+.cell {
+  border: 1px solid var(--dsw-alias-border-l1);
+  padding: 4px 10px;
+  color: var(--dsw-alias-brand-text);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+tbody tr:nth-child(even) .cell {
+  background: var(--dsw-alias-bg-base);
+}
+
+/* ── slide chrome ───────────────────────────────────────────────────────── */
+
+.deck {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.slideCard {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-static-neutral-bluish-00);
+  padding: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slideAccent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--dsw-static-blue-500);
+}
+
+.slideTitle {
+  justify-content: center;
+  background: var(--dsw-static-blue-950);
+  border-color: var(--dsw-static-blue-950);
+}
+
+.slideDeckTitle {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.slideTitleText {
+  margin-top: 2px;
+  color: var(--dsw-static-blue-950);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.slideSubtitle {
+  color: var(--dsw-static-neutral-bluish-600);
+  font-size: 10px;
+  font-style: italic;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.slideBullets {
+  margin: 2px 0 0;
+  padding-left: 14px;
+  color: var(--dsw-static-neutral-bluish-750);
+  font-size: 10px;
+}
+
+.slideBullets li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── document chrome ────────────────────────────────────────────────────── */
+
+.page {
+  background: var(--dsw-static-neutral-bluish-00);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 18px 22px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.docTitle {
+  color: var(--dsw-static-blue-950);
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.h1 {
+  color: var(--dsw-static-blue-900);
+  font-size: 15px;
+  font-weight: 700;
+  margin: 12px 0 4px;
+}
+
+.h2 {
+  color: var(--dsw-static-blue-800);
+  font-size: 13.5px;
+  font-weight: 600;
+  margin: 10px 0 3px;
+}
+
+.h3 {
+  color: var(--dsw-static-blue-600);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 8px 0 2px;
+}
+
+.paragraph {
+  color: var(--dsw-static-neutral-bluish-850);
+  font-size: 12.5px;
+  line-height: 1.7;
+  margin: 6px 0;
+  text-align: justify;
+}
+
+.quote {
+  color: var(--dsw-static-neutral-bluish-700);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.6;
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--dsw-static-blue-300);
+}
+
+.bullet {
+  color: var(--dsw-static-neutral-bluish-800);
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 3px 0 3px 16px;
+}

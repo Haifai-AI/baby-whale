@@ -12,6 +12,18 @@ import { SidebarRoot } from '../src/client/SidebarRoot.tsx'
 import { en } from '../src/client/locales.ts'
 
 /** Pinned column box; the shell compares pointer coordinates against it. */
+// Found-runtime stub: the setup card renders nothing in these tests.
+const connectionStub = {
+  isLoopback: true,
+  hostDescription: 'stub',
+  api: {
+    officeRuntime: {
+      status: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true } } }),
+      install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
+    },
+  },
+} as never
+
 const COLUMN_WIDTH = 280
 const COLUMN_HEIGHT = 600
 
@@ -32,6 +44,7 @@ function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
   const view = render(
     <SidebarRoot
       collapsed={false} width={300}
+      connection={connectionStub}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
       renderSlot={((_key: string, owner: SidebarSectionOwnerProps) =>

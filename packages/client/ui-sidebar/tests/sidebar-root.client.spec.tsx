@@ -19,6 +19,20 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+
+// Found-runtime stub: the setup card renders nothing, so shell tests are
+// unaffected by the card's presence in the foot.
+const connectionStub = {
+  isLoopback: true,
+  hostDescription: 'stub',
+  api: {
+    officeRuntime: {
+      status: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true } } }),
+      install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
+    },
+  },
+} as never
+
 // The shell never reads the global hooks itself, but they ride the standard
 // props share; stub them as never-called functions.
 const neverHook = (() => { throw new Error('shell must not read global hooks') }) as never
@@ -35,6 +49,7 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
   const root = () => (
     <SidebarRoot
       collapsed={current.collapsed} width={current.width}
+      connection={connectionStub}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={startSession} toggleSidebar={toggleSidebar} t={t}
       renderSlot={((
@@ -97,6 +112,7 @@ describe('SidebarRoot shell', () => {
     vi.stubEnv('DSH_CLIENT_COMMIT_HASH', '0123456')
     const { container } = render(<SidebarRoot
       collapsed={false} width={300}
+      connection={connectionStub}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>

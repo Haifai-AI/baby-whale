@@ -6,6 +6,13 @@ export const zh = {
   'session.new.label': '新建会话',
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
+  'runtime.title': '开启像素级预览',
+  'runtime.body': '首次需下载 LibreOffice 运行时（约 281 MB），完成后可完美预览 Excel、Word 与 PPT。',
+  'runtime.action': '一键安装',
+  'runtime.guide': '前往下载页面',
+  'runtime.done': '预览组件已就绪',
+  'runtime.errorTitle': '预览组件安装失败',
+  'runtime.errorBody': '请稍后重试。',
 } satisfies Record<string, string>
 
 /** The sidebar namespace key union. */
@@ -17,4 +24,11 @@ export const en = {
   'session.new.label': 'New session',
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
+  'runtime.title': 'Enable pixel-perfect previews',
+  'runtime.body': 'A one-time download of the LibreOffice runtime (~281 MB) unlocks true-to-Office Excel, Word, and PowerPoint previews.',
+  'runtime.action': 'Set up now',
+  'runtime.guide': 'Open the download page',
+  'runtime.done': 'Preview runtime is ready',
+  'runtime.errorTitle': 'Preview runtime setup failed',
+  'runtime.errorBody': 'Please try again.',
 } satisfies Record<SidebarKey, string>

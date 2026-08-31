@@ -18,6 +18,7 @@ import type { LlmApi } from './llm.ts'
 import type { DownloadsApi } from './downloads.ts'
 import type { UploadsApi } from './uploads.ts'
 import type { ArtifactsApi } from './artifacts.ts'
+import type { OfficeRuntimeApi } from './office-runtime.ts'
 import type { ClientResponse, RpcReceipt } from './rpc.ts'
 
 /** Root interface of the unified API. New client-request domain = one new file pair + one field here + one map row. */
@@ -39,6 +40,8 @@ export interface ApiProxy {
   uploads: UploadsApi
   /** Per-session artifact gallery (produced + uploaded files). */
   artifacts: ArtifactsApi
+  /** Managed LibreOffice runtime for pixel-perfect previews. */
+  officeRuntime: OfficeRuntimeApi
   /**
    * Response entry for server requests; not a domain method.
    * @param message - Client response carrying the server request's rpcId.
@@ -70,6 +73,7 @@ export type { ConfigurableProviderView, DiscoveredModelView, LlmApi } from './ll
 export type { DownloadsApi } from './downloads.ts'
 export type { UploadsApi, WorkspaceUploadOutcome } from './uploads.ts'
 export type { ArtifactsApi, ArtifactEntry } from './artifacts.ts'
+export type { OfficeRuntimeApi, SofficeInstallView, SofficeSource } from './office-runtime.ts'
 export type { ApprovalResponsePayload } from './approvals.ts'
 
 export type { QuestionResponsePayload } from './questions.ts'

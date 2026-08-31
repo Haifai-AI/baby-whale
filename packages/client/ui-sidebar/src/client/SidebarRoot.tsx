@@ -21,6 +21,7 @@ import {
   FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SidebarRootComponentProps } from './contract/slots.ts'
+import { RuntimeSetupCard } from './RuntimeSetupCard.tsx'
 import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
@@ -42,6 +43,7 @@ const SCROLLBAR_LINGER_MS = 2000
 export function SidebarRoot({
   collapsed,
   width,
+  connection,
   startSession,
   toggleSidebar,
   t,
@@ -198,6 +200,9 @@ export function SidebarRoot({
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>
+        {connection !== undefined && (
+          <RuntimeSetupCard connection={connection} wide={wide} t={t} />
+        )}
         <div className={css.footerActions}>
           {renderSlot('sidebar.footer.action', { wide })}
         </div>

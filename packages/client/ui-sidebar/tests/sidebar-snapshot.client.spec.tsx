@@ -37,6 +37,16 @@ async function bench(options: { locale?: 'en' } = {}) {
   const locale = new LocaleRuntime(runtime.ctx)
   if (options.locale === 'en') locale.setLocale('en')
   runtime.provide('locale', locale)
+  runtime.provide('connection', {
+    isLoopback: true,
+    hostDescription: 'stub',
+    api: {
+      officeRuntime: {
+        status: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true } } }),
+        install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
+      },
+    },
+  } as never)
   runtime.slots.installLocale(locale)
   await runtime.declare({ 'sidebar': { kind: 'single', scope: 'root' } })
   await runtime.mount({ inject: [...inject], apply })

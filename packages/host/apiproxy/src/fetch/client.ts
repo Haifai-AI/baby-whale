@@ -42,6 +42,7 @@ import {
 } from '../api/workspace.schema.ts'
 import { skillListValueSchema } from '../api/skills.schema.ts'
 import { artifactsListValueSchema, artifactsPreviewValueSchema } from '../api/artifacts.schema.ts'
+import { officeRuntimeInstallValueSchema, officeRuntimeStatusValueSchema } from '../api/office-runtime.schema.ts'
 import {
   agentPresetCopyValueSchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
   agentPresetReadValueSchema, agentPresetRemoveValueSchema, agentPresetSelectValueSchema,
@@ -125,6 +126,10 @@ export interface IApiClient {
   skills: {
     list(payload: RequestPayload<'skill.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.list'>>>
   }
+  officeRuntime: {
+    status(payload: RequestPayload<'officeRuntime.status'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'officeRuntime.status'>>>
+    install(payload: RequestPayload<'officeRuntime.install'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'officeRuntime.install'>>>
+  }
   artifacts: {
     list(payload: RequestPayload<'artifacts.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'artifacts.list'>>>
     preview(payload: RequestPayload<'artifacts.preview'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'artifacts.preview'>>>
@@ -206,6 +211,8 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'skill.list': skillListValueSchema,
   'artifacts.list': artifactsListValueSchema,
   'artifacts.preview': artifactsPreviewValueSchema,
+  'officeRuntime.status': officeRuntimeStatusValueSchema,
+  'officeRuntime.install': officeRuntimeInstallValueSchema,
   'agentPreset.list': agentPresetListValueSchema,
   'agentPreset.select': agentPresetSelectValueSchema,
   'agentPreset.read': agentPresetReadValueSchema,
@@ -467,6 +474,11 @@ export abstract class AbstractApiClient implements IApiClient {
   readonly artifacts: IApiClient['artifacts'] = {
     list: (payload, signal) => this.callUnary('artifacts.list', payload, signal),
     preview: (payload, signal) => this.callUnary('artifacts.preview', payload, signal),
+  }
+
+  readonly officeRuntime: IApiClient['officeRuntime'] = {
+    status: (payload, signal) => this.callUnary('officeRuntime.status', payload, signal),
+    install: (payload, signal) => this.callUnary('officeRuntime.install', payload, signal),
   }
 
   // Annotated like every sibling, and load-bearing rather than cosmetic:

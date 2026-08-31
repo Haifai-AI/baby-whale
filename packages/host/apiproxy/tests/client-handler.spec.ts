@@ -136,6 +136,10 @@ function scriptedApi(overrides: {
       raw: async () => new Response('stub', { headers: { 'content-type': 'text/plain' } }),
       file: async () => new Response('%PDF-stub', { headers: { 'content-type': 'application/pdf' } }),
     },
+    officeRuntime: {
+      status: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true } } }),
+      install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
+    },
     uploads: {
       workspaceFile: async () => new Response('{}'),
     },

@@ -1,0 +1,58 @@
+name: bundle
+# Build the zero-install portable bundle. Runs on version tags (v*) and
+# manually from the Actions tab; tag runs also publish a GitHub Release
+# with the archive attached — the download the updater and users fetch.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, platform: macos, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build host, client, and web bundles
+        run: |
+          pnpm run build:lib:host
+          pnpm run build:lib:client
+          pnpm run build:web
+
+      - name: Assemble portable bundle
+        run: ./scripts/make-bundle.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baby-whale-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*.zip
+          retention-days: 14
+
+      - name: Publish release (tag runs only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes --latest

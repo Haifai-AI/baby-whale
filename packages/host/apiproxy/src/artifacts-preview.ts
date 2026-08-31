@@ -8,6 +8,8 @@
 
 import ExcelJS from 'exceljs'
 import { unzipSync, zipSync } from 'fflate'
+import { execFileSync } from 'node:child_process'
+import { managedSofficePath } from './soffice-runtime.ts'
 
 export interface PreviewCell {
   /** Display value (formula cells carry their cached computed result). */
@@ -164,7 +166,7 @@ function formatByNumFmt(raw: unknown, numFmt: unknown): string | undefined {
   if (currency !== undefined) {
     return `${currency}${value.toLocaleString('en-US', { minimumFractionDigits: Math.min(decimals, 6), maximumFractionDigits: Math.min(decimals, 6) })}`
   }
-  if (/[,##0]/.test(numFmt)) {
+  if (/[,#0]/.test(numFmt)) {
     return value.toLocaleString('en-US', { minimumFractionDigits: Math.min(decimals, 6), maximumFractionDigits: Math.min(decimals, 6) })
   }
   return undefined
@@ -205,16 +207,19 @@ export async function loadWorkbookResilient(bytes: Uint8Array): Promise<ExcelJS.
   }
   try {
     const entries = unzipSync(bytes)
-    for (const name of Object.keys(entries)) {
-      if (/^xl\/(drawings|charts|media)\//.test(name)) delete entries[name]
-    }
+    // Rebuild rather than delete: strip the parts ExcelJS stumbles on.
+    const kept: Record<string, Uint8Array> = {}
     for (const [name, payload] of Object.entries(entries)) {
+      if (/^xl\/(drawings|charts|media)\//.test(name)) continue
+      kept[name] = payload
+    }
+    for (const [name, payload] of Object.entries(kept)) {
       if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(name)) continue
       const xml = new TextDecoder().decode(payload)
       if (!xml.includes('<drawing ')) continue
-      entries[name] = new TextEncoder().encode(xml.replace(/<drawing [^>]*\/>/g, ''))
+      kept[name] = new TextEncoder().encode(xml.replace(/<drawing [^>]*\/>/g, ''))
     }
-    const stripped = zipSync(entries)
+    const stripped = zipSync(kept)
     const retry = new ExcelJS.Workbook()
     await retry.xlsx.load(Buffer.from(stripped) as unknown as Parameters<typeof retry.xlsx.load>[0])
     return retry
@@ -254,20 +259,22 @@ export async function parseXlsxPreview(bytes: Uint8Array, fileName: string): Pro
       }
       const nextContentRow = (from: number): number => {
         for (let r = from + 1; r < grid.length; r++) {
-          if (!isDecoration(grid[r]!)) return r
+          const candidate = grid[r]
+          if (candidate !== undefined && !isDecoration(candidate)) return r
         }
         return -1
       }
       let headerIndex = -1
       let fallbackIndex = -1
       for (let r = 0; r < grid.length; r++) {
-        if (isDecoration(grid[r]!)) continue
+        const row = grid[r]
+        if (row === undefined || isDecoration(row)) continue
         if (fallbackIndex === -1) fallbackIndex = r
-        if (isContent(grid[r]!)) {
+        if (isContent(row)) {
           // Transposed layout: a mostly-numeric candidate followed by a text
           // row means the TEXT row is the header (labels live under values).
           const next = nextContentRow(r)
-          if (isMostlyNumeric(grid[r]!) && next !== -1 && !isMostlyNumeric(grid[next]!)) {
+          if (next !== -1 && isMostlyNumeric(row) && !isMostlyNumeric(grid[next] ?? row)) {
             headerIndex = next
           } else {
             headerIndex = r
@@ -673,7 +680,11 @@ export async function parseXlsxCharts(bytes: Uint8Array): Promise<PreviewChart[]
       }
       if (series.length === 0) continue
       const sheet = sheetNames.get(basename(name))
-      charts.push({ type: parsed.type, series, ...(parsed.title !== undefined ? { title: parsed.title } : {}), ...(sheet !== undefined ? { sheet } : {}) })
+      charts.push({
+        type: parsed.type, series,
+        ...(parsed.title !== undefined ? { title: parsed.title } : {}),
+        ...(sheet !== undefined ? { sheet } : {}),
+      })
     }
     return charts
   } catch {
@@ -699,10 +710,17 @@ let sofficeBin: string | undefined | false
  * @returns absolute binary path, or undefined when LibreOffice is absent.
  */
 export function findSoffice(): string | undefined {
+  // The managed runtime wins: it is our pinned, known-good build, and one
+  // stat per call is negligible — it also lets a just-finished download
+  // upgrade the preview pipeline without a process restart.
+  const managed = managedSofficePath()
+  if (managed !== undefined) {
+    sofficeBin = managed
+    return managed
+  }
   if (sofficeBin !== undefined) return sofficeBin || undefined
   for (const candidate of SOFFICE_CANDIDATES) {
     try {
-      const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
       execFileSync(candidate, ['--version'], { stdio: 'ignore', timeout: 10_000 })
       sofficeBin = candidate
       return candidate
@@ -712,6 +730,14 @@ export function findSoffice(): string | undefined {
   }
   sofficeBin = false
   return undefined
+}
+
+/**
+ * Drop the cached soffice lookup — after a managed install completes, or
+ * when the user installs LibreOffice while the app is already running.
+ */
+export function resetSofficeLookup(): void {
+  sofficeBin = undefined
 }
 
 /**

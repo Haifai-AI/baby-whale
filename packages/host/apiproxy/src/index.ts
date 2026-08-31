@@ -93,6 +93,7 @@ export class ApiProxyService extends Service implements ApiProxy {
   readonly downloads: ApiProxy['downloads']
   readonly uploads: ApiProxy['uploads']
   readonly artifacts: ApiProxy['artifacts']
+  readonly officeRuntime: ApiProxy['officeRuntime']
   readonly respond: ApiProxy['respond']
 
   constructor(ctx: Context, config: Config) {
@@ -123,6 +124,7 @@ export class ApiProxyService extends Service implements ApiProxy {
     this.downloads = api.downloads
     this.uploads = api.uploads
     this.artifacts = api.artifacts
+    this.officeRuntime = api.officeRuntime
     // createApiProxy returns closures (no `this` capture), so the bind is
     // behavior-neutral.
     this.respond = api.respond.bind(api)

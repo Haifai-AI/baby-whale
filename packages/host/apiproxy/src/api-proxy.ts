@@ -20,7 +20,8 @@ const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.md': 'text/plain',
   '.json': 'application/json',
 }
-import { convertToPdfCached, findSoffice, parseDocxPreview, parsePptxPreview, parseXlsxCharts, parseXlsxPreview, previewCacheDir, recalcXlsxBytes, xlsxHasUncachedFormulas } from './artifacts-preview.ts'
+import { convertToPdfCached, findSoffice, parseDocxPreview, parsePptxPreview, parseXlsxCharts, parseXlsxPreview, previewCacheDir, recalcXlsxBytes, resetSofficeLookup, xlsxHasUncachedFormulas } from './artifacts-preview.ts'
+import { beginManagedSofficeInstall, managedInstallSupport, managedSofficePath, sofficeInstallState } from './soffice-runtime.ts'
 import { homedir } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 import { z as zod } from 'zod'
@@ -3235,6 +3236,28 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
     },
 
+    officeRuntime: {
+      // Setup-banner snapshot: managed runtime presence, install lifecycle,
+      // and the guided page for platforms without an automatic flow.
+      async status(request) {
+        const managed = managedSofficePath()
+        const located = findSoffice()
+        const support = managedInstallSupport()
+        return ok(request, {
+          soffice: located !== undefined
+            ? { found: true, source: managed !== undefined && managed === located ? 'managed' : 'system', path: located }
+            : { found: false, source: 'none' },
+          install: sofficeInstallState(),
+          managedSupported: support.supported,
+          ...(support.guideUrl !== undefined ? { guideUrl: support.guideUrl } : {}),
+        })
+      },
+      async install(request) {
+        const state = await beginManagedSofficeInstall(resetSofficeLookup)
+        return ok(request, { install: state })
+      },
+    },
+
     artifacts: {
       // The session gallery: bounded stat-only scan of the workspace's
       // deliverables/ and uploads/. Session resolution mirrors skills.list.
@@ -3255,7 +3278,9 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const results = new Map<string, boolean>()
         for (const event of sourceSession(source).events) {
           if (event.type !== 'tool/result') continue
-          const message = (event.data as { message?: { source?: { callId?: string }; isError?: boolean; content?: Array<{ text?: string }> } }).message
+          const message = (event.data as {
+            message?: { source?: { callId?: string }; isError?: boolean; content?: Array<{ text?: string }> }
+          }).message
           const callId = message?.source?.callId
           if (callId === undefined) continue
           const failed = message?.isError === true
@@ -3287,9 +3312,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
         const { stat } = await import('node:fs/promises')
         const artifacts: Array<{
-          path: string; name: string
+          path: string
+          name: string
           kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'text' | 'other'
-          size: number; modifiedAt: number; origin: 'deliverable' | 'upload'
+          size: number
+          modifiedAt: number
+          origin: 'deliverable' | 'upload'
         }> = []
         for (const [path] of claimed) {
           try {
@@ -3298,12 +3326,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             const ext = (/[.][a-z0-9]+$/i.exec(name)?.[0] ?? '').toLowerCase()
             const kind = ext === '.xlsx' || ext === '.xlsm' ? 'xlsx' as const
               : ext === '.docx' ? 'docx' as const
-              : ext === '.pptx' ? 'pptx' as const
-              : ext === '.csv' || ext === '.tsv' ? 'csv' as const
-              : ext === '.pdf' ? 'pdf' as const
-              : ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext) ? 'image' as const
-              : ['.txt', '.md', '.json'].includes(ext) ? 'text' as const
-              : 'other' as const
+                : ext === '.pptx' ? 'pptx' as const
+                  : ext === '.csv' || ext === '.tsv' ? 'csv' as const
+                    : ext === '.pdf' ? 'pdf' as const
+                      : ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext) ? 'image' as const
+                        : ['.txt', '.md', '.json'].includes(ext) ? 'text' as const
+                          : 'other' as const
             artifacts.push({
               path, name, kind,
               size: info.size,
@@ -3447,43 +3475,43 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         if (preview === undefined) {
           if (ext === '.csv' || ext === '.tsv') {
           // CSV reuses the sheet renderer with synthesized header handling.
-          const text = new TextDecoder().decode(bytes.slice(0, 512 * 1024))
-          const lines = text.split(/\r?\n/).filter(line => line.length > 0).slice(0, 101)
-          const delimiter = [',', ';', '\t', '|']
-            .map(d => ({ d, n: (lines[0] ?? '').split(d).length }))
-            .sort((a, b) => b.n - a.n)[0]?.d ?? ','
-          const splitRow = (row: string): string[] => {
-            const out: string[] = []
-            let field = ''
-            let quoted = false
-            for (let i = 0; i < row.length; i++) {
-              const ch = row[i]
-              if (quoted) {
-                if (ch === '"' && row[i + 1] === '"') { field += '"'; i++ }
-                else if (ch === '"') quoted = false
+            const text = new TextDecoder().decode(bytes.slice(0, 512 * 1024))
+            const lines = text.split(/\r?\n/).filter(line => line.length > 0).slice(0, 101)
+            const delimiter = [',', ';', '\t', '|']
+              .map(d => ({ d, n: (lines[0] ?? '').split(d).length }))
+              .sort((a, b) => b.n - a.n)[0]?.d ?? ','
+            const splitRow = (row: string): string[] => {
+              const out: string[] = []
+              let field = ''
+              let quoted = false
+              for (let i = 0; i < row.length; i++) {
+                const ch = row[i]
+                if (quoted) {
+                  if (ch === '"' && row[i + 1] === '"') { field += '"'; i++ }
+                  else if (ch === '"') quoted = false
+                  else field += ch
+                } else if (ch === '"') quoted = true
+                else if (ch === delimiter) { out.push(field); field = '' }
                 else field += ch
-              } else if (ch === '"') quoted = true
-              else if (ch === delimiter) { out.push(field); field = '' }
-              else field += ch
+              }
+              out.push(field)
+              return out
             }
-            out.push(field)
-            return out
-          }
-          const table = lines.map(splitRow)
-          const width = Math.max(...table.map(row => row.length), 1)
-          preview = {
-            kind: 'xlsx',
-            file_name: basename(path),
-            sheets: [{
-              name: 'csv',
-              total_rows: Math.max(table.length - 1, 0),
-              total_cols: width,
-              ...(table[0]?.every(cell => typeof cell === 'string') ? { header: table[0] ?? [] } : {}),
-              rows: table.slice(1).map(row => Array.from({ length: width }, (_, c) => ({ v: row[c] ?? '' }))),
-              truncated: text.length >= 512 * 1024,
-            }],
-            truncated: false,
-          }
+            const table = lines.map(splitRow)
+            const width = Math.max(...table.map(row => row.length), 1)
+            preview = {
+              kind: 'xlsx',
+              file_name: basename(path),
+              sheets: [{
+                name: 'csv',
+                total_rows: Math.max(table.length - 1, 0),
+                total_cols: width,
+                ...(table[0]?.every(cell => typeof cell === 'string') ? { header: table[0] ?? [] } : {}),
+                rows: table.slice(1).map(row => Array.from({ length: width }, (_, c) => ({ v: row[c] ?? '' }))),
+                truncated: text.length >= 512 * 1024,
+              }],
+              truncated: false,
+            }
           }
         }
         return ok(request, {

@@ -91,6 +91,8 @@ export interface SidebarFooterActionOwnerProps {
  * the New Session button and toggling the column.
  */
 export type SidebarRootInjected = {
+  /** Connection handle for host RPCs the shell renders itself (setup card). */
+  connection: import('@deepseek-ai/dsh-client-connection/client').ConnectionHandle
   /**
    * Start a New Session: with a workspace, reuse-or-create its blank session
    * and open it; without one, inherit the current Session Workspace, then the

@@ -2270,6 +2270,14 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       file: () => Promise.resolve(new Response('%PDF-fixture', { headers: { 'content-type': 'application/pdf' } })),
       raw: () => Promise.resolve(new Response('fixture', { headers: { 'content-type': 'text/plain' } })),
     },
+    officeRuntime: {
+      status: request => ok(request, {
+        soffice: { found: true, source: 'system' as const },
+        install: { phase: 'idle' as const, progress: 0 },
+        managedSupported: true,
+      }),
+      install: request => ok(request, { install: { phase: 'idle' as const, progress: 0 } }),
+    },
     sessions: {
       list: request => ok(request, { items: [...sessions].sort((a, b) => b.updatedAt - a.updatedAt) }),
       search: (request, signal) => {
@@ -3215,6 +3223,8 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'skill.list': return this.api.skills.list(request)
       case 'artifacts.list': return this.api.artifacts.list(request)
       case 'artifacts.preview': return this.api.artifacts.preview(request)
+      case 'officeRuntime.status': return this.api.officeRuntime.status(request)
+      case 'officeRuntime.install': return this.api.officeRuntime.install(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)
       case 'agentPreset.read': return this.api.agentPresets.read(request)

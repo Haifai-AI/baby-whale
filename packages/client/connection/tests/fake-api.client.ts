@@ -195,6 +195,10 @@ export class FakeApiClient implements IApiClient {
   readonly skills: IApiClient['skills'] = {
     list: (payload: unknown) => this.record('skill.list', payload, this.onSkillList(payload)),
   }
+  readonly officeRuntime: IApiClient['officeRuntime'] = {
+    status: (payload) => { this.calls.push({ method: 'officeRuntime.status', payload }); return Promise.resolve(ok({ soffice: { found: true, source: 'system' }, install: { phase: 'idle', progress: 0 }, managedSupported: true })) },
+    install: (payload) => { this.calls.push({ method: 'officeRuntime.install', payload }); return Promise.resolve(ok({ install: { phase: 'idle', progress: 0 } })) },
+  }
   readonly artifacts: IApiClient['artifacts'] = {
     list: (payload) => { this.calls.push({ method: 'artifacts.list', payload }); return Promise.resolve(ok({ artifacts: [] })) },
     preview: (payload) => { this.calls.push({ method: 'artifacts.preview', payload }); return Promise.resolve(ok({ size: 0 })) },

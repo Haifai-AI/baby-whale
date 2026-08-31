@@ -10,6 +10,7 @@ import type { WorkspaceApi } from './workspace.ts'
 import type { AgentPresetsApi } from './agent-presets.ts'
 import type { SkillsApi } from './skills.ts'
 import type { ArtifactsApi } from './artifacts.ts'
+import type { OfficeRuntimeApi } from './office-runtime.ts'
 import type { GoalsApi } from './goals.ts'
 import type { SettingsApi } from './settings.ts'
 import type { CredentialsApi } from './credentials.ts'
@@ -54,6 +55,8 @@ export interface RpcMethodMap {
   'skill.list': SkillsApi['list']
   'artifacts.list': ArtifactsApi['list']
   'artifacts.preview': ArtifactsApi['preview']
+  'officeRuntime.status': OfficeRuntimeApi['status']
+  'officeRuntime.install': OfficeRuntimeApi['install']
   'agentPreset.list': AgentPresetsApi['list']
   'agentPreset.select': AgentPresetsApi['select']
   'agentPreset.read': AgentPresetsApi['read']

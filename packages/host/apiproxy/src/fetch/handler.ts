@@ -49,6 +49,10 @@ import { artifactsListRequestSchema, artifactsPreviewRequestSchema } from '../ap
 import { artifactsRawQuerySchema } from '../api/artifacts.schema.ts'
 import { artifactsFileQuerySchema } from '../api/artifacts.schema.ts'
 import {
+  officeRuntimeInstallRequestSchema,
+  officeRuntimeStatusRequestSchema,
+} from '../api/office-runtime.schema.ts'
+import {
   agentPresetCopyRequestSchema, agentPresetListRequestSchema, agentPresetOpenDocumentRequestSchema,
   agentPresetReadRequestSchema, agentPresetRemoveRequestSchema, agentPresetSelectRequestSchema,
 } from '../api/agent-presets.schema.ts'
@@ -123,6 +127,8 @@ const UNARY_ROUTES: UnaryRoutes = {
   'skill.list': { schema: skillListRequestSchema, invoke: (api, r) => api.skills.list(r) },
   'artifacts.list': { schema: artifactsListRequestSchema, invoke: (api, r) => api.artifacts.list(r) },
   'artifacts.preview': { schema: artifactsPreviewRequestSchema, invoke: (api, r) => api.artifacts.preview(r) },
+  'officeRuntime.status': { schema: officeRuntimeStatusRequestSchema, invoke: (api, r) => api.officeRuntime.status(r) },
+  'officeRuntime.install': { schema: officeRuntimeInstallRequestSchema, invoke: (api, r) => api.officeRuntime.install(r) },
   'agentPreset.list': { schema: agentPresetListRequestSchema, invoke: (api, r) => api.agentPresets.list(r) },
   'agentPreset.select': { schema: agentPresetSelectRequestSchema, invoke: (api, r) => api.agentPresets.select(r) },
   'agentPreset.read': { schema: agentPresetReadRequestSchema, invoke: (api, r) => api.agentPresets.read(r) },
@@ -180,7 +186,6 @@ function fullResponse(narrow: RpcResponse<unknown>): Response {
  */
 // K appears once in the signature but ties the UNARY_ROUTES[K] row lookup to its own
 // schema/invoke pairing; a union parameter degrades the row to an uninvokable intersection.
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 async function handleUnary<K extends keyof RpcMethodMap>(
   api: ApiProxy, method: K, message: ClientRequest, signal: AbortSignal,
 ): Promise<Response> {

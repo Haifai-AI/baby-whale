@@ -16,6 +16,16 @@ async function bench(declare = true) {
   ctx.provide('sessions', sessions as never)
   ctx.provide('workspaces', workspaces as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
+  ctx.provide('connection', {
+    isLoopback: true,
+    hostDescription: 'stub',
+    api: {
+      officeRuntime: {
+        status: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true } } }),
+        install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
+      },
+    },
+  } as never)
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
     slots.register(
@@ -28,7 +38,7 @@ async function bench(declare = true) {
 
 describe('ui-sidebar apply', () => {
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'sessions', 'workspaces', 'locale'])
+    expect(inject).toEqual(['slots', 'layout', 'sessions', 'workspaces', 'locale', 'connection'])
   })
 
   it('registers the shell and declares its child seats', async () => {
@@ -43,7 +53,7 @@ describe('ui-sidebar apply', () => {
     // Copy rides the standard locale seat, not the inject face.
     expect(b.slots.entries('sidebar')[0]!.locale).toBe('sidebar')
     const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar'])
+    expect(Object.keys(injected)).toEqual(['connection', 'startSession', 'toggleSidebar'])
     // Both arms delegate to the runtime's shared New Session action.
     injected.startSession('workspace' as never)
     expect(b.workspaces.startSession).toHaveBeenCalledWith('workspace')

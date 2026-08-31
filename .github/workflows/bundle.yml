@@ -46,7 +46,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: baby-whale-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/*.zip
+          path: dist/*
           retention-days: 14
 
       - name: Publish release (tag runs only)
@@ -55,5 +55,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.dmg \
             --title "$GITHUB_REF_NAME" --generate-notes --latest

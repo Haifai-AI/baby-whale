@@ -21,6 +21,74 @@ import { basename } from './turn-deliverables.ts'
 /** Kind bucket from extension, for the badge glyph. */
 type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'other'
 
+/** Human kind label + extension for the card subtitle ("Spreadsheet · XLSX"). */
+const KIND_META: Record<Kind, { label: string }> = {
+  xlsx: { label: 'Spreadsheet' },
+  docx: { label: 'Document' },
+  pptx: { label: 'Presentation' },
+  csv: { label: 'Spreadsheet' },
+  pdf: { label: 'PDF' },
+  py: { label: 'Script' },
+  other: { label: 'File' },
+}
+
+function extensionOf(path: string): string {
+  const dot = path.lastIndexOf('.')
+  return dot === -1 ? '' : path.slice(dot + 1).toUpperCase()
+}
+
+/** Document glyph for the icon tile, tinted per kind by CSS. */
+function KindGlyph({ kind }: { kind: Kind }) {
+  const common = { width: 17, height: 17, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true } as const
+  const stroke = { stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  if (kind === 'xlsx' || kind === 'csv') {
+    return (
+      <svg {...common}>
+        <rect x="2" y="2" width="12" height="12" rx="1.6" {...stroke} />
+        <path d="M2 6.2h12M2 10.2h12M6.2 2v12M10 2v12" {...stroke} />
+      </svg>
+    )
+  }
+  if (kind === 'docx') {
+    return (
+      <svg {...common}>
+        <path d="M3.4 1.8h6L13 5.4v8.8H3.4z" {...stroke} />
+        <path d="M5.4 7.4h5.2M5.4 9.6h5.2M5.4 11.8h3.4" {...stroke} />
+      </svg>
+    )
+  }
+  if (kind === 'pptx') {
+    return (
+      <svg {...common}>
+        <rect x="2" y="2.4" width="12" height="9.2" rx="1.4" {...stroke} />
+        <path d="M8 11.6v2M5.6 13.6h4.8M5.4 5.2h5.2v3H5.4z" {...stroke} />
+      </svg>
+    )
+  }
+  if (kind === 'pdf') {
+    return (
+      <svg {...common}>
+        <path d="M3.4 1.8h6L13 5.4v8.8H3.4z" {...stroke} />
+        <path d="M5.2 12.6c2.2-.4 4.6-2.8 5.6-5.4M5.4 9.2c1 .9 2.7 1.5 4.2 1.3" {...stroke} />
+      </svg>
+    )
+  }
+  if (kind === 'py') {
+    return (
+      <svg {...common}>
+        <path d="M8 1.8c-2.4 0-3.4 1-3.4 2.4v1.6H8v.8H3.4C2 6.6 1.4 7.6 1.4 8.9c0 1.4.8 2.3 2.2 2.3h1.2v-1.6c0-1.2 1-2.2 2.2-2.2h3.4c1 0 1.9-.9 1.9-2V4.2c0-1.5-1.2-2.4-4.3-2.4z" {...stroke} />
+        <circle cx="5.9" cy="4" r="0.9" fill="currentColor" />
+      </svg>
+    )
+  }
+  return (
+    <svg {...common}>
+      <path d="M3.4 1.8h6L13 5.4v8.8H3.4z" {...stroke} />
+      <path d="M9.2 1.8v3.8H13" {...stroke} />
+    </svg>
+  )
+}
+
 function kindOf(path: string): Kind {
   const ext = path.slice(path.lastIndexOf('.')).toLowerCase()
   if (ext === '.xlsx' || ext === '.xlsm') return 'xlsx'
@@ -136,9 +204,10 @@ function PreviewModal({ path, sessionId, connection, openFile, canOpenPath, t, o
   }, [onClose])
   return (
     <div className={css.scrim} role="presentation" onClick={onClose}>
-      <div className={css.modal} role="dialog" aria-label={basename(path)} onClick={event => { event.stopPropagation() }}>
+      <div className={css.modal} role="dialog" aria-label={basename(path)} onClick={(event) => { event.stopPropagation() }}>
         <div className={css.modalHead}>
-          <span className={css.modalTitle} title={path}>{basename(path)}</span>
+          <span className={css.modalTitle} title={path}>{basename(path).replace(/\.[^.]+$/, '')}</span>
+          <span className={css.modalKind}>{extensionOf(path)}</span>
           <div className={css.modalActions}>
             <a className={css.modalAction} href={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path, download: '1' }).toString()}`}>
               {t('delivered.download')}
@@ -207,7 +276,7 @@ export function DeliveredCards({
     <div className={css.root}>
       <span className={css.label}>{t('delivered.label')}</span>
       <div className={css.cardRow}>
-        {visible.map(path => {
+        {visible.map((path) => {
           const kind = kindOf(path)
           const mainAction = previewable(kind) || isImage(path)
             ? (): void => { setPreviewPath(path) }
@@ -215,18 +284,23 @@ export function DeliveredCards({
           const mainLabel = previewable(kind) || isImage(path) ? t('delivered.preview') : t('delivered.open')
           return (
             <div key={path} className={css.deliveredCard}>
-              <span className={`${css.badge} ${css[`badge_${kind}`] ?? ''}`}>
-                {kind === 'py' ? 'PY' : kind.toUpperCase()}
+              <span className={`${css.tile} ${css[`tile_${kind}`] ?? ''}`}>
+                <KindGlyph kind={kind} />
               </span>
-              <button
-                type="button"
-                className={css.cardName}
-                title={path}
-                aria-label={t('produced.open', { name: path })}
-                onClick={() => { openFile(path) }}
-              >
-                {basename(path)}
-              </button>
+              <div className={css.cardTexts}>
+                <button
+                  type="button"
+                  className={css.cardName}
+                  title={path}
+                  aria-label={t('produced.open', { name: path })}
+                  onClick={() => { openFile(path) }}
+                >
+                  {basename(path)}
+                </button>
+                <span className={css.cardKind}>
+                  {KIND_META[kind].label} · {extensionOf(path)}
+                </span>
+              </div>
               <div
                 className={css.split}
                 ref={menuOpenFor === path ? menuRef : undefined}

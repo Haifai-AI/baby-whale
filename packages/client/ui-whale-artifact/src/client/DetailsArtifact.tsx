@@ -143,12 +143,14 @@ export function ExcelStudio({ preview }: { preview: Extract<OfficePreviewData, {
   )
 }
 
-/** Slide gallery studio: larger 16:9 cards in one column. */
+/** Slide gallery studio: larger 16:9 cards in one column, page-numbered. */
 export function SlideGallery({ preview }: { preview: Extract<OfficePreviewData, { kind: 'pptx' }> }) {
+  const total = preview.slides.length + 1
   return (
     <div className={css.gallery}>
       <div className={`${css.slide} ${css.slideTitle}`}>
         <span className={css.slideDeckTitle}>{preview.title}</span>
+        <span className={css.slidePage}>1 / {total}</span>
       </div>
       {preview.slides.map((slide, index) => (
         <div key={index} className={css.slide}>
@@ -160,6 +162,7 @@ export function SlideGallery({ preview }: { preview: Extract<OfficePreviewData, 
               {slide.bullets.map((bullet, bulletIndex) => <li key={bulletIndex}>{bullet}</li>)}
             </ul>
           )}
+          <span className={css.slidePage}>{index + 2} / {total}</span>
         </div>
       ))}
     </div>

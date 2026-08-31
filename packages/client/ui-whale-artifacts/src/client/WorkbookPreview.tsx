@@ -87,7 +87,7 @@ export function WorkbookPreview({ data, t }: {
       </div>
       <div className={css.wbBody}>
         {tab === 'data' && <ArtifactStudioBody preview={data as unknown as OfficePreviewData} />}
-        {tab === 'charts' && <WorkbookCharts charts={data.charts ?? []} />}
+        {tab === 'charts' && <WorkbookCharts charts={data.charts ?? []} allLabel={t('charts.all')} />}
         {tab === 'original' && hasOriginal && (
           <iframe
             title={data.file_name}

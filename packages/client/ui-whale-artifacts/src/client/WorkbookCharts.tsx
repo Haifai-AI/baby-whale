@@ -6,7 +6,8 @@
  * @module @deepseek-ai/dsh-client-ui-whale-artifacts/src/client/WorkbookCharts
  */
 
-import type { CSSProperties } from 'react'
+import { useState } from 'react'
+import type { CSSProperties, JSX } from 'react'
 import css from './ArtifactsView.module.css'
 
 /** One cached series of a workbook chart. */
@@ -33,12 +34,15 @@ const PLOT_H = H - MARGIN.top - MARGIN.bottom
 
 const AXIS_TEXT: CSSProperties = { fill: 'var(--dsw-alias-label-secondary)', fontSize: 11 }
 
-/** Compact axis numbers (12.5K, 3.2M) without Intl — ICU builds differ. */
+/** Axis numbers: thousands-grouped (25,000), M-suffix past a million. No
+ * Intl — ICU builds differ between runtimes. */
 function compact(value: number): string {
   const abs = Math.abs(value)
   if (abs >= 1_000_000) return `${Math.round((value / 1_000_000) * 10) / 10}M`
-  if (abs >= 10_000) return `${Math.round((value / 1_000) * 10) / 10}K`
   const rounded = Math.round(value * 100) / 100
+  if (Number.isInteger(rounded) && abs >= 1_000) {
+    return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0$/, '')
 }
 
@@ -67,11 +71,11 @@ function niceMax(max: number): number {
 }
 
 function ValueGrid({ max }: { max: number }) {
-  return [0, 1, 2, 3, 4].map(index => {
+  return [0, 1, 2, 3, 4].map((index) => {
     const y = MARGIN.top + PLOT_H - (PLOT_H * index) / 4
     return (
       <g key={index}>
-        <line x1={MARGIN.left} x2={W - MARGIN.right} y1={y} y2={y} stroke="var(--dsw-alias-border-l2)" strokeWidth={1} />
+        <line x1={MARGIN.left} x2={W - MARGIN.right} y1={y} y2={y} stroke="var(--dsw-alias-border-l2)" strokeWidth={1} strokeOpacity={0.7} />
         <text x={MARGIN.left - 8} y={y + 4} textAnchor="end" style={AXIS_TEXT}>{compact((max / 4) * index)}</text>
       </g>
     )
@@ -151,7 +155,7 @@ function BarChart({ chart }: { chart: WorkbookChart }) {
   const barHeight = Math.min((band * 0.72) / series.length, 26)
   return (
     <>
-      {[0, 1, 2, 3, 4].map(index => {
+      {[0, 1, 2, 3, 4].map((index) => {
         const x = left + (plotW * index) / 4
         return (
           <g key={index}>
@@ -362,11 +366,41 @@ function ChartCard({ chart }: { chart: WorkbookChart }) {
   )
 }
 
-/** The Charts tab body: one themed SVG card per embedded chart. */
-export function WorkbookCharts({ charts }: { charts: readonly WorkbookChart[] }) {
+/** The Charts tab body: a selector row over the workbook's charts — pick one
+ * to study it large, or open the wall of all of them. */
+export function WorkbookCharts({ charts, allLabel }: {
+  charts: readonly WorkbookChart[]
+  allLabel: string
+}) {
+  const [selected, setSelected] = useState<number | 'all'>(charts.length > 0 ? 0 : 'all')
+  if (charts.length === 0) return null
+  const current = selected === 'all' ? undefined : charts[Math.min(selected, charts.length - 1)]
+  const pill = (key: number | 'all', chart?: WorkbookChart): JSX.Element => (
+    <button
+      type="button"
+      key={String(key)}
+      className={`${css.chartTab} ${(key === 'all' && selected === 'all') || key === selected ? css.chartTabActive : ''}`}
+      onClick={() => { setSelected(key) }}
+    >
+      <span className={css.chartTabTitle}>
+        {chart === undefined ? allLabel : chart.title ?? `Chart ${Number(key) + 1}`}
+      </span>
+      {chart?.sheet !== undefined && <span className={css.chartTabSheet}>{chart.sheet}</span>}
+    </button>
+  )
   return (
     <div className={css.chartsWrap}>
-      {charts.map((chart, index) => <ChartCard key={index} chart={chart} />)}
+      <div className={css.chartTabs}>
+        {charts.map((chart, index) => pill(index, chart))}
+        {charts.length > 1 && pill('all')}
+      </div>
+      {current !== undefined
+        ? <ChartCard chart={current} />
+        : (
+          <div className={css.chartsGrid}>
+            {charts.map((chart, index) => <ChartCard key={index} chart={chart} />)}
+          </div>
+        )}
     </div>
   )
 }

@@ -264,6 +264,62 @@
   padding: 12px;
 }
 
+/* Selector row: one pill per chart (title + sheet), Claude-style. */
+.chartTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: none;
+}
+
+.chartTab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  max-width: 240px;
+  padding: 7px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 9px;
+  background: var(--dsw-alias-bg-layer-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.chartTab:hover { border-color: var(--dsw-alias-border-l3); }
+
+.chartTabActive {
+  border-color: var(--dsw-alias-accent, #4e7fe8);
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-accent, #4e7fe8);
+}
+
+.chartTabTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.chartTabSheet {
+  font-size: 10.5px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.chartsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
 .chartCard {
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
@@ -297,8 +353,9 @@
 .chartLegend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 6px 0 2px;
+  justify-content: center;
+  gap: 4px 14px;
+  padding: 2px 0 8px;
 }
 
 .legendItem {
@@ -310,8 +367,8 @@
 }
 
 .legendSwatch {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 8px;
   border-radius: 2px;
   flex: none;
 }

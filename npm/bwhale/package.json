@@ -1,8 +1,9 @@
 {
-  "name": "bwhale",
+  "name": "@haifai/bwhale",
   "version": "0.1.2",
   "description": "Baby Whale — local-first knowledge-work coworker. One command: bwhale. Fetches its runtime once, starts the app, opens your browser. Nothing leaves your machine.",
   "license": "MIT",
+  "publishConfig": { "access": "public" },
   "type": "module",
   "bin": { "bwhale": "bin/bwhale.js" },
   "files": ["bin/", "README.md"],

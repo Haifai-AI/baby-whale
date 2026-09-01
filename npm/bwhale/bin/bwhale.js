@@ -70,7 +70,7 @@ function die(message) { log(`bwhale: ${message}`); process.exit(1) }
 /** The platform/arch bundle asset this machine needs. */
 function bundleAssetName(version) {
   const p = SUPPORT?.platformKey() ?? platform()
-  const a = arch() === 'arm64' ? 'arm64' : 'x64'
+  const a = arch() === 'arm64' ? 'arm64' : 'x86_64'
   return `baby-whale-${p}-${a}-${version}.zip`
 }
 
@@ -120,7 +120,7 @@ function unzip(archive, into) {
 /** Installed bundle layout: <ROOT>/runtime/baby-whale-<p>-<a>-<version> */
 function runtimeDir(version) {
   const p = SUPPORT?.platformKey() ?? platform()
-  const a = arch() === 'arm64' ? 'arm64' : 'x64'
+  const a = arch() === 'arm64' ? 'arm64' : 'x86_64'
   return path.join(ROOT, 'runtime', `baby-whale-${p}-${a}-${version}`)
 }
 

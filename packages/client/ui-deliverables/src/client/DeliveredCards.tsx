@@ -284,9 +284,17 @@ export function DeliveredCards({
           const mainLabel = previewable(kind) || isImage(path) ? t('delivered.preview') : t('delivered.open')
           return (
             <div key={path} className={css.deliveredCard}>
-              <span className={`${css.tile} ${css[`tile_${kind}`] ?? ''}`}>
-                <KindGlyph kind={kind} />
-              </span>
+              <button
+                type="button"
+                className={css.thumb}
+                title={path}
+                aria-label={t('produced.open', { name: path })}
+                onClick={mainAction}
+              >
+                <span className={css.thumbPaper}>
+                  <KindGlyph kind={kind} />
+                </span>
+              </button>
               <div className={css.cardTexts}>
                 <button
                   type="button"
@@ -306,6 +314,9 @@ export function DeliveredCards({
                 ref={menuOpenFor === path ? menuRef : undefined}
               >
                 <button type="button" className={css.splitMain} onClick={mainAction}>
+                  <span className={`${css.btnLogo} ${css[`tile_${kind}`] ?? ''}`}>
+                    <KindGlyph kind={kind} />
+                  </span>
                   {mainLabel}
                 </button>
                 <button

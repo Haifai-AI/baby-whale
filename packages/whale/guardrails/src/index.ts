@@ -67,6 +67,24 @@ interface SessionEventLike {
 
 const approvedOverwrites = new WeakMap<object, { readonly length: number; readonly reasons: ReadonlySet<string> }>()
 
+/**
+ * The session's approval policy: the last `approval/policy` event wins, and
+ * a session without one runs the default `'ask'`. `'never'` is what the
+ * danger-full-access preset writes — it means never PROMPT, with the sandbox
+ * layer owning allow/deny — so a fence that asks under it would get its ask
+ * auto-rejected by the approval service without any human seeing a card.
+ */
+function sessionApprovalPolicy(session: unknown): 'ask' | 'never' {
+  const events = (session as { events?: readonly SessionEventLike[] } | undefined)?.events ?? []
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'approval/policy') continue
+    const data = event.data as { policy?: unknown } | undefined
+    return data?.policy === 'never' ? 'never' : 'ask'
+  }
+  return 'ask'
+}
+
 function approvedOverwriteReasons(session: unknown): ReadonlySet<string> {
   const events = (session as { events?: readonly SessionEventLike[] } | undefined)?.events ?? []
   const cacheable = session !== null && typeof session === 'object'
@@ -123,6 +141,10 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
     const path = filePathOf(exec)
     if (!GUARDED_TOOLS.has(exec.name) || path === undefined || config.askOnOverwrite !== true) return next()
+    // Under the never-prompt policy (danger-full-access) the fence stands
+    // down: an ask would be auto-rejected by the approval service before any
+    // human sees it, and the sandbox layer already owns the decision.
+    if (sessionApprovalPolicy(exec.agent?.session) === 'never') return next()
     if (await targetExists(ctx, exec, path)) {
       const reason = `overwrite existing file "${path}"?`
       if (approvedOverwriteReasons(exec.agent?.session).has(reason)) return next()

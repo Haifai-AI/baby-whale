@@ -155,6 +155,28 @@ describe('whale-guardrails', () => {
     expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
   })
 
+
+  it('stands down under the never-prompt policy (danger-full-access)', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const session = {
+      header: { cwd: root },
+      events: [
+        { type: 'approval/policy', data: { policy: 'never' } },
+      ],
+    }
+    const exec: ToolExecution = {
+      ...execution('write', { file_path: 'existing.txt' }),
+      agent: { session } as never,
+    }
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'allow' })
+  })
+
   it('registers the untrusted-content guidance section', async () => {
     const { sections } = await booted()
     expect(sections).toHaveLength(1)

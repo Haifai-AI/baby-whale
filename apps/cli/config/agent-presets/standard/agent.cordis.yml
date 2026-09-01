@@ -41,6 +41,9 @@
 # never reached the model's shell at all. Both shell tools consume the host
 # registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
 # host-plane too.
+- id: tool-deliver
+  name: '@deepseek-ai/dsh-tool-deliver'
+
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
   disabled: !!js process.platform === 'win32'
@@ -66,8 +69,6 @@
 # Office READ tools (xlsx_read / csv_read / docx_text); creation is
 # code-first (bash + Python) with deliver surfacing finished files as
 # deliverable chips in the Web UI.
-- id: tool-office
-  name: '@deepseek-ai/dsh-tool-office'
 
 # ── background jobs ────────────────────────────────────────────────────────
 

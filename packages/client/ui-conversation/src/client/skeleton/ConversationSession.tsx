@@ -23,6 +23,13 @@ interface Breadcrumb {
 
 const DEFAULT_VIEW_ID = 'chat'
 
+/**
+ * Presets without the office surfaces: their sessions carry no deliverable
+ * lens, so the whale Artifacts tab would render an empty pane. Filtered from
+ * the tab strip (a stale persisted selection falls back to Chat).
+ */
+const OFFICELESS_PRESETS = new Set(['standard'])
+
 /** Resolve by id and keep stale persisted selections on the stable Chat fallback. */
 function resolveActiveView(tabs: readonly ViewTab[], selectedId: string | null): ViewTab | undefined {
   const requestedId = selectedId ?? DEFAULT_VIEW_ID
@@ -68,7 +75,8 @@ export function ConversationSessionHeader({
   renderSlot, views, open, t,
 }: ConversationSessionHeaderProps) {
   useSyncExternalStore(views.subscribe, views.version)
-  const tabs = views.list()
+  const officeless = useSessions(store => OFFICELESS_PRESETS.has(store.byId[sessionId]?.agentPreset ?? ''))
+  const tabs = views.list().filter(tab => !(officeless && tab.id === 'whale-artifacts'))
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
   const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
@@ -171,11 +179,12 @@ export function ConversationSessionHeader({
  * @returns the active view area, or null while the Session remains blank.
  */
 export function ConversationSession({
-  sessionId, useSession, useInput, inputActions, useStore, actions,
+  sessionId, useSession, useSessions, useInput, inputActions, useStore, actions,
   renderSlot, views, bindDraftMirror, releaseSessionImages,
 }: ConversationSessionProps) {
   useSyncExternalStore(views.subscribe, views.version)
-  const tabs = views.list()
+  const officeless = useSessions(store => OFFICELESS_PRESETS.has(store.byId[sessionId]?.agentPreset ?? ''))
+  const tabs = views.list().filter(tab => !(officeless && tab.id === 'whale-artifacts'))
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
   const composerPhase = useSession(s => s.composerPhase)

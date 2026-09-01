@@ -40,3 +40,15 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 /dist/
+
+# npm distribution: pack artifacts and local lockfiles never get committed
+*.tgz
+npm/**/package-lock.json
+
+# local test renders and scratch (render_slides/qa runs)
+qa/
+
+# cross-platform editor/OS noise
+*.swp
+Thumbs.db
+.env.*

@@ -52,6 +52,44 @@ function filePathOf(exec: ToolExecution): string | undefined {
 }
 
 /**
+ * Overwrite approvals already granted in this session. The session's audit
+ * log is the memory: an `approval/decided` carrying `allowed-once` for the
+ * same ask reason means the user already waved this exact overwrite through,
+ * and the fence must not re-ask on every edit of the same file (the model
+ * touches a deck script a dozen times a turn). Rejected or cancelled asks
+ * stay unapproved and keep asking. Validated against the log length — the
+ * event list is append-only, so an equal length is the same log.
+ */
+interface SessionEventLike {
+  readonly type: string
+  readonly data?: unknown
+}
+
+const approvedOverwrites = new WeakMap<object, { readonly length: number; readonly reasons: ReadonlySet<string> }>()
+
+function approvedOverwriteReasons(session: unknown): ReadonlySet<string> {
+  const events = (session as { events?: readonly SessionEventLike[] } | undefined)?.events ?? []
+  const cacheable = session !== null && typeof session === 'object'
+  if (cacheable) {
+    const cached = approvedOverwrites.get(session)
+    if (cached !== undefined && cached.length === events.length) return cached.reasons
+  }
+  const reasonById = new Map<string, string | undefined>()
+  const reasons = new Set<string>()
+  for (const event of events) {
+    const data = event.data as { id?: unknown; reason?: unknown; outcome?: unknown } | undefined
+    if (event.type === 'approval/asked' && typeof data?.id === 'string') {
+      reasonById.set(data.id, typeof data.reason === 'string' ? data.reason : undefined)
+    } else if (event.type === 'approval/decided' && data?.outcome === 'allowed-once' && typeof data.id === 'string') {
+      const reason = reasonById.get(data.id)
+      if (reason !== undefined) reasons.add(reason)
+    }
+  }
+  if (cacheable) approvedOverwrites.set(session, { length: events.length, reasons })
+  return reasons
+}
+
+/**
  * Whether the resolved target currently exists.
  * @param ctx - the plugin context (fs service).
  * @param exec - the tool execution (session cwd + cancellation).
@@ -86,7 +124,9 @@ export function apply(ctx: Context, config: Config): void {
     const path = filePathOf(exec)
     if (!GUARDED_TOOLS.has(exec.name) || path === undefined || config.askOnOverwrite !== true) return next()
     if (await targetExists(ctx, exec, path)) {
-      return { kind: 'ask', reason: `overwrite existing file "${path}"?` }
+      const reason = `overwrite existing file "${path}"?`
+      if (approvedOverwriteReasons(exec.agent?.session).has(reason)) return next()
+      return { kind: 'ask', reason }
     }
     return next()
   })

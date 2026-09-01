@@ -85,6 +85,76 @@ describe('whale-guardrails', () => {
     expect(recorded(execution('xlsx_create', { file_path: 'deliverables/in.xlsx' }))).toBeUndefined()
   })
 
+
+  it('does not re-ask once this session allowed the same overwrite', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const reason = 'overwrite existing file "existing.txt"?'
+    const session = {
+      header: { cwd: root },
+      events: [
+        { type: 'approval/asked', data: { id: 'a1', toolName: 'write', reason } },
+        { type: 'approval/decided', data: { id: 'a1', outcome: 'allowed-once' } },
+      ],
+    }
+    const exec: ToolExecution = {
+      ...execution('write', { file_path: 'existing.txt' }),
+      agent: { session } as never,
+    }
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'allow' })
+  })
+
+  it('a rejected overwrite decision keeps asking', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const reason = 'overwrite existing file "existing.txt"?'
+    const session = {
+      header: { cwd: root },
+      events: [
+        { type: 'approval/asked', data: { id: 'a2', toolName: 'write', reason } },
+        { type: 'approval/decided', data: { id: 'a2', outcome: 'rejected' } },
+      ],
+    }
+    const exec: ToolExecution = {
+      ...execution('write', { file_path: 'existing.txt' }),
+      agent: { session } as never,
+    }
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'ask', reason })
+  })
+
+  it('a different path still asks even after an approval for another file', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    writeFileSync(join(root, 'other.txt'), 'x')
+    const session = {
+      header: { cwd: root },
+      events: [
+        { type: 'approval/asked', data: { id: 'a3', toolName: 'write', reason: 'overwrite existing file "other.txt"?' } },
+        { type: 'approval/decided', data: { id: 'a3', outcome: 'allowed-once' } },
+      ],
+    }
+    const exec: ToolExecution = {
+      ...execution('write', { file_path: 'existing.txt' }),
+      agent: { session } as never,
+    }
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+  })
+
   it('registers the untrusted-content guidance section', async () => {
     const { sections } = await booted()
     expect(sections).toHaveLength(1)

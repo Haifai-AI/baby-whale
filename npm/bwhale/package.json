@@ -1,0 +1,17 @@
+{
+  "name": "bwhale",
+  "version": "0.1.2",
+  "description": "Baby Whale — local-first knowledge-work coworker. One command: bwhale. Fetches its runtime once, starts the app, opens your browser. Nothing leaves your machine.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "bwhale": "bin/bwhale.js" },
+  "files": ["bin/", "README.md"],
+  "engines": { "node": ">=20" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Haifai-AI/baby-whale.git",
+    "directory": "npm/bwhale"
+  },
+  "keywords": ["ai", "agent", "office", "xlsx", "pptx", "docx", "cowork", "local-first"],
+  "scripts": { "prepack": "node --check bin/bwhale.js" }
+}

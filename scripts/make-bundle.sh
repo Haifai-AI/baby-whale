@@ -94,6 +94,7 @@ rm -f "$OUT"
 ls -lh "$OUT"
 echo "==> bundle ready: $OUT"
 
+if [ "$PLATFORM" = "macos" ]; then
 echo "==> building BabyWhale.app"
 APP="$STAGE_ROOT/BabyWhale.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -156,3 +157,4 @@ rm -f "$DMG_OUT"
 hdiutil create -volname "Baby Whale" -srcfolder "$DMG_STAGE" -format UDZO -ov -quiet "$OLDPWD/$DMG_OUT"
 ls -lh "$DMG_OUT"
 echo "==> dmg ready: $DMG_OUT"
+fi

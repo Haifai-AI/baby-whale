@@ -9,7 +9,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="$(node -p "require('./apps/cli/package.json').version")"
+# Version: CI passes the tag (RELEASE_VERSION) on release builds so the asset
+# name always matches the release tag the launcher searches for; anything else
+# (or a non semver value, e.g. a branch name) falls back to the app version.
+VERSION="${RELEASE_VERSION:-}"
+VERSION="${VERSION#v}"
+case "$VERSION" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) VERSION="$(node -p "require('./apps/cli/package.json').version")" ;;
+esac
 OS="$(uname -s)"           # Darwin / Linux
 ARCH="$(uname -m)"         # arm64 / x86_64
 NODE_VERSION="$(node -v)"  # e.g. v22.19.0 — bundle the running major

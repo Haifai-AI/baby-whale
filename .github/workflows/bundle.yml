@@ -42,6 +42,10 @@ jobs:
           pnpm run build:web
 
       - name: Assemble portable bundle
+        # Stamp the bundle from the tag itself, so asset names always match
+        # the release the launcher searches for (v0.1.4 -> 0.1.4).
+        env:
+          RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: ./scripts/make-bundle.sh
 
       - name: Upload workflow artifact

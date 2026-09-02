@@ -16,7 +16,8 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, statSyn
 import { homedir, platform, arch } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { finished } from 'node:stream/promises'
+import { pipeline } from 'node:stream/promises'
+import { Transform } from 'node:stream'
 
 const REPO = 'Haifai-AI/bwhale-dist'
 const HOME = homedir()
@@ -71,7 +72,7 @@ function die(message) { log(`bwhale: ${message}`); process.exit(1) }
 function bundleAssetName(version) {
   const p = SUPPORT?.platformKey() ?? platform()
   const a = arch() === 'arm64' ? 'arm64' : 'x86_64'
-  return `baby-whale-${p}-${a}-${version}.zip`
+  return `baby-whale-${p}-${a}-${version.replace(/^v/, '')}.zip`
 }
 
 async function latestRelease() {
@@ -89,23 +90,34 @@ async function latestRelease() {
 async function download(url, dest, size) {
   mkdirSync(path.dirname(dest), { recursive: true })
   const partial = `${dest}.part`
+  // A finished-but-unrenamed .part from a previous crashed run is reused as-is.
+  if (size > 0 && existsSync(partial) && statSync(partial).size === size) {
+    log('bwhale: reusing the completed download from the previous run')
+    return partial
+  }
   const response = await fetch(url, { redirect: 'follow' })
   if (!response.ok || response.body === null) die(`download failed with HTTP ${response.status}`)
   const total = Number(response.headers.get('content-length') ?? size ?? 0)
   let received = 0
-  const out = createWriteStream(partial)
-  process.stderr.write('bwhale: downloading runtime ')
-  for await (const chunk of Readable.fromWeb(response.body)) {
-    received += chunk.length
-    out.write(chunk)
-    if (total > 0) process.stderr.write(`\rbwhale: downloading runtime ${Math.round((received / total) * 100)}%`)
-  }
+  let lastPercent = -1
+  const counter = new Transform({
+    transform(chunk, _enc, callback) {
+      received += chunk.length
+      if (total > 0) {
+        const percent = Math.round((received / total) * 100)
+        if (percent !== lastPercent) {
+          lastPercent = percent
+          process.stderr.write(`\rbwhale: downloading runtime ${percent}%`)
+        }
+      }
+      callback(null, chunk)
+    },
+  })
+  // pipeline applies backpressure — naive per-chunk writes buffer the whole
+  // file in memory and get the process OOM-killed at these sizes.
+  await pipeline(Readable.fromWeb(response.body), counter, createWriteStream(partial))
   process.stderr.write('\n')
-  await finished(out)
-  // integrity: the release asset is the contract; a truncated file must never install
   if (total > 0 && received !== total) die(`download truncated (${received}/${total} bytes) — retry`)
-  rmSync(dest, { force: true })
-  statSync(partial)
   return partial
 }
 
@@ -121,7 +133,7 @@ function unzip(archive, into) {
 function runtimeDir(version) {
   const p = SUPPORT?.platformKey() ?? platform()
   const a = arch() === 'arm64' ? 'arm64' : 'x86_64'
-  return path.join(ROOT, 'runtime', `baby-whale-${p}-${a}-${version}`)
+  return path.join(ROOT, 'runtime', `baby-whale-${p}-${a}-${version.replace(/^v/, '')}`)
 }
 
 function installedMarker() {
@@ -175,7 +187,12 @@ async function cmdStart(argv) {
     for (const gap of gaps) log(`  - ${gap.name}: ${gap.hint}`)
     if (gaps.some(g => g.name.startsWith('git'))) die('git is required (session history)')
   }
-  const entry = await ensureRuntime(process.env.BWHALE_VERSION ?? 'latest')
+  let entry
+  try {
+    entry = await ensureRuntime(process.env.BWHALE_VERSION ?? 'latest')
+  } catch (error) {
+    die(error instanceof Error ? error.message : String(error))
+  }
   const nodeBin = platform() === 'win32'
     ? path.join(entry.dir, 'node', 'node.exe')
     : path.join(entry.dir, 'node', 'bin', 'node')

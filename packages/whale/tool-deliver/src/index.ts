@@ -80,7 +80,9 @@ export function apply(ctx: Context): void {
         ...(downstream.content !== undefined ? { content: downstream.content } : {}),
         additionalContexts: [createUserMessage({
           content: [{ type: 'text', text: '<system-reminder>Files were written under deliverables/. When they are final, call the deliver tool with their paths so the user receives them.</system-reminder>' }],
-          source: { kind: 'user' },
+          // Non-user source: the transcript renders this as a collapsed
+          // context row, not a bubble impersonating the human.
+          source: { kind: 'plugin', plugin: 'tool-deliver' },
         })],
       }
     }

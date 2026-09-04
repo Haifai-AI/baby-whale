@@ -53,14 +53,25 @@ const SUPPORT = {
       return gaps
     },
   },
-  // No Windows bundles are published (the release pipeline builds macOS +
-  // Linux only), so this entry exists to fail loudly with guidance instead
-  // of a cryptic "no bundle" asset error.
+  // Windows bundles are published for x64; the app's shell stack runs on
+  // PowerShell there. Prerequisites follow the platform's own installer.
   win32: {
     label: 'Windows',
-    supported: false,
+    supported: true,
     platformKey: () => 'windows',
-    missing: () => [],
+    missing: () => {
+      const gaps = []
+      if (!which('git')) gaps.push({ name: 'git', hint: 'winget install Git.Git   (session history)' })
+      if (!which('python') && !which('py')) gaps.push({
+        name: 'python3',
+        hint: 'winget install Python.Python.3.12   (office-file creation)',
+      })
+      if (!which('soffice')) gaps.push({
+        name: 'LibreOffice (optional — pixel-perfect previews)',
+        hint: 'winget install TheDocumentFoundation.LibreOffice',
+      })
+      return gaps
+    },
   },
 }[platform()] ?? null
 
@@ -159,9 +170,17 @@ async function download(url, dest, size, digest) {
 function unzip(archive, into) {
   mkdirSync(into, { recursive: true })
   const result = platform() === 'win32'
-    ? spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force -LiteralPath "${archive}" -DestinationPath "${into}"`], { stdio: 'inherit' })
+    // tar.exe (Windows 10+) reads plain zip archives and is far faster than
+    // Expand-Archive on multi-hundred-MB bundles.
+    ? spawnSync('tar', ['-xf', archive, '-C', into], { stdio: 'inherit' })
     : spawnSync('unzip', ['-q', archive, '-d', into], { stdio: 'inherit' })
-  if (result.status !== 0) die('extraction failed')
+  if (result.status !== 0) {
+    if (platform() === 'win32' && result.error?.code === 'ENOENT') {
+      const fallback = spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force -LiteralPath "${archive}" -DestinationPath "${into}"`], { stdio: 'inherit' })
+      if (fallback.status === 0) return
+    }
+    die('extraction failed')
+  }
 }
 
 /** Installed bundle layout: <ROOT>/runtime/baby-whale-<p>-<a>-<version> */
@@ -240,7 +259,7 @@ async function ensureRuntime(wanted) {
 
 async function cmdStart(argv) {
   if (SUPPORT !== null && SUPPORT.supported === false) {
-    die(`${SUPPORT.label} bundles are not published yet — Baby Whale ships macOS and Linux builds; Windows support is on the roadmap`)
+    die(`${SUPPORT.label} bundles are not published yet — check bwhale doctor for what is missing`)
   }
   const gaps = SUPPORT?.missing() ?? []
   if (gaps.length > 0) {
@@ -304,9 +323,16 @@ function cmdUpdate() {
 }
 
 /** PID of whatever is LISTENING on the Baby Whale port, or null. The LISTEN
- *  filter matters: unfiltered lsof also returns browser sockets that merely
- *  connect to the port, and this command must never kill those. */
+ *  state matters: unfiltered listings also return browser sockets that
+ *  merely connect to the port, and this command must never kill those. */
 function serverPid() {
+  if (platform() === 'win32') {
+    const result = spawnSync('powershell', ['-NoProfile', '-Command',
+      `(Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess`], { encoding: 'utf8' })
+    if (result.error !== undefined && result.error.code === 'ENOENT') die('bwhale stop needs Windows PowerShell available on PATH')
+    const pid = Number.parseInt((result.stdout ?? '').trim(), 10)
+    return Number.isInteger(pid) ? pid : null
+  }
   const result = spawnSync('lsof', ['-ti', `:${PORT}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
   if (result.error?.code === 'ENOENT') die('bwhale stop needs `lsof` (standard on macOS; install it on your distro if missing)')
   const pid = (result.stdout ?? '')
@@ -316,19 +342,27 @@ function serverPid() {
   return pid ?? null
 }
 
-/** Stop a running server: SIGTERM, then SIGKILL if it will not leave. */
+function killPid(pid, force) {
+  if (platform() === 'win32') {
+    const args = force ? ['/PID', String(pid), '/T', '/F'] : ['/PID', String(pid), '/T']
+    return spawnSync('taskkill', args, { stdio: 'ignore' }).status === 0
+  }
+  try {
+    process.kill(pid, force ? 'SIGKILL' : 'SIGTERM')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Stop a running server: graceful first, then force if it will not leave. */
 async function cmdStop() {
-  if (platform() === 'win32') die('Windows builds are on the roadmap — bwhale stop ships for macOS and Linux')
   const pid = serverPid()
   if (pid === null) {
     log(`bwhale: nothing to stop — no Baby Whale is listening on port ${PORT}`)
     return
   }
-  try {
-    process.kill(pid, 'SIGTERM')
-  } catch (error) {
-    die(`cannot stop pid ${pid} (${error.code ?? error.message})`)
-  }
+  if (!killPid(pid, false)) die(`cannot stop pid ${pid}`)
   for (let waited = 0; waited < 5000; waited += 250) {
     await new Promise(resolve => setTimeout(resolve, 250))
     if (serverPid() !== pid) {
@@ -336,16 +370,12 @@ async function cmdStop() {
       return
     }
   }
-  try {
-    process.kill(pid, 'SIGKILL')
-  } catch {
-    // Already gone between the check and the kill — done either way.
-  }
+  killPid(pid, true)
   log('bwhale: Baby Whale stopped (had to force-kill).')
 }
 
 function printUsage() {
-  log(`bwhale — Baby Whale in one command (macOS + Linux)
+  log(`bwhale — Baby Whale in one command (macOS, Linux, and Windows)
 
   bwhale [flags]      start (first run fetches the runtime, then boots + opens)
     --no-open           start without opening the browser

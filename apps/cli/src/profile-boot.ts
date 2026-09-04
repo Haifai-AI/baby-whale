@@ -51,6 +51,10 @@ const HARNESS_SKILL_ROOT = fileURLToPath(new URL('../../../.agents/skills/', imp
 export function prepareOfficeRuntime(): void {
   const home = process.env.HOME ?? process.env.USERPROFILE
   if (home === undefined || home === '') return
+  // The managed venv installs through a POSIX shell script (/bin/bash +
+  // python3 + venv bin/ layout); on Windows skip it and let the skills'
+  // inline bootstrap drive installs through the pwsh tool stack instead.
+  if (process.platform === 'win32') return
 
   const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? `${home}/.whale-office-venv`
   const pythonBin = `${venvDir}/bin/python`

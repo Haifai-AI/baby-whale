@@ -24,9 +24,9 @@ opens `http://127.0.0.1:24680`. Later runs start instantly.
 | `bwhale stop` | Stop a running server (closing the browser doesn't — `--stop` works too) |
 | `bwhale --version` | Report the installed runtime version |
 
-Supported platforms: macOS (arm64 + x64) and Linux (x64 + arm64).
-Windows builds are not published yet — the launcher says so plainly
-instead of failing mid-download.
+Supported platforms: macOS (arm64 + x64), Linux (x64 + arm64), and
+Windows (x64 — PowerShell powers the shell tools; the launcher tells
+you exactly what is missing via `bwhale doctor`).
 
 ## What it checks and installs
 

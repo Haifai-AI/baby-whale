@@ -699,6 +699,10 @@ const SOFFICE_CANDIDATES = [
   '/Applications/LibreOffice.app/Contents/MacOS/soffice',
   '/usr/bin/soffice',
   '/usr/local/bin/soffice',
+  // Standard Windows install layout (the installer does not add itself to PATH).
+  ...(process.platform === 'win32'
+    ? [String.raw`${process.env['ProgramFiles'] ?? 'C:\Program Files'}\LibreOffice\program\soffice.exe`]
+    : []),
 ].filter((value): value is string => typeof value === 'string' && value.length > 0)
 
 /** Resolved once per process; undefined when LibreOffice is not installed. */
@@ -813,7 +817,7 @@ export async function convertToPdfCached(
 
 /** The gateway-owned directory receiving converted preview PDFs. */
 export function previewCacheDir(): string {
-  const home = process.env.DSH_HOME ?? `${process.env.HOME ?? ''}/.dsh`
+  const home = process.env.DSH_HOME ?? process.env.HOME ?? process.env.USERPROFILE ?? '.'
   return `${home}/preview-cache`
 }
 

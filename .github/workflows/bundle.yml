@@ -23,11 +23,16 @@ jobs:
           # Linux arm64: the launcher already resolves this asset name, and
           # make-bundle.sh maps uname -m arm64 to the matching Node binary.
           - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
-          # No Windows job on purpose: make-bundle.sh is a POSIX pipeline and
-          # the launcher refuses win32 with guidance. Add a windows runner,
-          # a .bat/.ps1 start path, and the node.exe layout together — or not
-          # at all; a half-Windows release is worse than none.
+          # Windows x64: make-bundle.ps1 stages with pnpm's hoisted linker
+          # (real files, no junctions) and packs via tar.exe; the smoke step
+          # boots the bundle and probes the port before anything ships.
+          - { os: windows-2025, platform: windows, arch: x64 }
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # bash everywhere (git-bash on Windows) keeps the shared steps
+        # identical across the matrix; the PowerShell steps opt out below.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +44,13 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: Hoist node_modules (Windows only)
+        # pnpm's default isolated layout links deps through node_modules/.pnpm
+        # junctions, which cannot survive zip -> extract on user machines
+        # (symlink privilege). Hoisted gives a flat, real-file node_modules.
+        if: runner.os == 'Windows'
+        run: printf 'node-linker=hoisted\n' >> .npmrc
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -48,12 +60,27 @@ jobs:
           pnpm run build:lib:client
           pnpm run build:web
 
-      - name: Assemble portable bundle
+      - name: Assemble portable bundle (macOS/Linux)
+        if: runner.os != 'Windows'
         # Stamp the bundle from the tag itself, so asset names always match
         # the release the launcher searches for (v0.1.4 -> 0.1.4).
         env:
           RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: ./scripts/make-bundle.sh
+
+      - name: Assemble portable bundle (Windows)
+        if: runner.os == 'Windows'
+        env:
+          RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        shell: pwsh
+        run: scripts/make-bundle.ps1
+
+      - name: Smoke test the Windows bundle
+        # Boot the freshly packed bundle and probe the port — a bundle that
+        # cannot start must not ship.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/smoke-windows.ps1
 
       - name: Upload workflow artifact
         # Convenience copy only — the release below is the real distribution.

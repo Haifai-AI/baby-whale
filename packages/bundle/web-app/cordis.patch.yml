@@ -470,4 +470,6 @@
     - id: agent-presets
       name: '@deepseek-ai/dsh-agent-presets'
       config:
-        default: standard
+        # Baby Whale is the coworker product: new sessions start in Coworker
+        # mode. The coding presets remain one switch away in the picker.
+        default: coworker

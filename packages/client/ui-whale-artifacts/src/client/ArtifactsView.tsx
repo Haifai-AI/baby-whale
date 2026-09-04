@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-client-ui-whale-artifacts/src/client/ArtifactsView
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { ArtifactEntry } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -42,6 +42,12 @@ function KindIcon({ kind }: { kind: ArtifactEntry['kind'] }) {
   return <span className={`${css.icon} ${css[`icon_${kind}`] ?? ''}`}>{label.slice(0, 4)}</span>
 }
 
+/** Modified-at stamp (epoch millis), with a fallback for unparseable values. */
+export function formatModifiedAt(value: number, fallback: string): string {
+  const time = new Date(value)
+  return Number.isNaN(time.getTime()) ? fallback : time.toLocaleString()
+}
+
 /** Whether this entry has a right-side preview. */
 function previewable(kind: ArtifactEntry['kind']): boolean {
   return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv'
@@ -65,6 +71,10 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
     | null
   >(null)
   const cwd = useSessions(list => list.byId[sessionId]?.cwd)
+  // Mutable race guard for the async preview parse below. A ref (not a
+  // closure local) so the linter cannot constant-fold the "still current"
+  // checks away — the cleanup really does flip it after unmounts/reselects.
+  const cancelledRef = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -88,7 +98,7 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
       setPreview(null)
       return
     }
-    let cancelled = false
+    cancelledRef.current = false
     if (selected.kind === 'pdf' || selected.kind === 'image') {
       // Browser-native rendering: serve the original bytes directly.
       const query = new URLSearchParams({ session: sessionId, path: selected.path })
@@ -101,16 +111,16 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
         const response = await connection.api.artifacts.preview({ sessionId, path: selected.path })
         const value = response.result.ok ? response.result.value : undefined
         const parsed = value?.preview as ParsedPreview | undefined
-        if (!cancelled && parsed !== undefined && typeof parsed.kind === 'string') {
+        if (!cancelledRef.current && parsed !== undefined && typeof parsed.kind === 'string') {
           setPreview({ status: 'ready', data: parsed })
-        } else if (!cancelled) {
+        } else if (!cancelledRef.current) {
           setPreview({ status: 'unsupported' })
         }
       } catch {
-        if (!cancelled) setPreview({ status: 'unsupported' })
+        if (!cancelledRef.current) setPreview({ status: 'unsupported' })
       }
     })()
-    return () => { cancelled = true }
+    return () => { cancelledRef.current = true }
   }, [connection, selected, sessionId])
 
   const open = (entry: ArtifactEntry): void => {
@@ -139,7 +149,7 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
                     <span className={css.meta}>
                       {t(entry.origin === 'upload' ? 'from.upload' : 'from.deliverable')}
                       {' · '}{formatBytes(entry.size)}
-                      {' · '}{new Date(entry.modifiedAt).toLocaleString()}
+                      {' · '}{formatModifiedAt(entry.modifiedAt, t('gallery.unknownDate'))}
                     </span>
                   </div>
                   {previewable(entry.kind) && (

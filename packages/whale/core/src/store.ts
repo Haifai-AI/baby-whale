@@ -25,7 +25,20 @@ export interface WhaleTaskInput {
   workspaceCwd: string
 }
 
-const DEFAULT_TIMEZONE = 'Asia/Shanghai'
+/**
+ * The machine's own IANA zone (UTC when it cannot be determined), used when a
+ * task is created without an explicit timezone. A hardcoded home zone would
+ * silently shift every schedule for users elsewhere.
+ */
+function defaultTimeZone(): string {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (typeof zone === 'string' && zone !== '') return zone
+  } catch {
+    // Fall through to UTC below.
+  }
+  return 'UTC'
+}
 
 /** Compute the first arrival of a schedule strictly after `now`. */
 function firstRunAt(schedule: WhaleSchedule, tz: string, now: Date): string {
@@ -94,7 +107,7 @@ export class WhaleTaskStore extends Service {
   /** Create a task, validating its schedule and computing the first arrival. */
   async create(input: WhaleTaskInput): Promise<WhaleTaskRecord> {
     this.validateSchedule(input.schedule, input.tz)
-    const tz = input.tz ?? DEFAULT_TIMEZONE
+    const tz = input.tz ?? defaultTimeZone()
     const now = new Date()
     const record: WhaleTaskRecord = {
       id: crypto.randomUUID(),

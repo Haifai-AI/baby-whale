@@ -14,6 +14,7 @@ export const zh = {
   'artifact.slides': '{count} 页',
   'artifact.blocks': '{count} 节',
   'artifact.truncated': '预览已截断',
+  'artifact.more': '还有 {count} 条',
   'artifact.failed': '生成失败',
   'artifact.details': '详情预览',
 }
@@ -26,6 +27,7 @@ export const en: Record<WhaleArtifactKey, string> = {
   'artifact.slides': '{count} slides',
   'artifact.blocks': '{count} blocks',
   'artifact.truncated': 'Preview truncated',
+  'artifact.more': '{count} more',
   'artifact.failed': 'Generation failed',
   'artifact.details': 'Preview details',
 }

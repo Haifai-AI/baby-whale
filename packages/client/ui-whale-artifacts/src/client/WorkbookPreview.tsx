@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react'
+import type { JSX } from 'react'
 import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
 import type { WhaleArtifactsKey } from './locales.ts'
 import { WorkbookCharts, type WorkbookChart } from './WorkbookCharts.tsx'

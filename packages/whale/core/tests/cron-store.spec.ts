@@ -93,6 +93,24 @@ describe('whale task store', () => {
     expect(store.list('/tmp/ws')).toHaveLength(1)
   })
 
+  it('defaults an omitted timezone to the machine zone', async () => {
+    const store = await booted()
+    const record = await store.create({
+      name: 'no-tz',
+      prompt: 'Run whenever.',
+      schedule: { kind: 'cron', expr: '0 9 * * 1-5' },
+      sessionId: SessionId('hq-session'),
+      workspaceCwd: '/tmp/ws',
+    })
+    let expected = 'UTC'
+    try {
+      expected = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    } catch {
+      // Keep the UTC fallback.
+    }
+    expect(record.tz).toBe(expected)
+  })
+
   it('marks a due once-task as done after delivery and removes it', async () => {
     const store = await booted()
     const record = await store.create({

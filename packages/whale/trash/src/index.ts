@@ -37,6 +37,42 @@ export const Config: z<Config> = z.object({
 /** Mutations whose existing target is backed up before the write. */
 const GUARDED_TOOLS = new Set(['write', 'edit', 'xlsx_create', 'pptx_create', 'docx_create'])
 
+/** Separator between the timestamp prefix and the encoded original path. */
+const BACKUP_SEPARATOR = '__'
+
+/**
+ * Encode a workspace-relative path into one flat trash filename segment, so
+ * nested targets (`deliverables/q2.xlsx`) survive the round-trip instead of
+ * collapsing to their basename. Percent-escapes are unambiguous: `%` itself
+ * is escaped first, so decoding never confuses an original `%2F` with a
+ * separator.
+ */
+function encodeTrashSegment(path: string): string {
+  return path.replaceAll('%', '%25').replaceAll('/', '%2F').replaceAll('\\', '%5C')
+}
+
+/** Inverse of {@link encodeTrashSegment}. */
+function decodeTrashSegment(segment: string): string {
+  return segment.replaceAll('%2F', '/').replaceAll('%5C', '\\').replaceAll('%25', '%')
+}
+
+/** New-scheme backup names: `<iso-stamp>__<encoded-path>`. */
+const NEW_BACKUP_PATTERN = /^(\d{4}-\d{2}-\d{2}T[\d-]+Z?)__(.*)$/
+
+/** Legacy backup names (v0.1.4 and earlier): `<iso-stamp>-<basename>`. */
+const LEGACY_BACKUP_PATTERN = /^\d{4}-\d{2}-\d{2}T[\d-]+Z?-/
+
+/**
+ * Recover the original workspace-relative path from a trash entry name.
+ * New-scheme names decode exactly (including subdirectories); legacy names
+ * fall back to the basename behavior they were written with.
+ */
+function backupOriginalOf(entryName: string): string {
+  const match = NEW_BACKUP_PATTERN.exec(entryName)
+  if (match?.[2] !== undefined) return decodeTrashSegment(match[2])
+  return entryName.replace(LEGACY_BACKUP_PATTERN, '')
+}
+
 /** The `file_path` argument of a guarded mutation. */
 function filePathOf(exec: ToolExecution): string | undefined {
   const args = exec.arguments as { file_path?: unknown } | undefined
@@ -87,8 +123,7 @@ async function backupTarget(
   if (info === undefined || info.type !== 'file' || (info.size ?? 0) > maxBackupBytes) return undefined
   const bytes = await ctx.fs.readBytes(target, exec.signal, maxBackupBytes)
   const stamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')
-  const base = path.split(/[\\/]/).at(-1) ?? `file-${stamp}`
-  const backupPath = `${directory}/${stamp}-${base}`
+  const backupPath = `${directory}/${stamp}${BACKUP_SEPARATOR}${encodeTrashSegment(path)}`
   const backupTarget = await ctx.fs.resolve(backupPath, { cwd: workspace, signal: exec.signal })
   await ctx.fs.writeBytes(backupTarget, bytes, undefined, exec.signal, standingPolicy(ctx, exec))
   return backupPath
@@ -106,9 +141,10 @@ export async function restoreBackup(
   const info = await ctx.fs.stat(source, exec.signal)
   if (info === undefined || info.type !== 'file') return { ok: false, original: backup }
   const bytes = await ctx.fs.readBytes(source, exec.signal, maxBackupBytes)
-  // The original path is the backup's name minus its timestamp prefix.
+  // The original path is the backup's name minus its timestamp prefix, with
+  // subdirectory structure recovered exactly for new-scheme entries.
   const name = backup.split(/[\\/]/).at(-1) ?? ''
-  const original = name.replace(/^\d{4}-\d{2}-\d{2}T[\d-]+Z?-/, '')
+  const original = backupOriginalOf(name)
   const originalTarget = await ctx.fs.resolve(original, { cwd: workspace, signal: exec.signal })
   await ctx.fs.writeBytes(originalTarget, bytes, undefined, exec.signal, standingPolicy(ctx, exec))
   return { ok: true, original }
@@ -135,7 +171,13 @@ export function apply(ctx: Context, config: Config): void {
     const path = filePathOf(exec)
     const workspace = workspaceOf(exec)
     if (GUARDED_TOOLS.has(exec.name) && path !== undefined && workspace !== undefined) {
-      await backupTarget(ctx, exec, workspace, resolved.directory, resolved.maxBackupBytes, path)
+      // Best-effort: a backup failure (quota, transient I/O) must never block
+      // the user's own mutation — the trash is a safety net, not a gate.
+      try {
+        await backupTarget(ctx, exec, workspace, resolved.directory, resolved.maxBackupBytes, path)
+      } catch {
+        // Fall through to the mutation below.
+      }
     }
     return next()
   })
@@ -206,9 +248,12 @@ async function listEntries(
   const info = await ctx.fs.stat(dir, exec.signal)
   if (info === undefined || info.type !== 'directory') return []
   const entries = await ctx.fs.listDir(dir, exec.signal)
-  return entries.map(entry => ({
-    backup: `${directory}/${entry.name}`,
-    original: entry.name.replace(/^\d{4}-\d{2}-\d{2}T[\d-]+Z?-/, ''),
-    size: entry.size ?? 0,
-  }))
+  return entries
+    .map(entry => ({
+      backup: `${directory}/${entry.name}`,
+      original: backupOriginalOf(entry.name),
+      size: entry.size ?? 0,
+    }))
+    // Stamp-prefixed names sort newest-first, so the latest backup reads first.
+    .sort((left, right) => right.backup.localeCompare(left.backup))
 }

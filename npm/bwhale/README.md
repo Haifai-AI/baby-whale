@@ -18,8 +18,15 @@ opens `http://127.0.0.1:24680`. Later runs start instantly.
 | Command | What it does |
 |---|---|
 | `bwhale` | Start (first run installs the runtime) |
+| `bwhale --no-open` | Start without opening the browser |
 | `bwhale doctor` | Report what's present / missing on your machine |
 | `bwhale update` | Refresh to the latest release on next start |
+| `bwhale stop` | Stop a running server (closing the browser doesn't — `--stop` works too) |
+| `bwhale --version` | Report the installed runtime version |
+
+Supported platforms: macOS (arm64 + x64) and Linux (x64 + arm64).
+Windows builds are not published yet — the launcher says so plainly
+instead of failing mid-download.
 
 ## What it checks and installs
 
@@ -32,7 +39,6 @@ command to get it:
 - **Linux** — `git` required; `python3` for office-file creation;
   `libreoffice` optional (pixel-perfect previews, also installable
   in-app later)
-- **Windows** — `git`; `python3` for office creation
 
 Connect a model (one-time): create `~/.dsh/.credentials.yaml`:
 

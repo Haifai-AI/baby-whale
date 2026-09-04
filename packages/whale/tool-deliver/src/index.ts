@@ -64,12 +64,12 @@ export function apply(ctx: Context): void {
   let remindedThisTurn = false
   let deliveredThisTurn = false
   ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
-    if (exec.name === 'deliver' && result.isError !== true) deliveredThisTurn = true
+    if (exec.name === 'deliver' && !result.isError) deliveredThisTurn = true
     if (
       exec.name === 'bash'
       && !deliveredThisTurn
       && !remindedThisTurn
-      && result.isError !== true
+      && !result.isError
       && result.content.some(block => block.type === 'text' && /deliverables\//.test(block.text))
     ) {
       remindedThisTurn = true
@@ -123,10 +123,12 @@ ${entries.map(entry => `<file path="${entry.path}" bytes="${entry.size}"/>`).joi
         throw new Error('deliver requires between 1 and 10 paths')
       }
       const delivered: DeliverEntry[] = []
+      const cwd = exec.agent?.session.header.cwd
       for (const path of args.paths) {
         // Existence + byte size through the sandboxed fs seam: a claimed-but-
-        // missing path fails loudly instead of producing a ghost chip.
-        const target = await ctx.fs.resolve(path, { signal: exec.signal })
+        // missing path fails loudly instead of producing a ghost chip. Paths
+        // resolve against the calling session's workspace, never the process cwd.
+        const target = await ctx.fs.resolve(path, cwd === undefined ? { signal: exec.signal } : { cwd, signal: exec.signal })
         const info = await ctx.fs.stat(target, exec.signal)
         if (info === undefined || info.type !== 'file') {
           throw new Error(`deliver: "${path}" does not exist in the workspace`)

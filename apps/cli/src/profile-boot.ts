@@ -12,7 +12,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiberState, type Context } from '@deepseek-ai/cordis'
@@ -54,31 +54,35 @@ export function prepareOfficeRuntime(): void {
 
   const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? `${home}/.whale-office-venv`
   const pythonBin = `${venvDir}/bin/python`
-  process.env.DSH_OFFICE_PYTHON = pythonBin
-
-  const coworkRoot = `${home}/Documents/dsh-cowork`
-  try {
-    mkdirSync(coworkRoot, { recursive: true })
-  } catch {
-    // Documents may be missing on minimal setups; sessions still work via
-    // picked workspaces, so this failure is non-fatal.
-  }
-
   // Marker version bumps force a reinstall after the library set changes
   // (v2: pymupdf — PDF rasterization for the deck skill's visual-QA loop).
   const marker = join(venvDir, '.libs-ok-2')
-  if (existsSync(marker)) return
+  // Only advertise a FINISHED install: a half-built venv (binary present,
+  // libraries missing) would fail every office script. Until the marker
+  // exists the skills fall back to their inline per-task venv bootstrap.
+  if (existsSync(marker)) {
+    if (process.env.DSH_OFFICE_PYTHON === undefined && existsSync(pythonBin)) {
+      process.env.DSH_OFFICE_PYTHON = pythonBin
+    }
+    return
+  }
   mkdirSync(venvDir, { recursive: true })
+  // Install progress and failures land here instead of /dev/null: a quiet
+  // background failure used to surface only as "python missing" much later.
+  const installLog = join(venvDir, 'install.log')
+  const logFd = openSync(installLog, 'a')
   const installScript = [
-    `set -e`,
+    'set -e',
+    'echo "--- office venv install started: $(date -u +%FT%TZ)"',
     `[ -x ${JSON.stringify(pythonBin)} ] || python3 -m venv ${JSON.stringify(venvDir)}`,
     `${JSON.stringify(pythonBin)} -m pip install --quiet --upgrade pip`,
     `${JSON.stringify(pythonBin)} -m pip install --quiet openpyxl python-pptx python-docx reportlab pypdf pdfplumber pandas pymupdf`,
     `touch ${JSON.stringify(marker)}`,
+    'echo "--- office venv install finished: $(date -u +%FT%TZ)"',
   ].join(' && ')
   const child = spawn('/bin/bash', ['-c', installScript], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', logFd, logFd],
   })
   child.unref()
 }

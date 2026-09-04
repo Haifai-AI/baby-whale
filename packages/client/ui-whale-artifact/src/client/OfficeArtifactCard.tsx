@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { OfficeMeta, OfficePreviewData } from './whale-preview.ts'
 import { basename, filePathOf, formatBytes, previewOf } from './whale-preview.ts'
@@ -70,7 +70,7 @@ export function OfficeArtifactCard({ callId, toolName, block, openFile, openDeta
       </div>
       <div className={css.body}>
         {preview.kind === 'xlsx' && <SpreadsheetPreview preview={preview} />}
-        {preview.kind === 'pptx' && <SlidesPreview preview={preview} />}
+        {preview.kind === 'pptx' && <SlidesPreview preview={preview} t={t} />}
         {preview.kind === 'docx' && <DocumentPreview preview={preview} />}
         {preview.truncated && <div className={css.truncated}>{t('artifact.truncated')}</div>}
       </div>
@@ -120,8 +120,11 @@ function SpreadsheetPreview({ preview }: { preview: Extract<OfficePreviewData, {
   )
 }
 
+/** Slide bullets shown per card before the overflow note. */
+const MAX_SLIDE_BULLETS = 12
+
 /** Slide-deck chrome: 16:9 thumbnail cards. */
-function SlidesPreview({ preview }: { preview: Extract<OfficePreviewData, { kind: 'pptx' }> }) {
+function SlidesPreview({ preview, t }: { preview: Extract<OfficePreviewData, { kind: 'pptx' }>; t: TranslateNS<typeof NS> }) {
   return (
     <div className={css.deck}>
       <div className={`${css.slideCard} ${css.slideTitle}`}>
@@ -134,8 +137,11 @@ function SlidesPreview({ preview }: { preview: Extract<OfficePreviewData, { kind
           {slide.subtitle !== undefined && <span className={css.slideSubtitle}>{slide.subtitle}</span>}
           {slide.bullets !== undefined && (
             <ul className={css.slideBullets}>
-              {slide.bullets.map((bullet, bulletIndex) => <li key={bulletIndex}>{bullet}</li>)}
+              {slide.bullets.slice(0, MAX_SLIDE_BULLETS).map((bullet, bulletIndex) => <li key={bulletIndex}>{bullet}</li>)}
             </ul>
+          )}
+          {slide.bullets !== undefined && slide.bullets.length > MAX_SLIDE_BULLETS && (
+            <div className={css.truncated}>{t('artifact.more', { count: slide.bullets.length - MAX_SLIDE_BULLETS })}</div>
           )}
         </div>
       ))}
@@ -145,6 +151,9 @@ function SlidesPreview({ preview }: { preview: Extract<OfficePreviewData, { kind
 
 /** Document chrome: a readable page. */
 function DocumentPreview({ preview }: { preview: Extract<OfficePreviewData, { kind: 'docx' }> }) {
+  // Running counter: numbered items number among themselves, not by their
+  // flat position (headings and paragraphs must not shift the sequence).
+  let number = 0
   return (
     <div className={css.page}>
       {preview.title !== undefined && <div className={css.docTitle}>{preview.title}</div>}
@@ -161,7 +170,8 @@ function DocumentPreview({ preview }: { preview: Extract<OfficePreviewData, { ki
           case 'bullet':
             return <div key={index} className={css.bullet}>• {block.text}</div>
           case 'number':
-            return <div key={index} className={css.bullet}>{index + 1}. {block.text}</div>
+            number += 1
+            return <div key={index} className={css.bullet}>{number}. {block.text}</div>
           case 'paragraph':
             return <div key={index} className={css.paragraph}>{block.text}</div>
         }

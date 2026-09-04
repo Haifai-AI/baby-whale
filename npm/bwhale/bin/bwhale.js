@@ -7,12 +7,17 @@
  * install the platform's own way — before boot.
  *
  * Commands:
- *   bwhale            start (first run: fetch bundle, then boot + open)
- *   bwhale doctor     report prerequisite status per platform convention
- *   bwhale update     refresh the runtime bundle to the latest release
+ *   bwhale              start (first run: fetch bundle, then boot + open)
+ *   bwhale --no-open     start without opening the browser
+ *   bwhale doctor       report prerequisite status per platform convention
+ *   bwhale update       refresh the runtime bundle to the latest release
+ *   bwhale stop         stop a running server (`bwhale --stop` also works)
+ *   bwhale --version    report the installed runtime version
+ *   bwhale --help       print this help
  */
 import { spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, platform, arch } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -29,11 +34,13 @@ const MARKER_VERSION = 2 // bundle layout revision; bump forces a refetch
 const SUPPORT = {
   darwin: {
     label: 'macOS',
+    supported: true,
     platformKey: () => 'macos',
     missing: () => [], // git/python ship with the dev tools; office libs auto-install at first boot
   },
   linux: {
     label: 'Linux',
+    supported: true,
     platformKey: () => 'linux',
     missing: () => {
       const gaps = []
@@ -46,15 +53,14 @@ const SUPPORT = {
       return gaps
     },
   },
+  // No Windows bundles are published (the release pipeline builds macOS +
+  // Linux only), so this entry exists to fail loudly with guidance instead
+  // of a cryptic "no bundle" asset error.
   win32: {
     label: 'Windows',
+    supported: false,
     platformKey: () => 'windows',
-    missing: () => {
-      const gaps = []
-      if (!which('git')) gaps.push({ name: 'git', hint: 'winget install Git.Git' })
-      if (!which('python')) gaps.push({ name: 'python3', hint: 'winget install Python.Python.3.12   (office-file creation)' })
-      return gaps
-    },
+    missing: () => [],
   },
 }[platform()] ?? null
 
@@ -75,25 +81,53 @@ function bundleAssetName(version) {
   return `baby-whale-${p}-${a}-${version.replace(/^v/, '')}.zip`
 }
 
-async function latestRelease() {
-  const response = await fetch(LATEST_API, { headers: { 'user-agent': 'bwhale-launcher' } })
-  if (!response.ok) die(`cannot reach GitHub Releases (HTTP ${response.status})`)
-  const release = await response.json()
+function pickAsset(release) {
   const asset = (release.assets ?? []).find(a => a.name === bundleAssetName(release.tag_name))
   if (asset === undefined) {
     die(`no bundle for ${platform()}/${arch()} in release ${release.tag_name} — assets: ${(release.assets ?? []).map(a => a.name).join(', ') || 'none'}`)
   }
-  return { version: release.tag_name, url: asset.browser_download_url, name: asset.name, size: asset.size }
+  return { version: release.tag_name, url: asset.browser_download_url, name: asset.name, size: asset.size, digest: asset.digest }
+}
+
+async function latestRelease() {
+  const response = await fetch(LATEST_API, { headers: { 'user-agent': 'bwhale-launcher' } })
+  if (!response.ok) die(`cannot reach GitHub Releases (HTTP ${response.status})`)
+  return pickAsset(await response.json())
+}
+
+async function releaseByTag(tag) {
+  const response = await fetch(`https://api.github.com/repos/${REPO}/releases/tags/${tag}`, { headers: { 'user-agent': 'bwhale-launcher' } })
+  if (!response.ok) die(`cannot find Baby Whale release ${tag} (HTTP ${response.status})`)
+  return pickAsset(await response.json())
+}
+
+/** Verify a downloaded file against the release's sha256 digest (when published). */
+async function verifyDigest(file, digest) {
+  if (typeof digest !== 'string' || !digest.startsWith('sha256:')) return
+  const expected = digest.slice('sha256:'.length)
+  const hash = createHash('sha256')
+  await pipeline(createReadStream(file), hash)
+  if (hash.digest('hex') !== expected) {
+    rmSync(file, { force: true })
+    die('download checksum mismatch — the bundle may be corrupted or tampered with; retry')
+  }
 }
 
 /** Stream a download with a percent progress line; resumable cache across runs. */
-async function download(url, dest, size) {
+async function download(url, dest, size, digest) {
   mkdirSync(path.dirname(dest), { recursive: true })
   const partial = `${dest}.part`
-  // A finished-but-unrenamed .part from a previous crashed run is reused as-is.
+  // A finished-but-unrenamed .part from a previous crashed run is re-verified
+  // (size, then checksum when published) before reuse — never trusted blind.
   if (size > 0 && existsSync(partial) && statSync(partial).size === size) {
-    log('bwhale: reusing the completed download from the previous run')
-    return partial
+    try {
+      await verifyDigest(partial, digest)
+      log('bwhale: reusing the completed download from the previous run')
+      return partial
+    } catch {
+      // verifyDigest already removed the bad file and exited on mismatch;
+      // any other failure falls through to a fresh download below.
+    }
   }
   const response = await fetch(url, { redirect: 'follow' })
   if (!response.ok || response.body === null) die(`download failed with HTTP ${response.status}`)
@@ -118,6 +152,7 @@ async function download(url, dest, size) {
   await pipeline(Readable.fromWeb(response.body), counter, createWriteStream(partial))
   process.stderr.write('\n')
   if (total > 0 && received !== total) die(`download truncated (${received}/${total} bytes) — retry`)
+  await verifyDigest(partial, digest)
   return partial
 }
 
@@ -152,16 +187,38 @@ function writeInstalled(entry) {
   writeFileSync(installedMarker(), JSON.stringify({ markerVersion: MARKER_VERSION, ...entry }, null, 2))
 }
 
+/** Remove every runtime and cache entry except the active one (best-effort). */
+function pruneOldInstalls(activeDir, activeName) {
+  try {
+    const runtimeRoot = path.join(ROOT, 'runtime')
+    if (existsSync(runtimeRoot)) {
+      for (const entry of readdirSync(runtimeRoot)) {
+        if (path.join(runtimeRoot, entry) !== activeDir) rmSync(path.join(runtimeRoot, entry), { recursive: true, force: true })
+      }
+    }
+    const cacheRoot = path.join(ROOT, 'cache')
+    if (existsSync(cacheRoot)) {
+      for (const entry of readdirSync(cacheRoot)) {
+        if (entry !== activeName && entry !== `${activeName}.part`) rmSync(path.join(cacheRoot, entry), { force: true })
+      }
+    }
+  } catch {
+    // Disk cleanup must never fail a start.
+  }
+}
+
 /** Ensure the runtime bundle exists at the wanted version; fetch+install if not. */
 async function ensureRuntime(wanted) {
   const existing = readInstalled()
   if (wanted === 'installed' && existing !== null) return existing
-  const release = wanted === 'latest'
-    ? await latestRelease()
-    : { version: wanted, url: `https://github.com/${REPO}/releases/download/${wanted}/${bundleAssetName(wanted)}`, name: bundleAssetName(wanted) }
-  if (existing?.version === release.version) return existing // already exactly this version
+  const pinned = process.env.BWHALE_VERSION ?? 'latest'
+  const release = pinned === 'latest' ? await latestRelease() : await releaseByTag(pinned)
+  if (existing?.version === release.version) {
+    pruneOldInstalls(existing.dir, release.name)
+    return existing // already exactly this version
+  }
   log(`bwhale: fetching Baby Whale ${release.version} runtime (${Math.round((release.size ?? 0) / 1048576) || '~400'} MB, once)`)
-  const archive = await download(release.url, path.join(ROOT, 'cache', release.name), release.size)
+  const archive = await download(release.url, path.join(ROOT, 'cache', release.name), release.size, release.digest)
   const dir = runtimeDir(release.version)
   rmSync(dir, { recursive: true, force: true })
   unzip(archive, path.join(ROOT, 'runtime'))
@@ -177,10 +234,14 @@ async function ensureRuntime(wanted) {
   rmSync(archive, { force: true })
   const entry = { version: release.version, dir, installedAt: new Date().toISOString() }
   writeInstalled(entry)
+  pruneOldInstalls(dir, release.name)
   return entry
 }
 
 async function cmdStart(argv) {
+  if (SUPPORT !== null && SUPPORT.supported === false) {
+    die(`${SUPPORT.label} bundles are not published yet — Baby Whale ships macOS and Linux builds; Windows support is on the roadmap`)
+  }
   const gaps = SUPPORT?.missing() ?? []
   if (gaps.length > 0) {
     log(`bwhale: missing prerequisites on ${SUPPORT?.label ?? platform()}:`)
@@ -203,8 +264,11 @@ async function cmdStart(argv) {
     const probe = await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(1500) })
     if (probe.ok) {
       log(`bwhale: Baby Whale is already running at http://127.0.0.1:${PORT}/`)
-      const open = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open'
-      spawnSync(open, [`http://127.0.0.1:${PORT}/`], { stdio: 'ignore' })
+      // --no-open is honored here AND passed through to `dsh web` below.
+      if (!argv.includes('--no-open')) {
+        const open = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open'
+        spawnSync(open, [`http://127.0.0.1:${PORT}/`], { stdio: 'ignore' })
+      }
       return
     }
   } catch {
@@ -217,6 +281,10 @@ async function cmdStart(argv) {
 function cmdDoctor() {
   const p = platform()
   log(`bwhale doctor — ${SUPPORT?.label ?? p} (${arch()})`)
+  if (SUPPORT !== null && SUPPORT.supported === false) {
+    log('  platform:   NOT SUPPORTED YET — no Baby Whale bundles are published for this OS')
+    return
+  }
   log(`  node:      ${process.version} (launcher runtime — the app ships its own)`)
   log(`  git:       ${which('git') ? 'ok' : 'MISSING (required)'}`)
   log(`  python3:   ${which('python3') || which('python') ? 'ok' : 'MISSING (office-file creation auto-installs libs on first boot)'}`)
@@ -235,10 +303,89 @@ function cmdUpdate() {
   log('bwhale: will fetch the latest release on next start.')
 }
 
-const [command = 'start', ...rest] = process.argv.slice(2)
+/** PID of whatever is LISTENING on the Baby Whale port, or null. The LISTEN
+ *  filter matters: unfiltered lsof also returns browser sockets that merely
+ *  connect to the port, and this command must never kill those. */
+function serverPid() {
+  const result = spawnSync('lsof', ['-ti', `:${PORT}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
+  if (result.error?.code === 'ENOENT') die('bwhale stop needs `lsof` (standard on macOS; install it on your distro if missing)')
+  const pid = (result.stdout ?? '')
+    .split('\n')
+    .map(line => Number.parseInt(line.trim(), 10))
+    .find(Number.isInteger)
+  return pid ?? null
+}
+
+/** Stop a running server: SIGTERM, then SIGKILL if it will not leave. */
+async function cmdStop() {
+  if (platform() === 'win32') die('Windows builds are on the roadmap — bwhale stop ships for macOS and Linux')
+  const pid = serverPid()
+  if (pid === null) {
+    log(`bwhale: nothing to stop — no Baby Whale is listening on port ${PORT}`)
+    return
+  }
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch (error) {
+    die(`cannot stop pid ${pid} (${error.code ?? error.message})`)
+  }
+  for (let waited = 0; waited < 5000; waited += 250) {
+    await new Promise(resolve => setTimeout(resolve, 250))
+    if (serverPid() !== pid) {
+      log('bwhale: Baby Whale stopped.')
+      return
+    }
+  }
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {
+    // Already gone between the check and the kill — done either way.
+  }
+  log('bwhale: Baby Whale stopped (had to force-kill).')
+}
+
+function printUsage() {
+  log(`bwhale — Baby Whale in one command (macOS + Linux)
+
+  bwhale [flags]      start (first run fetches the runtime, then boots + opens)
+    --no-open           start without opening the browser
+  bwhale doctor         report prerequisite status per platform convention
+  bwhale update         refresh the runtime bundle to the latest release
+  bwhale stop           stop a running server (--stop works too)
+  bwhale --version      report the installed runtime version
+  bwhale --help         print this help`)
+}
+
+function cmdVersion() {
+  const entry = readInstalled()
+  log(entry === null ? 'bwhale: runtime not installed yet (first `bwhale` fetches it)' : `bwhale runtime ${entry.version}`)
+}
+
+// Dash-args fall through to start (`bwhale --no-open`, `bwhale --port 8080`
+// forward to `dsh web`); a bare word must be a known command, otherwise it is
+// a usage error — never silently booted as an app argument.
+const rawArgs = process.argv.slice(2)
+const LAUNCHER_COMMANDS = new Set(['start', 'stop', '--stop', 'doctor', 'update', '--version', '-v', '--help', '-h'])
+let command = 'start'
+let rest = rawArgs
+if (rawArgs.length > 0 && (LAUNCHER_COMMANDS.has(rawArgs[0]) || !rawArgs[0].startsWith('-'))) {
+  command = rawArgs[0]
+  rest = rawArgs.slice(1)
+}
 const dispatch = {
-  start: () => cmdStart(rest.filter(a => a !== '--no-open')),
+  start: () => cmdStart(rest),
+  stop: () => cmdStop(),
+  '--stop': () => cmdStop(),
   doctor: () => cmdDoctor(),
   update: () => cmdUpdate(),
+  '--version': () => cmdVersion(),
+  '-v': () => cmdVersion(),
+  '--help': () => printUsage(),
+  '-h': () => printUsage(),
 }
-;(dispatch[command] ?? die(`unknown command "${command}" — try bwhale, bwhale doctor, or bwhale update`))()
+const run = dispatch[command]
+if (run === undefined) {
+  printUsage()
+  die(`unknown command "${command}"`)
+}
+void run()

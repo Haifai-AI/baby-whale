@@ -40,6 +40,7 @@ export function deliverTask(ctx: Context, task: WhaleTaskRecord): boolean {
  */
 export class WhaleTaskScheduler {
   private timer: ReturnType<typeof setInterval> | undefined
+  private ticking = false
 
   constructor(
     private readonly ctx: Context,
@@ -49,7 +50,11 @@ export class WhaleTaskScheduler {
 
   /** Start the tick loop (dispose stops it). */
   start(): void {
-    this.timer = setInterval(() => { void this.tick() }, this.intervalMs)
+    const timer = setInterval(() => { void this.tick() }, this.intervalMs)
+    // The scheduler must never keep the process alive on its own: disposal
+    // (plugin unload, shutdown) owns the lifetime, not the interval.
+    if (typeof timer.unref === 'function') timer.unref()
+    this.timer = timer
   }
 
   /** Stop the tick loop. */
@@ -58,12 +63,27 @@ export class WhaleTaskScheduler {
     this.timer = undefined
   }
 
-  /** Deliver every currently due task, advancing each delivered record. */
+  /**
+   * Deliver every currently due task, advancing each delivered record. Ticks
+   * never overlap (a slow store cannot double-deliver), and one task's
+   * failure never skips its siblings — the failed task simply stays due for
+   * the next tick.
+   */
   async tick(): Promise<void> {
-    for (const task of this.store.dueTasks(new Date())) {
-      if (deliverTask(this.ctx, task)) {
-        await this.store.markDue(task.id, new Date())
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      for (const task of this.store.dueTasks(new Date())) {
+        try {
+          if (deliverTask(this.ctx, task)) {
+            await this.store.markDue(task.id, new Date())
+          }
+        } catch {
+          // Leave the task due; the next tick retries it.
+        }
       }
+    } finally {
+      this.ticking = false
     }
   }
 }

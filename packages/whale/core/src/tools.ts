@@ -80,7 +80,7 @@ export function applyWhaleTaskTools(ctx: Context): void {
           kind: { type: 'string', required: true, enum: ['once', 'cron', 'manual'], description: 'one-shot at an ISO time, recurring cron, or manual.' },
           at: { type: 'string', description: 'ISO-8601 one-shot time (kind=once).' },
           expr: { type: 'string', description: 'Five-field cron expression, e.g. "0 9 * * 1-5" (kind=cron).' },
-          tz: { type: 'string', description: 'IANA timezone, e.g. "Asia/Shanghai" (defaults to Asia/Shanghai).' },
+          tz: { type: 'string', description: 'IANA timezone, e.g. "Asia/Shanghai" (defaults to the machine timezone).' },
         },
       },
     },

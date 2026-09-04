@@ -4,7 +4,7 @@
  * @module @deepseek-ai/dsh-whale-trash/tests/trash
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -29,14 +29,14 @@ function execution(name: string, args: unknown, cwd: string): ToolExecution {
   }
 }
 
-async function booted(): Promise<{ ctx: Context; root: string }> {
+async function booted(config?: { directory?: string; maxBackupBytes?: number }): Promise<{ ctx: Context; root: string }> {
   const root = mkdtempSync(join(ROOT_BASE, 'case-'))
   const ctx = new Context()
   new LocalFileSystem(ctx, { cwd: root, diffBasisMaxBytes: 10 * 1024 * 1024 })
   ctx.provide('systemPrompt', { section: () => {} })
   ctx.provide('tools', { register: () => {} })
   ctx.provide('sandboxPolicy', { resolve: () => ({ mode: 'workspace-write' }) } as never)
-  await ctx.plugin(TrashPlugin)
+  await ctx.plugin(TrashPlugin, config ?? {})
   return { ctx, root }
 }
 
@@ -89,5 +89,56 @@ describe('whale-trash', () => {
     expect(restored.ok).toBe(true)
     const content = await ctx.fs.readText(await ctx.fs.resolve('data.csv', { cwd: root }))
     expect(content).toBe('v1')
+  })
+
+  it('round-trips a nested target back into its subdirectory', async () => {
+    const { ctx, root } = await booted()
+    mkdirSync(join(root, 'deliverables'), { recursive: true })
+    writeFileSync(join(root, 'deliverables', 'q2.xlsx'), 'v1')
+    await dispatch(ctx, execution('write', { file_path: 'deliverables/q2.xlsx' }, root), async () => ({ ok: true }))
+    writeFileSync(join(root, 'deliverables', 'q2.xlsx'), 'v2')
+    const trash = await ctx.fs.resolve('.whale-trash', { cwd: root })
+    const entries = await ctx.fs.listDir(trash)
+    expect(entries).toHaveLength(1)
+    const backupName = entries[0]!.name
+    // The encoded path must survive in the flat entry name.
+    expect(backupName).toContain('__')
+    const restored = await restoreBackup(
+      ctx,
+      execution('whale_trash_restore', { backup: `.whale-trash/${backupName}` }, root),
+      root,
+      50 * 1024 * 1024,
+      `.whale-trash/${backupName}`,
+    )
+    expect(restored).toEqual({ ok: true, original: 'deliverables/q2.xlsx' })
+    const content = await ctx.fs.readText(await ctx.fs.resolve('deliverables/q2.xlsx', { cwd: root }))
+    expect(content).toBe('v1')
+  })
+
+  it('still lists and restores legacy basename backups', async () => {
+    const { ctx, root } = await booted()
+    mkdirSync(join(root, '.whale-trash'), { recursive: true })
+    writeFileSync(join(root, '.whale-trash', '2026-01-01T00-00-00-000Z-old.txt'), 'legacy')
+    writeFileSync(join(root, 'old.txt'), 'current')
+    const restored = await restoreBackup(
+      ctx,
+      execution('whale_trash_restore', { backup: '.whale-trash/2026-01-01T00-00-00-000Z-old.txt' }, root),
+      root,
+      50 * 1024 * 1024,
+      '.whale-trash/2026-01-01T00-00-00-000Z-old.txt',
+    )
+    expect(restored).toEqual({ ok: true, original: 'old.txt' })
+    const content = await ctx.fs.readText(await ctx.fs.resolve('old.txt', { cwd: root }))
+    expect(content).toBe('legacy')
+  })
+
+  it('a backup failure never blocks the mutation', async () => {
+    // Point the trash directory at an existing FILE so every backup write fails.
+    const { ctx, root } = await booted({ directory: 'blocked-trash' })
+    writeFileSync(join(root, 'notes.txt'), 'original')
+    writeFileSync(join(root, 'blocked-trash'), 'not a directory')
+    let dispatched = false
+    await dispatch(ctx, execution('write', { file_path: 'notes.txt' }, root), async () => { dispatched = true; return { ok: true } })
+    expect(dispatched).toBe(true)
   })
 })

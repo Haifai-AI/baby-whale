@@ -20,6 +20,13 @@ jobs:
           - { os: macos-14, platform: macos, arch: arm64 }
           - { os: macos-15-intel, platform: macos, arch: x64 }
           - { os: ubuntu-24.04, platform: linux, arch: x64 }
+          # Linux arm64: the launcher already resolves this asset name, and
+          # make-bundle.sh maps uname -m arm64 to the matching Node binary.
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64 }
+          # No Windows job on purpose: make-bundle.sh is a POSIX pipeline and
+          # the launcher refuses win32 with guidance. Add a windows runner,
+          # a .bat/.ps1 start path, and the node.exe layout together — or not
+          # at all; a half-Windows release is worse than none.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +78,7 @@ jobs:
           npm publish ./npm/bwhale --access public
 
       - name: Publish release (tag runs only)
-        # Concurrency-safe: the three matrix jobs race here, so the first
+        # Concurrency-safe: the four matrix jobs race here, so the first
         # creates the release and the rest append their assets to it.
         # Glob-safe: zsh errors on unmatched dist/*.dmg (linux has none).
         if: startsWith(github.ref, 'refs/tags/')

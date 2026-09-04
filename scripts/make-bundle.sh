@@ -19,7 +19,8 @@ case "$VERSION" in
   *) VERSION="$(node -p "require('./apps/cli/package.json').version")" ;;
 esac
 OS="$(uname -s)"           # Darwin / Linux
-ARCH="$(uname -m)"         # arm64 / x86_64
+ARCH="$(uname -m)"         # arm64 / aarch64 / x86_64
+[ "$ARCH" = "aarch64" ] && ARCH="arm64"  # Linux arm runners report aarch64
 NODE_VERSION="$(node -v)"  # e.g. v22.19.0 — bundle the running major
 case "$OS" in
   Darwin) PLATFORM="macos"; NODE_OS="darwin" ;;

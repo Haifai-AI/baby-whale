@@ -56,6 +56,10 @@ jobs:
         run: ./scripts/make-bundle.sh
 
       - name: Upload workflow artifact
+        # Convenience copy only — the release below is the real distribution.
+        # Must never fail the job: GitHub artifact storage quota exhaustion
+        # otherwise blocks every release (seen on v0.1.5's first run).
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: baby-whale-${{ matrix.platform }}-${{ matrix.arch }}

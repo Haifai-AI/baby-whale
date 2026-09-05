@@ -28,6 +28,9 @@ jobs:
           # boots the bundle and probes the port before anything ships.
           - { os: windows-2025, platform: windows, arch: x64 }
     runs-on: ${{ matrix.os }}
+    # Hang insurance: the first windows run burned a 6-hour runner in a
+    # junction-recursion loop; no single job may ever do that again.
+    timeout-minutes: 120
     defaults:
       run:
         # bash everywhere (git-bash on Windows) keeps the shared steps
@@ -52,6 +55,7 @@ jobs:
         run: printf 'node-linker=hoisted\n' >> .npmrc
 
       - name: Install dependencies
+        timeout-minutes: 30
         run: pnpm install --frozen-lockfile
 
       - name: Build host, client, and web bundles
@@ -61,6 +65,7 @@ jobs:
           pnpm run build:web
 
       - name: Assemble portable bundle (macOS/Linux)
+        timeout-minutes: 45
         if: runner.os != 'Windows'
         # Stamp the bundle from the tag itself, so asset names always match
         # the release the launcher searches for (v0.1.4 -> 0.1.4).
@@ -69,6 +74,7 @@ jobs:
         run: ./scripts/make-bundle.sh
 
       - name: Assemble portable bundle (Windows)
+        timeout-minutes: 45
         if: runner.os == 'Windows'
         env:
           RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
@@ -78,6 +84,7 @@ jobs:
       - name: Smoke test the Windows bundle
         # Boot the freshly packed bundle and probe the port — a bundle that
         # cannot start must not ship.
+        timeout-minutes: 20
         if: runner.os == 'Windows'
         shell: pwsh
         run: scripts/smoke-windows.ps1

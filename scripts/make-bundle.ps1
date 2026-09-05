@@ -34,30 +34,56 @@ $STAGE = Join-Path $STAGE_ROOT "baby-whale-$PLATFORM-$ARCH-$VERSION"
 New-Item -ItemType Directory -Force -Path $STAGE | Out-Null
 
 try {
-  Write-Host "==> copying workspace tree (junctions dereferenced)"
-  # /E everything; excludes are root-anchored absolute paths (a bare name
-  # like `tmp` would also strip every package's own tmp/ dir), /XF drops
-  # tsbuildinfo files. Robocopy follows junctions by default, which is
-  # exactly the dereference we want. Exit codes 0-7 are success.
+  Write-Host "==> copying workspace tree (junctions skipped, then workspace links dereferenced)"
+  # /XJ is critical: pnpm links workspace packages through junctions
+  # (node_modules/@deepseek-ai/x -> packages/x, and per-package node_modules
+  # link back into each other) — following them recurses forever. /XJ skips
+  # every junction; the workspace links are re-created as REAL directories
+  # right after, so the staged tree contains no links at all. Exit 0-7 ok.
   $root = (Get-Location).Path
-  robocopy . $STAGE /E /NFL /NDL /NJH /NJS /NP `
+  robocopy . $STAGE /E /XJ /NFL /NDL /NJH /NJS /NP /MT:16 `
     /XD "$root\.git" "$root\.github" "$root\.artifacts" "$root\.dsh-build" "$root\coverage" "$root\tmp" "$root\dist" "$root\scripts\tmp" `
     /XF "*.tsbuildinfo" | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
   # robocopy's code sticks to the shell; reset so the next check is meaningful.
   $global:LASTEXITCODE = 0
 
+  Write-Host "==> dereferencing workspace links into node_modules"
+  # The hoisted linker keeps registry deps as real files in the flat root;
+  # only the @deepseek-ai/* workspace entries are junctions. Copy the built
+  # package dirs over them (fresh lib/dist included, no links remain).
+  $scope = Join-Path $root 'node_modules\@deepseek-ai'
+  if (-not (Test-Path $scope)) { throw "node_modules\@deepseek-ai missing — was the install hoisted?" }
+  foreach ($link in Get-ChildItem $scope) {
+    if ($link.LinkType -eq $null) { continue }
+    $target = if ($link.Target -is [array]) { $link.Target[0] } else { $link.Target }
+    if (-not $target) { throw "workspace link $($link.Name) has no target" }
+    $dest = Join-Path $STAGE "baby-whale\node_modules\@deepseek-ai\$($link.Name)"
+    if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+    Copy-Item -Recurse -Force $target $dest
+  }
+
   Write-Host "==> fetching portable Node $NODE_VERSION (win-x64)"
   $nodeDir = Join-Path $STAGE 'node'
   New-Item -ItemType Directory -Force -Path $nodeDir | Out-Null
   $nodeZip = Join-Path $STAGE_ROOT "node-$NODE_VERSION-win-x64.zip"
   $nodeUrl = "https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-win-x64.zip"
-  Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip -UseBasicParsing
+  # curl.exe ships with the runner and honors --max-time; Invoke-WebRequest
+  # can stall forever on a dropped connection (burned a 6-hour runner once).
+  curl.exe -fsSL --max-time 600 --retry 2 -o $nodeZip $nodeUrl
+  if ($LASTEXITCODE -ne 0) { throw "node download failed (curl exit $LASTEXITCODE)" }
   # Expand only the binary itself — the zip's rest is docs and npm we don't need.
   $expand = Join-Path $STAGE_ROOT "node-extract"
   Expand-Archive -Force -Path $nodeZip -DestinationPath $expand
   Copy-Item (Join-Path $expand "node-$NODE_VERSION-win-x64\node.exe") $nodeDir
   Remove-Item -Recurse -Force $expand, $nodeZip
+
+  Write-Host "==> probing the staged tree resolves modules"
+  # Catches any link-mode surprise (missing hoist, skipped junction) BEFORE
+  # packing: the staged CLI must resolve its own workspace imports.
+  $probe = & (Join-Path $nodeDir 'node.exe') -e "const p = require.resolve('@deepseek-ai/dsh/package.json', { paths: [process.argv[1]] }); if (!p) throw new Error('unresolved'); console.log('resolve ok:', p)" (Join-Path $STAGE 'baby-whale')
+  if ($LASTEXITCODE -ne 0) { throw "staged tree failed module resolution probe" }
+  Write-Host $probe
 
   Write-Host "==> writing launchers + readme"
   $startBat = @'

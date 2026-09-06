@@ -8,15 +8,27 @@ $zip = Get-ChildItem dist/baby-whale-windows-*.zip | Select-Object -First 1
 if ($null -eq $zip) { throw "no windows bundle found in dist/" }
 Write-Host "==> smoke-testing $($zip.Name)"
 
-$root = Join-Path ([IO.Path]::GetTempPath()) ("bwhale-smoke-" + [Guid]::NewGuid().ToString('N'))
+# Extract to a SHORT root ($env:RUNNER_TEMP is D:\a\_temp on CI): deep hoisted
+# node_modules paths plus a long temp prefix can exceed legacy MAX_PATH.
+$root = Join-Path $env:RUNNER_TEMP ("bw-smoke-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 tar.exe -xf $zip.FullName -C $root
+if ($LASTEXITCODE -ne 0) { throw "bundle extraction failed (tar exit $LASTEXITCODE)" }
 $stage = Get-ChildItem $root -Directory | Select-Object -First 1
 
 $node = Join-Path $stage.FullName 'node\node.exe'
 $cli = Join-Path $stage.FullName 'baby-whale\apps\cli\lib\bin.js'
-if (-not (Test-Path $node)) { throw "bundle incomplete: $node missing" }
-if (-not (Test-Path $cli)) { throw "bundle incomplete: $cli missing" }
+if (-not (Test-Path $node)) {
+  Write-Host "extracted tree:"
+  Get-ChildItem $stage.FullName -Recurse -Depth 2 | Select-Object -First 30 -ExpandProperty FullName
+  throw "bundle incomplete: $node missing"
+}
+if (-not (Test-Path $cli)) {
+  Write-Host "apps\cli contents:"
+  Get-ChildItem (Join-Path $stage.FullName 'baby-whale\apps\cli') -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+    Select-Object -First 40 -ExpandProperty FullName
+  throw "bundle incomplete: $cli missing"
+}
 
 # Boot with a throwaway home so the check mirrors a first run. The env var
 # must be set BEFORE Start-Process — the child inherits it at spawn time.

@@ -79,6 +79,16 @@ try {
     $global:LASTEXITCODE = 0
   }
 
+  Write-Host "==> verifying the staged entrypoint"
+  # The CLI entrypoint is what every launcher runs; assert it at both ends
+  # (source build output and staged copy) so a silent build or copy gap
+  # fails here with context instead of as a mystery on a user machine.
+  $srcEntry = Join-Path $root 'apps\cli\lib\bin.js'
+  $stageEntry = Join-Path $STAGE 'baby-whale\apps\cli\lib\bin.js'
+  if (-not (Test-Path $srcEntry)) { throw "source build output missing: $srcEntry — did build:lib:host produce apps/cli/lib?" }
+  if (-not (Test-Path $stageEntry)) { throw "stage lost apps\cli\lib\bin.js during copy — robocopy gap" }
+  Write-Host "    entrypoint ok: apps\cli\lib\bin.js"
+
   Write-Host "==> fetching portable Node $NODE_VERSION (win-x64)"
   $nodeDir = Join-Path $STAGE 'node'
   New-Item -ItemType Directory -Force -Path $nodeDir | Out-Null

@@ -50,17 +50,19 @@ try {
 
   Write-Host "==> dereferencing workspace links into node_modules"
   # The hoisted linker keeps registry deps as real files in the flat root;
-  # only the @deepseek-ai/* workspace entries are junctions. Copy the built
-  # package dirs over them (fresh lib/dist included, no links remain).
+  # only the @deepseek-ai/* workspace entries are junctions. Copy THROUGH
+  # each link with robocopy: PowerShell's .Target reports mangled paths for
+  # pnpm junctions, so it is never read. /XJ inside the copy keeps any
+  # nested package-level junctions from recursing (runtime resolution falls
+  # back to the hoisted root, which is all real files).
   $scope = Join-Path $root 'node_modules\@deepseek-ai'
   if (-not (Test-Path $scope)) { throw "node_modules\@deepseek-ai missing — was the install hoisted?" }
   foreach ($link in Get-ChildItem $scope) {
-    if ($link.LinkType -eq $null) { continue }
-    $target = if ($link.Target -is [array]) { $link.Target[0] } else { $link.Target }
-    if (-not $target) { throw "workspace link $($link.Name) has no target" }
     $dest = Join-Path $STAGE "baby-whale\node_modules\@deepseek-ai\$($link.Name)"
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
-    Copy-Item -Recurse -Force $target $dest
+    robocopy $link.FullName $dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "dereference of $($link.Name) failed (robocopy $LASTEXITCODE)" }
+    $global:LASTEXITCODE = 0
   }
 
   Write-Host "==> fetching portable Node $NODE_VERSION (win-x64)"

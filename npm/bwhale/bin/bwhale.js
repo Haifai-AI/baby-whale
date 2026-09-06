@@ -24,7 +24,10 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { Transform } from 'node:stream'
 
-const REPO = 'Haifai-AI/bwhale-dist'
+// The public source repo IS the distribution feed: CI publishes releases
+// here directly. (Launchers ≤0.1.6 still read the legacy bwhale-dist mirror;
+// they upgrade once to this version and then follow this repo forever.)
+const REPO = 'Haifai-AI/baby-whale'
 const HOME = homedir()
 const ROOT = process.env.BWHALE_HOME ?? path.join(HOME, '.bwhale')
 const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`

@@ -49,19 +49,33 @@ try {
   $global:LASTEXITCODE = 0
 
   Write-Host "==> dereferencing workspace links into node_modules"
-  # The hoisted linker keeps registry deps as real files in the flat root;
-  # only the @deepseek-ai/* workspace entries are junctions. Copy THROUGH
-  # each link with robocopy: PowerShell's .Target reports mangled paths for
-  # pnpm junctions, so it is never read. /XJ inside the copy keeps any
-  # nested package-level junctions from recursing (runtime resolution falls
-  # back to the hoisted root, which is all real files).
-  $scope = Join-Path $root 'node_modules\@deepseek-ai'
-  if (-not (Test-Path $scope)) { throw "node_modules\@deepseek-ai missing — was the install hoisted?" }
-  foreach ($link in Get-ChildItem $scope) {
-    $dest = Join-Path $STAGE "baby-whale\node_modules\@deepseek-ai\$($link.Name)"
+  # Workspace links live PER-PACKAGE (apps/cli/node_modules/@deepseek-ai/x ->
+  # packages/...), plus a few at the root — robocopy /XJ skipped every one of
+  # them. Enumerate all reparse points under packages/apps and the root scope
+  # (PS7 -Recurse does NOT descend into junctions, so this cannot cycle), then
+  # copy THROUGH each into its stage path: PowerShell's .Target reports
+  # mangled paths for pnpm junctions, so it is never read. /XJ in the per-link
+  # copy keeps nested links from recursing; they are loop items themselves.
+  $linkDirs = @(
+    Get-ChildItem "$root\node_modules" -Directory -Force -ErrorAction SilentlyContinue |
+      Where-Object LinkType
+    Get-ChildItem "$root\node_modules\@deepseek-ai" -Directory -Force -ErrorAction SilentlyContinue |
+      Where-Object LinkType
+    Get-ChildItem -Path "$root\packages", "$root\apps", "$root\native" -Recurse -Directory -Force `
+      -Attributes ReparsePoint -ErrorAction SilentlyContinue
+  )
+  # Distinct source paths only.
+  $links = $linkDirs | ForEach-Object { $_.FullName } | Sort-Object -Unique
+  if ($links.Count -eq 0) { throw "no workspace links found — was the install hoisted?" }
+  Write-Host ("    {0} links to dereference" -f $links.Count)
+  foreach ($link in $links) {
+    $stagePath = $link.Substring($root.Length).TrimStart('\', '/')
+    $dest = Join-Path $STAGE "baby-whale\$stagePath"
+    $destParent = Split-Path $dest -Parent
+    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
-    robocopy $link.FullName $dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "dereference of $($link.Name) failed (robocopy $LASTEXITCODE)" }
+    robocopy $link $dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "dereference of $link failed (robocopy $LASTEXITCODE)" }
     $global:LASTEXITCODE = 0
   }
 
@@ -82,8 +96,13 @@ try {
 
   Write-Host "==> probing the staged tree resolves modules"
   # Catches any link-mode surprise (missing hoist, skipped junction) BEFORE
-  # packing: the staged CLI must resolve its own workspace imports.
-  $probe = & (Join-Path $nodeDir 'node.exe') -e "const p = require.resolve('@deepseek-ai/dsh/package.json', { paths: [process.argv[1]] }); if (!p) throw new Error('unresolved'); console.log('resolve ok:', p)" (Join-Path $STAGE 'baby-whale')
+  # packing: the staged CLI must resolve a real workspace import through its
+  # own node_modules. Pick whichever @deepseek-ai link the CLI actually has.
+  $cliDir = Join-Path $STAGE 'baby-whale\apps\cli'
+  $cliScope = Join-Path $cliDir 'node_modules\@deepseek-ai'
+  if (-not (Test-Path $cliScope)) { throw "staged apps/cli has no node_modules\@deepseek-ai — dereference failed" }
+  $probePkg = (Get-ChildItem $cliScope -Directory | Select-Object -First 1).Name
+  $probe = & (Join-Path $nodeDir 'node.exe') -e "require.resolve('@deepseek-ai/$probePkg/package.json', { paths: [process.argv[1]] }); console.log('resolve ok: @deepseek-ai/$probePkg')" $cliDir
   if ($LASTEXITCODE -ne 0) { throw "staged tree failed module resolution probe" }
   Write-Host $probe
 

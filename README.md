@@ -1,84 +1,98 @@
-# DeepSeek Harness
+# Baby Whale
 
-English | [中文](README.zh.md)
-
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
-
-It uses an architecture where **everything is a plugin**, and is powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
-
-## Whale coworker mode
-
-Whale is this harness's **knowledge-work personality** — Claude-Cowork-style
-office work, fully local and open-source:
+**Baby Whale** is a local-first knowledge-work coworker. Give it a task in
+the chat; it writes the code that builds the finished file — Excel
+workbooks with live formulas, PowerPoint decks, Word documents, PDFs —
+previews them pixel-perfect in the app, and hands them back as
+deliverable cards. Your files, sessions, and workspace never leave your
+machine; only the model API call does.
 
 ```sh
-npx @deepseek-ai/dsh web --profile default   # pick the “Whale Coworker” preset in the UI
+npm install -g @haifai/bwhale
+bwhale
 ```
 
-- **Office deliverables**: `xlsx_create` (live formulas, number formats, data
-  bars, native charts, themed banners), `pptx_create` (KPI stat slides,
-  two-column layouts, native charts, speaker notes), `docx_create` (cover
-  pages, callouts, banded tables).
-- **Read what users upload**: drop any .xlsx/.csv/.docx into the chat — the
-  file lands in the session workspace and `xlsx_read` / `csv_read` /
-  `docx_text` analyze it.
-- **Skills**: seven knowledge-work skills ship with the Coworker preset;
-  manage them in Settings → Skills. Everything is a plugin — disable the
-  plugin and the section disappears with it.
-- **Scheduled tasks**: `whale_task_*` tools plus a live task board; missed
-  runs are surfaced honestly instead of silently dropped.
-- **Try it in five minutes**:
-  [examples/whale-demo](examples/whale-demo) ships a messy spreadsheet and a
-  walkthrough script.
+The first run fetches the runtime once (~400 MB) into `~/.bwhale`, checks
+your platform's prerequisites, and opens `http://127.0.0.1:24680`. Later
+runs start instantly and update themselves.
 
-## Developer preview
+## What it does
 
-DeepSeek Harness is currently in _developer preview_ and is iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+- **Office deliverables** — `xlsx_create` (live formulas, number formats,
+  data bars, native charts, themed banners), `pptx_create` (KPI stat
+  slides, two-column layouts, native charts, speaker notes), `docx_create`
+  (cover pages, callouts, banded tables), PDF generation. Each deck gets a
+  fresh design — palettes and typography are chosen per task, never reused.
+- **Reads what you drop in** — any .xlsx/.csv/.docx lands in the session
+  workspace and `xlsx_read` / `csv_read` / `docx_text` analyze it.
+- **Pixel-perfect previews** — an in-app studio renders workbooks as
+  spreadsheets, decks as slide galleries, documents as pages. A one-time
+  LibreOffice runtime (offered inside the app) makes them exact.
+- **Knowledge-work skills** — a set of skills ships with the Coworker
+  preset; manage them in Settings → Skills. Everything is a plugin —
+  disable the plugin and the section disappears with it.
+- **Scheduled tasks** — recurring tasks with a live board; missed runs are
+  surfaced honestly instead of silently dropped.
+- **Standard mode** — a lighter chat-only preset without the office tools.
 
-## Run
+## Commands
 
-### Run from `npm`
+| Command | What it does |
+|---|---|
+| `bwhale` | Start (first run installs the runtime) |
+| `bwhale --no-open` | Start without opening the browser |
+| `bwhale doctor` | Report what's present / missing on your machine |
+| `bwhale update` | Refresh to the latest release on next start |
+| `bwhale stop` | Stop a running server (closing the browser doesn't) |
+| `bwhale --version` | Report the installed runtime version |
 
-Install `Node.js`, then run:
+Platforms: macOS (arm64 + x64), Linux (x64 + arm64), Windows x64.
 
-```sh
-npx @deepseek-ai/dsh web
+## Connect a model (one time)
+
+Create `~/.dsh/.credentials.yaml`:
+
+```yaml
+version: 1
+refs:
+  DEEPSEEK_API_KEY: sk-your-key-here
 ```
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+Restart `bwhale`. Everything else — files, sessions, deliverables — stays
+on this machine.
 
-### Run from source
+## Privacy
 
-To run from a repository checkout:
+Zero cloud anything: sessions, workspaces, and produced files live in your
+home directory. The only network traffic is the LLM provider call you
+configure, and the one-time runtime downloads you approve.
+
+## Heritage
+
+Baby Whale's engine is a fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+(MIT), the open-source agent harness where everything is a plugin, built
+on [Cordis](https://github.com/cordiverse/cordis). The whale coworker
+experience — office skills, deliverables, previews, the `bwhale` launcher —
+is built by [Haifai-AI](https://github.com/Haifai-AI) on that foundation.
+
+## Development
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
-
-## Community and support
-
-- Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Development
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-For agents, follow [AGENTS.md](AGENTS.md).
+Start with the [development guide](docs/development.md) and
+[architecture documentation](docs/architecture.md). For agents, follow
+[AGENTS.md](AGENTS.md). Release engineering lives in
+[scripts/make-bundle.sh](scripts/make-bundle.sh) (macOS/Linux),
+[scripts/make-bundle.ps1](scripts/make-bundle.ps1) (Windows), and
+[.github/workflows/bundle.yml](.github/workflows/bundle.yml).
 
 ## License
 
 [MIT](LICENSE)
 
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Third-party dependencies and their licenses are disclosed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

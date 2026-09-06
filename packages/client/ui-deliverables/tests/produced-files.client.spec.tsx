@@ -128,11 +128,13 @@ function call(
   callId: string,
   view: ToolResultNode['callView'],
   turn = 1,
+  name = 'fixture',
+  args = '{}',
 ): ConversationEventInput {
   return at(
     seq,
     'tool/call',
-    { turn, step: 1, callId, name: 'fixture', arguments: '{}' },
+    { turn, step: 1, callId, name, arguments: args },
     { for: 'call', view: view ?? { card: 'generic', title: 'fixture' } },
   )
 }
@@ -275,6 +277,77 @@ describe('produced-file Turn data', () => {
     value.append(result(5, 'second'))
     value.flush()
     expect(producedForClosing(deliverablesOf(value)).map(entry => entry.path)).toEqual(['first.txt', 'second.txt'])
+  })
+
+  it('keeps an older Turn tail across a newer Turn streaming in', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      call(2, 'd1', edit('deliverables/deck.pptx'), 1, 'deliver', '{"paths":["deliverables/deck.pptx"]}'),
+      result(3, 'd1'),
+      at(4, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+      at(5, 'turn/start', { turn: 2 }),
+      call(6, 'later', diff('later.txt'), 2),
+      result(7, 'later', false, 2),
+    ])
+    expect(deliverablesOf(value, 1)?.produced.map(entry => entry.path)).toEqual(['deliverables/deck.pptx'])
+  })
+})
+
+describe('viewless calls (wire view soft-fell to nothing)', () => {
+  /** A tool/call frame with NO wire view, as history pages deliver on presenter misses. */
+  function bareCall(seq: number, callId: string, name: string, args: string, turn = 1): ConversationEventInput {
+    return at(seq, 'tool/call', { turn, step: 1, callId, name, arguments: args })
+  }
+
+  function settled(...entries: readonly ConversationEventInput[]): ConversationNodeAssembler {
+    return assembler([at(1, 'turn/start', { turn: 1 }), ...entries])
+  }
+
+  it('recovers deliver claims from durable arguments', () => {
+    const value = settled(
+      bareCall(2, 'd1', 'deliver', '{"paths":["deliverables/deck.pptx","deliverables/notes.txt"]}'),
+      result(3, 'd1'),
+    )
+    expect(producedForClosing(deliverablesOf(value))).toEqual([
+      { seq: 3, path: 'deliverables/deck.pptx', tool: 'deliver' },
+      { seq: 3, path: 'deliverables/notes.txt', tool: 'deliver' },
+    ])
+  })
+
+  it('recovers write/edit targets from durable arguments', () => {
+    const value = settled(
+      bareCall(2, 'w1', 'write', '{"file_path":"notes.md"}'),
+      result(3, 'w1'),
+      bareCall(4, 'e1', 'edit', '{"file_path":"other.md"}'),
+      result(5, 'e1'),
+    )
+    expect(producedForClosing(deliverablesOf(value))).toEqual([
+      { seq: 3, path: 'notes.md', tool: 'write' },
+      { seq: 5, path: 'other.md', tool: 'edit' },
+    ])
+  })
+
+  it('ignores unknown tools, error results, and unparseable arguments without a view', () => {
+    const value = settled(
+      bareCall(2, 'u1', 'bash', '{"command":"ls"}'),
+      result(3, 'u1'),
+      bareCall(4, 'f1', 'write', '{"file_path":"broken.md"}'),
+      result(5, 'f1', true),
+      bareCall(6, 'g1', 'deliver', 'not-json{{{'),
+      result(7, 'g1'),
+      bareCall(8, 'h1', 'deliver', '{"paths":"nope"}'),
+      result(9, 'h1'),
+    )
+    expect(producedForClosing(deliverablesOf(value))).toEqual([])
+  })
+
+  it('lets a present-but-empty view win over matching arguments', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      call(2, 'd1', { card: 'generic', title: 'Delivered', kind: 'other' }, 1, 'deliver', '{"paths":["deliverables/deck.pptx"]}'),
+      result(3, 'd1'),
+    ])
+    expect(producedForClosing(deliverablesOf(value))).toEqual([])
   })
 })
 

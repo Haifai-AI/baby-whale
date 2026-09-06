@@ -31,7 +31,47 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
 
 interface DeliverablesState extends DeliverablesTurnData {
   readonly turn: number
-  readonly calls: ReadonlyMap<string, { readonly view: ToolResultNode['callView']; readonly tool: string }>
+  readonly calls: ReadonlyMap<string, CallRecord>
+}
+
+/** What one tool call contributes: its render view plus its durable identity. */
+interface CallRecord {
+  readonly view: ToolResultNode['callView']
+  readonly tool: string
+  /** Parsed raw arguments; undefined when absent or unparseable. */
+  readonly args: unknown
+}
+
+/**
+ * Produced paths straight from durable call arguments, for calls whose wire
+ * view never arrived. Views are recomputed per history page and explicitly
+ * soft-fall to nothing (unregistered tool, presenter throw, cross-page
+ * pairing) — without this fallback one viewless rebuild silently drops an
+ * old turn's entire tail, leaving only the closing prose behind. Only the
+ * fence's own mutation names qualify; anything else still needs its view.
+ */
+function argsPaths(tool: string, args: unknown): readonly string[] {
+  if (typeof args !== 'object' || args === null) return []
+  const record = args as Record<string, unknown>
+  if (tool === 'deliver') {
+    const paths = record.paths
+    if (!Array.isArray(paths)) return []
+    return paths.filter((entry): entry is string => typeof entry === 'string')
+  }
+  if (tool === 'write' || tool === 'edit') {
+    return typeof record.file_path === 'string' ? [record.file_path] : []
+  }
+  return []
+}
+
+/** Best-effort JSON parse of stored tool-call arguments. */
+function parseArgs(raw: unknown): unknown {
+  if (typeof raw !== 'string') return undefined
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -137,11 +177,13 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
   update: (context, match) => {
     if (match.event.type === 'tool/call') {
       const calls = new Map(context.state.calls)
+      const data = match.event.data as { callId?: unknown; name?: unknown; arguments?: unknown }
       calls.set(
-        String(match.event.data.callId),
+        String(data.callId),
         {
           view: match.view?.for === 'call' ? match.view.view : null,
-          tool: match.event.data.name,
+          tool: typeof data.name === 'string' ? data.name : '',
+          args: parseArgs(data.arguments),
         },
       )
       return { ...context.state, calls }
@@ -151,8 +193,14 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
     if (result.isError === true) return context.state
     const callId = String(match.event.data.message.source.callId)
     const call = context.state.calls.get(callId) ?? null
-    const additions = producedPaths(call?.view ?? null)
-      .map(path => ({ seq: match.event.seq, path, tool: call?.tool ?? '' }))
+    if (call === null) return context.state
+    // A present-but-empty view is a declaration ("produces nothing") and
+    // wins; only a MISSING view falls back to the durable arguments.
+    const paths = call.view === null
+      ? argsPaths(call.tool, call.args)
+      : producedPaths(call.view)
+    const additions = paths
+      .map(path => ({ seq: match.event.seq, path, tool: call.tool }))
     return additions.length === 0
       ? context.state
       : { ...context.state, produced: [...context.state.produced, ...additions] }

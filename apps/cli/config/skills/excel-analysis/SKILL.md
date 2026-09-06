@@ -18,13 +18,21 @@ the output**. Never hand-emit file contents.
    delimited text) — headers, types, row counts. For big files profile with
    pandas inside your script instead of pulling everything through tools.
 2. **Ensure the interpreter.** The bundled one is `$DSH_OFFICE_PYTHON`
-   (set at app launch). If bash says it is missing:
+   (set at app launch; on Windows it points into the managed venv's
+   `Scripts/python.exe`, and `$DSH_OFFICE_PYTHON` expands in pwsh too).
+   If the shell says it is missing:
 
    ```bash
    python3 -m venv .venv && .venv/bin/pip install openpyxl pandas && echo OK
    ```
 
-   then use `.venv/bin/python`.
+   then use `.venv/bin/python`. On Windows (pwsh) the same fallback reads:
+
+   ```powershell
+   py -m venv .venv; .venv/Scripts/python -m pip install openpyxl pandas
+   ```
+
+   then use `.venv/Scripts/python.exe` (`py` itself missing → `python`).
 3. **Write the build script** into the workspace (`scripts/build_report.py`),
    run it with bash, read errors literally, fix, re-run.
 4. **Design like an analyst** (openpyxl):

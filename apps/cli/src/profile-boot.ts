@@ -41,20 +41,25 @@ const HARNESS_SKILL_ROOT = fileURLToPath(new URL('../../../.agents/skills/', imp
 
 /**
  * Office code-execution support, prepared at launch (Codex-style zero setup):
- * 1. a dedicated Python venv with the document libraries (openpyxl,
- *    python-pptx, python-docx, reportlab, pypdf, pdfplumber, pandas),
- * 2. the per-user cowork folder where session outputs live.
- * The interpreter is exported as `DSH_OFFICE_PYTHON` so bash sessions and
- * skill text reference one stable path. Installation is best-effort and
- * NEVER blocks boot: a missing venv degrades to skills' inline bootstrap.
+ * a dedicated Python venv with the document libraries (openpyxl,
+ * python-pptx, python-docx, reportlab, pypdf, pdfplumber, pandas, pymupdf),
+ * installed in the background through bash on POSIX and inbox PowerShell on
+ * Windows (venv `Scripts/` layout there).
+ * The finished interpreter is exported as `DSH_OFFICE_PYTHON` so shell
+ * sessions and skill text reference one stable path. Installation is
+ * best-effort and NEVER blocks boot: a missing venv degrades to skills'
+ * inline bootstrap.
  */
 export function prepareOfficeRuntime(): void {
   const home = process.env.HOME ?? process.env.USERPROFILE
   if (home === undefined || home === '') return
-  // The managed venv installs through a POSIX shell script (/bin/bash +
-  // python3 + venv bin/ layout); on Windows skip it and let the skills'
-  // inline bootstrap drive installs through the pwsh tool stack instead.
-  if (process.platform === 'win32') return
+  // Windows gets the same background venv install through inbox PowerShell
+  // (5.1-safe: no ?? operator, every path quoted); only the shell and the
+  // venv layout (Scripts/ vs bin/) differ from POSIX.
+  if (process.platform === 'win32') {
+    prepareOfficeRuntimeWindows(home)
+    return
+  }
 
   const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? `${home}/.whale-office-venv`
   const pythonBin = `${venvDir}/bin/python`
@@ -87,6 +92,48 @@ export function prepareOfficeRuntime(): void {
   const child = spawn('/bin/bash', ['-c', installScript], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
+  })
+  child.unref()
+}
+
+/**
+ * Windows half of {@link prepareOfficeRuntime}: the same marker-gated
+ * background venv install, driven by inbox powershell.exe instead of bash.
+ * The script is 5.1-safe (no `??`, no ternary) and quotes every path.
+ * @param home - the user's home directory (USERPROFILE on Windows).
+ */
+function prepareOfficeRuntimeWindows(home: string): void {
+  const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? join(home, '.whale-office-venv')
+  const pythonExe = join(venvDir, 'Scripts', 'python.exe')
+  const marker = join(venvDir, '.libs-ok-2')
+  if (existsSync(marker)) {
+    if (process.env.DSH_OFFICE_PYTHON === undefined && existsSync(pythonExe)) {
+      process.env.DSH_OFFICE_PYTHON = pythonExe
+    }
+    return
+  }
+  mkdirSync(venvDir, { recursive: true })
+  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`
+  // All streams append to the install log inside the script itself, so the
+  // spawn stays stdio-ignored (detached fd redirection is unreliable on win32).
+  const installLog = join(venvDir, 'install.log')
+  const body = [
+    "$ErrorActionPreference = 'Stop'",
+    "Write-Output '--- office venv install started'",
+    '$pyCmd = Get-Command py -ErrorAction SilentlyContinue',
+    'if ($null -eq $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }',
+    'if ($null -eq $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }',
+    "if ($null -eq $pyCmd) { throw 'no Python found (py/python/python3) — install it, then restart the app' }",
+    `if (-not (Test-Path ${quote(pythonExe)})) { & $pyCmd.Source -m venv ${quote(venvDir)} }`,
+    `& ${quote(pythonExe)} -m pip install --quiet --upgrade pip`,
+    `& ${quote(pythonExe)} -m pip install --quiet openpyxl python-pptx python-docx reportlab pypdf pdfplumber pandas pymupdf`,
+    `New-Item -ItemType File -Force -Path ${quote(marker)} | Out-Null`,
+    "Write-Output '--- office venv install finished'",
+  ].join('; ')
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `& { ${body} } *>> ${quote(installLog)}`], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
   })
   child.unref()
 }

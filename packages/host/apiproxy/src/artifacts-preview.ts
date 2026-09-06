@@ -815,10 +815,21 @@ export async function convertToPdfCached(
   }
 }
 
+/** Blank-or-missing env lookup: empty strings count as unset. */
+function envHome(name: 'DSH_HOME' | 'HOME' | 'USERPROFILE'): string | undefined {
+  const value = process.env[name]
+  return value !== undefined && value.trim() !== '' ? value : undefined
+}
+
 /** The gateway-owned directory receiving converted preview PDFs. */
 export function previewCacheDir(): string {
-  const home = process.env.DSH_HOME ?? process.env.HOME ?? process.env.USERPROFILE ?? '.'
-  return `${home}/preview-cache`
+  // DSH_HOME is the product home itself; otherwise resolve the platform home
+  // and keep the `.dsh` layout identical everywhere (Windows: USERPROFILE).
+  const configured = envHome('DSH_HOME')
+  if (configured !== undefined) return `${configured}/preview-cache`
+  const platformHome = envHome('HOME') ?? envHome('USERPROFILE')
+  if (platformHome !== undefined) return `${platformHome}/.dsh/preview-cache`
+  return './preview-cache'
 }
 
 /**

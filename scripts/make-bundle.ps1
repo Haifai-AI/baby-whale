@@ -35,13 +35,17 @@ New-Item -ItemType Directory -Force -Path $STAGE | Out-Null
 
 try {
   Write-Host "==> copying workspace tree (junctions skipped, then workspace links dereferenced)"
-  # /XJ is critical: pnpm links workspace packages through junctions
-  # (node_modules/@deepseek-ai/x -> packages/x, and per-package node_modules
-  # link back into each other) — following them recurses forever. /XJ skips
-  # every junction; the workspace links are re-created as REAL directories
-  # right after, so the staged tree contains no links at all. Exit 0-7 ok.
+  # Bundle layout: <stage>/baby-whale/<repo> with node/ and START.bat as
+  # siblings — same as make-bundle.sh. The copy targets the INNER baby-whale
+  # directory. /XJ is critical: pnpm links workspace packages through
+  # junctions (node_modules/@deepseek-ai/x -> packages/x, and per-package
+  # node_modules link back into each other) — following them recurses
+  # forever. /XJ skips every junction; the workspace links are re-created as
+  # REAL directories right after, so the staged tree contains no links at
+  # all. Exit codes 0-7 are success.
   $root = (Get-Location).Path
-  robocopy . $STAGE /E /XJ /NFL /NDL /NJH /NJS /NP /MT:16 `
+  $stageInner = Join-Path $STAGE 'baby-whale'
+  robocopy . $stageInner /E /XJ /NFL /NDL /NJH /NJS /NP /MT:16 `
     /XD "$root\.git" "$root\.github" "$root\.artifacts" "$root\.dsh-build" "$root\coverage" "$root\tmp" "$root\dist" "$root\scripts\tmp" `
     /XF "*.tsbuildinfo" | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }

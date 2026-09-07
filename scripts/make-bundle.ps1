@@ -110,11 +110,13 @@ try {
   if ($links.Count -eq 0) { throw "no workspace links found — was the install hoisted?" }
   $owners = $pkgMap | ForEach-Object { $_.src } | Sort-Object { $_.Length } -Descending
   Write-Host ("    {0} links to dereference" -f $links.Count)
+  # Plan every (link -> dest) pair first, then copy in parallel: thousands of
+  # junctions at one robocopy spawn each exceed the step budget serially, and
+  # the pairs are fully independent (distinct sources and destinations).
+  $pairs = [System.Collections.Generic.List[object]]::new()
+  $rootLen = $root.Length
   foreach ($link in $links) {
-    $stagePath = $link.Substring($root.Length).TrimStart('\', '/')
-    # (1) in-place, (2) into owning root-scope package copies. NO root
-    # backstop: planting a first-wins version at the root top level skews
-    # versions across packages (a wrong minipass breaks class extension).
+    $stagePath = $link.Substring($rootLen).TrimStart('\', '/')
     $dests = @((Join-Path $STAGE "baby-whale\$stagePath"))
     foreach ($owner in $owners) {
       if (-not $link.StartsWith($owner + '\', 'OrdinalIgnoreCase')) { continue }
@@ -122,26 +124,33 @@ try {
       $ownerPkg = $pkgMap | Where-Object { $_.src -eq $owner } | Select-Object -First 1
       $dests += Join-Path $ownerPkg.dest $relInPkg
     }
-    # The junction target's OWN internal junctions must exist inside every
-    # copy too — a copy of session-title without its nested zod fails exactly
-    # like a missing package. PS7 enumeration does not descend into them, so
-    # each is listed exactly once here.
-    $subLinks = Get-ChildItem $link -Recurse -Directory -Force `
+    foreach ($d in $dests) { $pairs.Add(@{ src = $link; dest = $d }) }
+  }
+  Write-Host ("    {0} copies to make" -f $pairs.Count)
+  # The junction target's OWN internal junctions must exist inside every copy
+  # too — a copy of session-title without its nested zod fails exactly like a
+  # missing package. PS7 enumeration does not descend into junctions, so each
+  # is listed exactly once per link.
+  $failures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
+  $pairs | ForEach-Object -Parallel {
+    $pair = $_
+    $destParent = Split-Path $pair.dest -Parent
+    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
+    if (Test-Path $pair.dest) { Remove-Item -Recurse -Force $pair.dest }
+    robocopy $pair.src $pair.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { $using:failures.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)"); return }
+    $subLinks = Get-ChildItem $pair.src -Recurse -Directory -Force `
       -Attributes ReparsePoint -ErrorAction SilentlyContinue
-    foreach ($d in $dests) {
-      $destParent = Split-Path $d -Parent
-      if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
-      if (Test-Path $d) { Remove-Item -Recurse -Force $d }
-      robocopy $link $d /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-      if ($LASTEXITCODE -ge 8) { throw "dereference of $link into $d failed (robocopy $LASTEXITCODE)" }
-      foreach ($sub in $subLinks) {
-        $subRel = $sub.FullName.Substring($link.Length).TrimStart('\')
-        $subDest = Join-Path $d $subRel
-        robocopy $sub.FullName $subDest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-        if ($LASTEXITCODE -ge 8) { throw "nested dereference of $($sub.FullName) into $subDest failed (robocopy $LASTEXITCODE)" }
-      }
-      $global:LASTEXITCODE = 0
+    foreach ($sub in $subLinks) {
+      $subRel = $sub.FullName.Substring($pair.src.Length).TrimStart('\')
+      $subDest = Join-Path $pair.dest $subRel
+      robocopy $sub.FullName $subDest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+      if ($LASTEXITCODE -ge 8) { $using:failures.Add("nested dereference of $($sub.FullName) into $subDest (robocopy $LASTEXITCODE)") }
     }
+  } -ThrottleLimit 12
+  if ($failures.Count -gt 0) {
+    $failures | Select-Object -First 10 | ForEach-Object { Write-Host "    FAILED: $_" }
+    throw "dereference failures: $($failures.Count)"
   }
 
   if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {

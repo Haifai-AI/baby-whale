@@ -55,36 +55,79 @@ try {
     throw "main copy lost apps\cli — robocopy exclusion or path issue (stage root: $STAGE)"
   }
 
-  Write-Host "==> dereferencing workspace links into node_modules"
-  # Workspace links live PER-PACKAGE (apps/cli/node_modules/@deepseek-ai/x ->
-  # packages/...), plus a few at the root — robocopy /XJ skipped every one of
-  # them. Enumerate all reparse points under packages/apps and the root scope
-  # (PS7 -Recurse does NOT descend into junctions, so this cannot cycle), then
-  # copy THROUGH each into its stage path: PowerShell's .Target reports
-  # mangled paths for pnpm junctions, so it is never read. /XJ in the per-link
-  # copy keeps nested links from recursing; they are loop items themselves.
+  Write-Host "==> materializing @deepseek-ai/* packages at the bundle root scope"
+  # ESM resolves imports through the importer's REAL path. On POSIX the app's
+  # node_modules entries are symlinks, so imports resolve from packages/*,
+  # where each package has its own dep links. Here the links become plain
+  # copies, so resolution must not depend on them: every @deepseek-ai/*
+  # package is materialized (real files, /XJ) in the bundle-root scope, so
+  # the node walk-up from ANY copy always reaches every workspace package.
+  # Every pnpm-workspace root that can hold a @deepseek-ai/* package
+  # (vendor holds the cordis ecosystem: cosmokit, schemastery, ...).
+  $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples') |
+    ForEach-Object { Join-Path $root $_ } |
+    Where-Object { Test-Path $_ }
+  $pkgFiles = Get-ChildItem -Path $scanRoots `
+    -Recurse -Depth 4 -Filter package.json -ErrorAction SilentlyContinue
+  $pkgMap = @()   # @{ src = package dir; dest = root-scope copy in the stage }
+  foreach ($pkgFile in $pkgFiles) {
+    $name = (Get-Content $pkgFile.FullName -Raw | ConvertFrom-Json).name
+    if (-not $name -or -not $name.StartsWith('@deepseek-ai/')) { continue }
+    $pkgMap += @{ src = $pkgFile.Directory.FullName; dest = (Join-Path $STAGE "baby-whale\node_modules\$name") }
+  }
+  if ($pkgMap.Count -eq 0) { throw "no @deepseek-ai/* workspace packages were discovered" }
+  foreach ($pkg in $pkgMap) {
+    if (Test-Path (Join-Path $pkg.dest 'package.json')) { continue }
+    robocopy $pkg.src $pkg.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "materialize $($pkg.dest) failed (robocopy $LASTEXITCODE)" }
+    $global:LASTEXITCODE = 0
+  }
+  Write-Host ("    {0} packages at the root scope" -f $pkgMap.Count)
+
+  Write-Host "==> dereferencing workspace links"
+  # Junctions live at the root scope, per-package (apps/cli/node_modules/...),
+  # and inside each package's own node_modules — robocopy /XJ skipped every
+  # one of them. Enumerate all reparse points (PS7 -Recurse does NOT descend
+  # into junctions, so this cannot cycle), then copy THROUGH each:
+  #   1. into its in-place stage path, and
+  #   2. into EVERY root-scope package copy whose source contains the junction
+  #      (longest-prefix owner wins), so those copies resolve their own nested
+  #      deps exactly like the real tree does.
+  # PowerShell's .Target reports mangled paths for pnpm junctions, so it is
+  # never read. /XJ in the per-link copy keeps nested links from recursing;
+  # they are loop items themselves.
   $linkDirs = @(
     Get-ChildItem "$root\node_modules" -Directory -Force -ErrorAction SilentlyContinue |
       Where-Object LinkType
     Get-ChildItem "$root\node_modules\@deepseek-ai" -Directory -Force -ErrorAction SilentlyContinue |
       Where-Object LinkType
-    Get-ChildItem -Path "$root\packages", "$root\apps", "$root\native" -Recurse -Directory -Force `
+    Get-ChildItem -Path $scanRoots -Recurse -Directory -Force `
       -Attributes ReparsePoint -ErrorAction SilentlyContinue
   )
   # Distinct source paths only.
   $links = $linkDirs | ForEach-Object { $_.FullName } | Sort-Object -Unique
   if ($links.Count -eq 0) { throw "no workspace links found — was the install hoisted?" }
+  $owners = $pkgMap | ForEach-Object { $_.src } | Sort-Object { $_.Length } -Descending
   Write-Host ("    {0} links to dereference" -f $links.Count)
   foreach ($link in $links) {
     $stagePath = $link.Substring($root.Length).TrimStart('\', '/')
-    $dest = Join-Path $STAGE "baby-whale\$stagePath"
-    $destParent = Split-Path $dest -Parent
-    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
-    if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
-    robocopy $link $dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "dereference of $link failed (robocopy $LASTEXITCODE)" }
-    $global:LASTEXITCODE = 0
+    $dests = @((Join-Path $STAGE "baby-whale\$stagePath"))
+    foreach ($owner in $owners) {
+      if (-not $link.StartsWith($owner + '\', 'OrdinalIgnoreCase')) { continue }
+      $relInPkg = $link.Substring($owner.Length).TrimStart('\')
+      $ownerPkg = $pkgMap | Where-Object { $_.src -eq $owner } | Select-Object -First 1
+      $dests += Join-Path $ownerPkg.dest $relInPkg
+    }
+    foreach ($d in $dests) {
+      $destParent = Split-Path $d -Parent
+      if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
+      if (Test-Path $d) { Remove-Item -Recurse -Force $d }
+      robocopy $link $d /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+      if ($LASTEXITCODE -ge 8) { throw "dereference of $link into $d failed (robocopy $LASTEXITCODE)" }
+      $global:LASTEXITCODE = 0
+    }
   }
+
   if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {
     Write-Host "stage baby-whale top level:"
     Get-ChildItem (Join-Path $STAGE 'baby-whale') -ErrorAction SilentlyContinue |
@@ -107,33 +150,6 @@ try {
     throw "stage lost apps\cli\lib\bin.js during copy — robocopy gap"
   }
   Write-Host "    entrypoint ok: apps\cli\lib\bin.js"
-
-  Write-Host "==> materializing every workspace package at the bundle root scope"
-  # ESM resolves imports through the importer's REAL path. On POSIX the app's
-  # node_modules entries are symlinks, so imports resolve from packages/*,
-  # where each package has its own dep links. Here the links became plain
-  # copies, so the walk-up must always succeed: every @deepseek-ai/* package
-  # is materialized (real files, /XJ) in the bundle-root scope as well.
-  # Every pnpm-workspace root that can hold a @deepseek-ai/* package
-  # (vendor holds the cordis ecosystem: cosmokit, schemastery, ...).
-  $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples') |
-    ForEach-Object { Join-Path $root $_ } |
-    Where-Object { Test-Path $_ }
-  $pkgFiles = Get-ChildItem -Path $scanRoots `
-    -Recurse -Depth 4 -Filter package.json -ErrorAction SilentlyContinue
-  $materialized = 0
-  foreach ($pkgFile in $pkgFiles) {
-    $name = (Get-Content $pkgFile.FullName -Raw | ConvertFrom-Json).name
-    if (-not $name -or -not $name.StartsWith('@deepseek-ai/')) { continue }
-    $dest = Join-Path $STAGE "baby-whale\node_modules\@deepseek-ai\$($name.Split('/')[1])"
-    if (Test-Path (Join-Path $dest 'package.json')) { continue }
-    robocopy $pkgFile.Directory.FullName $dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "materialize $name failed (robocopy $LASTEXITCODE)" }
-    $global:LASTEXITCODE = 0
-    $materialized++
-  }
-  if ($materialized -eq 0) { throw "no workspace packages were materialized at the root scope" }
-  Write-Host ("    {0} packages at the root scope" -f $materialized)
 
   Write-Host "==> fetching portable Node $NODE_VERSION (win-x64)"
   $nodeDir = Join-Path $STAGE 'node'

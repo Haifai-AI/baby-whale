@@ -26,8 +26,12 @@ jobs:
           # Windows x64: make-bundle.ps1 stages with pnpm's hoisted linker
           # (real files, no junctions) and packs via tar.exe; the smoke step
           # boots the bundle and probes the port before anything ships.
-          - { os: windows-2025, platform: windows, arch: x64 }
+          # Experimental until its pipeline settles: a red windows job must
+          # never hold the release (or the notifications) hostage for the
+          # four proven platforms.
+          - { os: windows-2025, platform: windows, arch: x64, experimental: true }
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
     # Hang insurance: the first windows run burned a 6-hour runner in a
     # junction-recursion loop; no single job may ever do that again.
     timeout-minutes: 120

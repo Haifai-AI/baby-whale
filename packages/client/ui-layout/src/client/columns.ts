@@ -18,7 +18,7 @@ export interface Columns { sidebar: number; center: number; details: number }
 
 // Contract-frozen geometry: the three-column concession chain's fixed points.
 /** Center column floor; only the final fallback may go below it. */
-export const CENTER_MIN = 640
+export const CENTER_MIN = 560
 /** Sidebar drag clamp floor. */
 export const SIDEBAR_MIN = 264
 /** Sidebar drag clamp ceiling. */
@@ -34,9 +34,12 @@ export const SIDEBAR_AUTO_COLLAPSE = 1024
 /** Details drag clamp floor. */
 export const DETAILS_MIN = 300
 /** Details drag clamp ceiling. */
-export const DETAILS_MAX = 520
+export const DETAILS_MAX = 760
 /** Details width before any user drag. */
-export const DETAILS_DEFAULT = 360
+export const DETAILS_DEFAULT = 460
+/** Center column floor while the details panel is EXPANDED (file preview):
+ * the preview is the primary surface then; chat keeps a readable rail. */
+export const EXPANDED_CENTER_MIN = 380
 
 /**
  * Clamp a panel width into its contract range.
@@ -59,10 +62,21 @@ export function clampWidth(px: number, min: number, max: number): number {
  * @param details - details width preference in px (0 = closed).
  * @returns resolved widths; details 0 means visually closed (never unmounted), while a closed sidebar keeps its compact rail.
  */
-export function computeColumns(viewport: number, sidebar: number, details: number): Columns {
+export function computeColumns(viewport: number, sidebar: number, details: number, expanded = false): Columns {
   // The sidebar is fixed at its preference (or the rail) — it never concedes.
   const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
   const d0 = details === 0 ? 0 : clampWidth(details, DETAILS_MIN, DETAILS_MAX)
+
+  // Expanded (file preview takes over): the panel absorbs everything above
+  // the expanded center floor — the width preference is irrelevant while
+  // expanded and restored verbatim on collapse.
+  if (expanded && d0 > 0) {
+    // Center concedes first (down to 0) so details keeps its minimum: the
+    // expanded frame never exceeds the viewport.
+    const available = viewport - s
+    const center = Math.max(0, Math.min(EXPANDED_CENTER_MIN, available - DETAILS_MIN))
+    return { sidebar: s, center, details: Math.max(0, available - center) }
+  }
 
   // Step 1: everything fits at preferred widths.
   if (s + d0 + CENTER_MIN <= viewport) return { sidebar: s, center: viewport - s - d0, details: d0 }

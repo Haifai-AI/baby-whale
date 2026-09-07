@@ -393,6 +393,12 @@ export function apply(ctx: Context): void {
       const scoped = scopedConversation(sessions, sessionId)
       return {
         openDetails: (target) => {
+          // A selection gesture takes the panel back from file preview to
+          // details; the file tab is one Preview click away again. Expansion
+          // is a preview affordance — a details selection also collapses it,
+          // otherwise the panel sticks wide with no collapse control.
+          actions.closeFilePreview()
+          layout.setDetailsExpanded(false)
           // Office artifacts pin into the details tab strip (persistent
           // docked workspace); everything else keeps single-focus behavior.
           if (target.toolName !== undefined && /^(xlsx|pptx|docx)_create$/.test(target.toolName)) {
@@ -406,6 +412,10 @@ export function apply(ctx: Context): void {
         openFile: (path) => {
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
           return workspaces.openPath(resolveWorkspacePath(cwd, path))
+        },
+        openFilePreview: (path) => {
+          actions.openFilePreview(path)
+          layout.openDetails()
         },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),
@@ -455,10 +465,12 @@ export function apply(ctx: Context): void {
     children: {
       'conversation.details.tool': { kind: 'single', scope: 'session' },
       'conversation.details.toolview': { kind: 'keyed', scope: 'session' },
+      'conversation.details.fileview': { kind: 'single', scope: 'session' },
     },
     store: chatStore,
     inject: (): DetailsInjected => ({
       closeDetails: () => { layout.closeDetails() },
+      setDetailsExpanded: (on: boolean) => { layout.setDetailsExpanded(on) },
     }),
   }, DetailsPanel)
 

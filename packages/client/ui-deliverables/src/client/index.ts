@@ -9,8 +9,10 @@
  */
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatFileMentions } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import { FilePreviewPane } from './FilePreviewPane.tsx'
 import { ProducedFiles } from './ProducedFiles.tsx'
 import { en, NS, zh, type DeliverablesKey } from './locales.ts'
 import {
@@ -51,6 +53,18 @@ export function apply(ctx: ClientContext): void {
       }),
     }, ProducedFiles),
   )
+  // The details panel's whole-panel file preview: produced-file cards route
+  // their Preview gesture here (pane over the chat, not a modal). One seat;
+  // this plugin owns the renderer because it owns the preview vocabulary.
+  ctx.slots.inject(
+    'conversation.details.fileview',
+    () => ctx.slots.register({
+      name: 'conversation.details.fileview',
+      locale: NS,
+      inject: (sessionId: SessionId) => ({ connection, sessionId }),
+    }, FilePreviewPane),
+  )
+
   // The prose side of the same vocabulary: the chat view reaches this face
   // via ctx.get, so its absence — this plugin composed out — is the off state.
   const t = ctx.locale.bind(NS)

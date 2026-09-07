@@ -401,3 +401,22 @@
   display: block;
   margin: 0 auto;
 }
+
+/* Text/markdown file previews: the shared atoms draw themselves; this wraps
+   them in the pane's scroll context with breathing room. */
+.filePreview {
+  height: 100%;
+  overflow: auto;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* LibreOffice-absent hint above a text-extraction fallback studio. */
+.sofficeNotice {
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dsw-alias-border-secondary);
+  background: var(--dsw-alias-fill-secondary);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}

@@ -10,16 +10,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { HostDescriptionSource } from '@deepseek-ai/dsh-client-connection/client'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
-// Cross-package render reuse (client bundle face): the studio is public API.
-import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
 import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
 
 /** Kind bucket from extension, for the badge glyph. */
-type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'other'
+type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'md' | 'text' | 'other'
 
 /** Human kind label + extension for the card subtitle ("Spreadsheet · XLSX"). */
 const KIND_META: Record<Kind, { label: string }> = {
@@ -29,6 +26,8 @@ const KIND_META: Record<Kind, { label: string }> = {
   csv: { label: 'Spreadsheet' },
   pdf: { label: 'PDF' },
   py: { label: 'Script' },
+  md: { label: 'Markdown' },
+  text: { label: 'Code' },
   other: { label: 'File' },
 }
 
@@ -97,6 +96,8 @@ function kindOf(path: string): Kind {
   if (ext === '.csv' || ext === '.tsv') return 'csv'
   if (ext === '.pdf') return 'pdf'
   if (ext === '.py') return 'py'
+  if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'md'
+  if (TEXT_PREVIEW_KINDS.test(ext)) return 'text'
   return 'other'
 }
 
@@ -104,9 +105,22 @@ function isImage(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(path)
 }
 
+/** Extensions that preview as text/code (mirrors the server's textPreviewKind). */
+const TEXT_PREVIEW_EXTENSIONS = [
+  'txt', 'log', 'json', 'jsonc', 'json5', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env',
+  'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs',
+  'py', 'pyw', 'rb', 'go', 'rs', 'java', 'kt', 'kts', 'swift', 'dart', 'scala', 'clj',
+  'c', 'h', 'cpp', 'hpp', 'cc', 'hh', 'cs', 'php', 'lua', 'pl', 'ex', 'exs', 'erl',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'psm1', 'bat', 'cmd',
+  'html', 'htm', 'xml', 'css', 'scss', 'sass', 'less', 'vue', 'svelte', 'astro',
+  'sql', 'graphql', 'gql', 'prisma', 'proto', 'tf', 'hcl', 'r', 'jl', 'zig', 'nim',
+]
+const TEXT_PREVIEW_KINDS = new RegExp(`\\.(${TEXT_PREVIEW_EXTENSIONS.join('|')})$`, 'i')
+
 /** Kinds the preview pipeline can render. */
 function previewable(kind: Kind): boolean {
   return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv' || kind === 'pdf'
+    || kind === 'md' || kind === 'text' || kind === 'py'
 }
 
 /** Registration-side capability facts (mirrors ProducedFilesInjected). */
@@ -122,18 +136,12 @@ export interface DeliveredCardsInjected {
 }
 
 /** Props composed by reference from the contract + the injected face. */
-export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'sessionId'> & {
+export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'openFilePreview' | 'sessionId'> & {
   matched: readonly string[]
   isLoopback: boolean
   useHostDescription: (selector: (value: { canOpenPath?: boolean } | undefined) => boolean) => boolean
   connection: ConnectionHandle
   t: TranslateNS<'deliverables'>
-}
-
-/** The preview payload served by `artifacts.preview` (narrowed client-side). */
-interface ParsedPreview {
-  readonly kind: string
-  readonly pdfPath?: string
 }
 
 /** Trigger a browser download of one artifact through the raw channel. */
@@ -158,99 +166,14 @@ function artifactPath(path: string): string {
   return `deliverables/${basename(trimmed)}`
 }
 
-/** In-chat preview modal: the same pipeline the Artifacts pane renders. */
-function PreviewModal({ path, sessionId, connection, openFile, canOpenPath, t, onClose }: {
-  path: string
-  sessionId: SessionId
-  connection: ConnectionHandle
-  openFile: (path: string) => void
-  canOpenPath: boolean
-  t: TranslateNS<'deliverables'>
-  onClose: () => void
-}) {
-  const [preview, setPreview] = useState<
-    { readonly status: 'loading' } | { readonly status: 'unsupported' }
-    | { readonly status: 'ready'; readonly data: ParsedPreview }
-  >({ status: 'loading' })
-  // PDFs and images render straight from the raw channel (browser-native),
-  // exactly like the Artifacts pane; other kinds ride the preview RPC.
-  const servedPath = artifactPath(path)
-  const mode = isImage(servedPath) ? 'image' : (/\.pdf$/i.test(servedPath) ? 'pdf' : 'rpc')
-  useEffect(() => {
-    if (mode !== 'rpc') return
-    let cancelled = false
-    void (async () => {
-      try {
-        const response = await connection.api.artifacts.preview({ sessionId, path: servedPath })
-        const value = response.result.ok ? response.result.value : undefined
-        const parsed = value?.preview as ParsedPreview | undefined
-        if (!cancelled) {
-          setPreview(parsed !== undefined && typeof parsed.kind === 'string'
-            ? { status: 'ready', data: parsed }
-            : { status: 'unsupported' })
-        }
-      } catch {
-        if (!cancelled) setPreview({ status: 'unsupported' })
-      }
-    })()
-    return () => { cancelled = true }
-  }, [connection, mode, path, servedPath, sessionId])
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => { window.removeEventListener('keydown', onKey) }
-  }, [onClose])
-  return (
-    <div className={css.scrim} role="presentation" onClick={onClose}>
-      <div className={css.modal} role="dialog" aria-label={basename(path)} onClick={(event) => { event.stopPropagation() }}>
-        <div className={css.modalHead}>
-          <span className={css.modalTitle} title={path}>{basename(path).replace(/\.[^.]+$/, '')}</span>
-          <span className={css.modalKind}>{extensionOf(path)}</span>
-          <div className={css.modalActions}>
-            <a className={css.modalAction} href={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path, download: '1' }).toString()}`}>
-              {t('delivered.download')}
-            </a>
-            {canOpenPath && (
-              <button type="button" className={css.modalAction} onClick={() => { openFile(path) }}>
-                {t('delivered.open')}
-              </button>
-            )}
-            <button type="button" className={css.modalClose} aria-label={t('preview.close')} onClick={onClose}>×</button>
-          </div>
-        </div>
-        <div className={css.modalBody}>
-          {mode === 'image' && <img src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} alt={basename(path)} className={css.modalImage} />}
-          {mode === 'pdf' && <iframe title={basename(path)} src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} className={css.modalFrame} />}
-          {mode === 'rpc' && preview.status === 'loading' && <p className={css.modalNote}>{t('preview.loading')}</p>}
-          {mode === 'rpc' && preview.status === 'unsupported' && <p className={css.modalNote}>{t('preview.unsupported')}</p>}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind === 'pdf' && (
-            <iframe
-              title={basename(path)}
-              src={`/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`}
-              className={css.modalFrame}
-            />
-          )}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind !== 'pdf' && (
-            <div className={css.modalStudio}>
-              <ArtifactStudioBody preview={preview.data as OfficePreviewData} />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 /** The delivered row: label + one card per claimed file. */
 export function DeliveredCards({
-  matched, openFile, sessionId, isLoopback, useHostDescription, connection, t,
+  matched, openFile, openFilePreview, sessionId, isLoopback, useHostDescription, t,
 }: DeliveredCardsProps) {
   const hostCanOpenPath = useHostDescription(description => description?.canOpenPath === true)
   const canOpenPath = isLoopback && hostCanOpenPath
   const [showAll, setShowAll] = useState(false)
-  const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -279,7 +202,7 @@ export function DeliveredCards({
         {visible.map((path) => {
           const kind = kindOf(path)
           const mainAction = previewable(kind) || isImage(path)
-            ? (): void => { setPreviewPath(path) }
+            ? (): void => { openFilePreview(artifactPath(path)) }
             : (): void => { openFile(path) }
           const mainLabel = previewable(kind) || isImage(path) ? t('delivered.preview') : t('delivered.open')
           return (
@@ -358,17 +281,6 @@ export function DeliveredCards({
         <button type="button" className={css.showFolder} onClick={() => { setShowAll(true) }}>
           {t('produced.more', { count: hidden })}
         </button>
-      )}
-      {previewPath !== null && (
-        <PreviewModal
-          path={previewPath}
-          sessionId={sessionId}
-          connection={connection}
-          openFile={openFile}
-          canOpenPath={canOpenPath}
-          t={t}
-          onClose={() => { setPreviewPath(null) }}
-        />
       )}
     </div>
   )

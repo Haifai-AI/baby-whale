@@ -35,4 +35,10 @@ export interface ChatStoreState {
    * persisted snapshots from before this field rehydrate without it.
    */
   inspect: { callId: CallId } | null
+  /**
+   * Workspace-relative path of the deliverable shown in the details panel's
+   * file-preview mode (chat produced-file cards write it; null = no preview).
+   * Rehydrates as null on persisted snapshots from before this field.
+   */
+  filePreview?: string | null
 }

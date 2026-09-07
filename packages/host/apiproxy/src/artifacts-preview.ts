@@ -63,10 +63,29 @@ export type ParsedPreview =
     /** LibreOffice single-page-per-sheet render for the "Original" tab. */
     pdfPath?: string
   }
-  | { kind: 'pptx'; file_name: string; title: string; slides: PreviewSlide[]; truncated: boolean }
-  | { kind: 'docx'; file_name: string; blocks: PreviewBlock[]; truncated: boolean }
+  | {
+    kind: 'pptx'
+    file_name: string
+    title: string
+    slides: PreviewSlide[]
+    truncated: boolean
+    /** Set when LibreOffice is absent and the pixel-true PDF preview is unavailable. */
+    notice?: 'soffice-missing'
+  }
+  | {
+    kind: 'docx'
+    file_name: string
+    blocks: PreviewBlock[]
+    truncated: boolean
+    /** Set when LibreOffice is absent and the pixel-true PDF preview is unavailable. */
+    notice?: 'soffice-missing'
+  }
   /** LibreOffice-converted PDF served through the artifacts.file GET route. */
   | { kind: 'pdf'; file_name: string; pdfPath: string }
+  /** Markdown source, rendered client-side by the shared markdown renderer. */
+  | { kind: 'markdown'; file_name: string; text: string; truncated: boolean }
+  /** Text/code source, rendered client-side by the highlighted line viewer. */
+  | { kind: 'text'; file_name: string; text: string; language?: string; truncated: boolean }
 
 const MAX_ROWS = 100
 const MAX_COLS = 60
@@ -76,6 +95,67 @@ const MAX_SLIDES = 24
 const MAX_BULLETS = 12
 const MAX_BLOCKS = 400
 const BLOCK_TEXT = 600
+
+/** Decode cap for whole-file text previews (markdown/code/JSON). */
+export const TEXT_PREVIEW_BYTES = 512 * 1024
+
+/** Extensions that preview as plain/highlighted text (kind 'text'). */
+const TEXT_EXTENSIONS = new Set([
+  '.txt', '.log', '.json', '.jsonc', '.json5', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.env',
+  '.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.pyw', '.rb', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.dart', '.scala', '.clj',
+  '.c', '.h', '.cpp', '.hpp', '.cc', '.hh', '.cs', '.php', '.lua', '.pl', '.ex', '.exs', '.erl',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.psm1', '.bat', '.cmd',
+  '.html', '.htm', '.xml', '.css', '.scss', '.sass', '.less', '.vue', '.svelte', '.astro',
+  '.sql', '.graphql', '.gql', '.prisma', '.proto', '.tf', '.hcl', '.r', '.jl', '.zig', '.nim',
+])
+
+/** Extension → shiki grammar alias (see ui-primitives highlight.ts LANG_ALIASES). */
+const TEXT_LANGUAGES: Record<string, string> = {
+  '.ts': 'ts', '.tsx': 'tsx', '.mts': 'ts', '.cts': 'ts',
+  '.js': 'js', '.jsx': 'jsx', '.mjs': 'js', '.cjs': 'js',
+  '.json': 'json', '.jsonc': 'json', '.json5': 'json',
+  '.py': 'python', '.pyw': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
+  '.java': 'java', '.kt': 'kotlin', '.kts': 'kotlin', '.swift': 'swift', '.dart': 'dart',
+  '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.hpp': 'cpp', '.cc': 'cpp', '.hh': 'cpp', '.cs': 'csharp',
+  '.php': 'php', '.lua': 'lua', '.pl': 'perl', '.ex': 'elixir', '.exs': 'elixir',
+  '.sh': 'shell', '.bash': 'shell', '.zsh': 'shell', '.fish': 'shell',
+  '.ps1': 'powershell', '.psm1': 'powershell',
+  '.html': 'html', '.htm': 'html', '.xml': 'xml', '.css': 'css', '.scss': 'scss', '.sass': 'scss', '.less': 'less',
+  '.vue': 'vue', '.svelte': 'svelte', '.sql': 'sql', '.graphql': 'graphql', '.gql': 'graphql',
+  '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml', '.r': 'r',
+}
+
+/** Which preview bucket a text-ish extension maps to: 'markdown', 'text', or undefined. */
+export function textPreviewKind(ext: string): 'markdown' | 'text' | undefined {
+  if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'markdown'
+  if (TEXT_EXTENSIONS.has(ext)) return 'text'
+  return undefined
+}
+
+/** Shiki grammar hint for a text extension; undefined renders plain monospace. */
+export function textPreviewLanguage(ext: string): string | undefined {
+  return TEXT_LANGUAGES[ext]
+}
+
+/**
+ * Parse a text-ish artifact (markdown or code/JSON/whatever) into the
+ * bounded preview payload: decoded source capped at {@link TEXT_PREVIEW_BYTES},
+ * plus the renderer hint. Binary content decodes to replacement characters —
+ * acceptable for a preview of a file the caller believes is text.
+ */
+export function parseTextPreview(bytes: Uint8Array, filePath: string): ParsedPreview {
+  const ext = (/[.][a-z0-9]+$/i.exec(filePath)?.[0] ?? '').toLowerCase()
+  const kind = textPreviewKind(ext)
+  if (kind === undefined) throw new Error(`not a text preview extension: ${ext}`)
+  const text = new TextDecoder().decode(bytes.slice(0, TEXT_PREVIEW_BYTES))
+  const truncated = bytes.byteLength > TEXT_PREVIEW_BYTES
+  if (kind === 'markdown') return { kind: 'markdown', file_name: basename(filePath), text, truncated }
+  const language = textPreviewLanguage(ext)
+  return language === undefined
+    ? { kind: 'text', file_name: basename(filePath), text, truncated }
+    : { kind: 'text', file_name: basename(filePath), text, language, truncated }
+}
 
 function cap(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max)}…`

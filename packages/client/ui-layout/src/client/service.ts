@@ -27,6 +27,8 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Toggle the details panel's expanded geometry mode (file preview full-focus). */
+  setDetailsExpanded(on: boolean): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +59,11 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Toggle the details panel's expanded geometry mode (file preview full-focus). */
+  setDetailsExpanded(on: boolean): void {
+    this.#require().setDetailsExpanded(on)
   }
 
   #require(): PanelActions {

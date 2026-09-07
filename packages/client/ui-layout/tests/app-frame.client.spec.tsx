@@ -15,7 +15,9 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
-import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import {
+  CENTER_MIN, DETAILS_DEFAULT, SIDEBAR_COLLAPSED,
+} from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
@@ -151,7 +153,9 @@ describe('AppFrame', () => {
     expect(keys).toContain('details')
     expect(keys).not.toContain('conversation.empty')
     expect(slotCalls.find(c => c.key === 'conversation')!.props).toEqual({})
-    expect(slotCalls.find(c => c.key === 'details')!.props).toEqual({})
+    const detailsProps = slotCalls.find(c => c.key === 'details')!.props as { expanded: boolean; toggleExpanded: () => void }
+    expect(detailsProps.expanded).toBe(false)
+    expect(typeof detailsProps.toggleExpanded).toBe('function')
   })
 
   it('keeps the conversation slot mounted while no session is current', () => {
@@ -177,7 +181,7 @@ describe('AppFrame', () => {
     expect(tracks(frame)).toEqual([280, 0])
 
     act(() => { instance.actions.openDetails() })
-    expect(tracks(frame)).toEqual([280, 360])
+    expect(tracks(frame)).toEqual([280, DETAILS_DEFAULT])
 
     selectedSession.current = 's-next' as SessionId
     act(() => { rerenderFrame() })
@@ -188,12 +192,12 @@ describe('AppFrame', () => {
     selectedSessionBlank.current = true
     act(() => { rerenderFrame() })
     expect(tracks(frame)).toEqual([280, 0])
-    expect(instance.getSnapshot().details).toBe(360)
+    expect(instance.getSnapshot().details).toBe(DETAILS_DEFAULT)
 
     selectedSession.current = 's-next' as SessionId
     selectedSessionBlank.current = false
     act(() => { rerenderFrame() })
-    expect(tracks(frame)).toEqual([280, 360])
+    expect(tracks(frame)).toEqual([280, DETAILS_DEFAULT])
 
     selectedSession.current = undefined
     act(() => { rerenderFrame() })
@@ -231,17 +235,17 @@ describe('AppFrame', () => {
     act(() => { instance.actions.openDetails() })
     const handles = frame.querySelectorAll('[class*="handle"]')
     drag(handles[1]!, 1560, 1500)
-    expect(tracks(frame)[1]).toBe(420)
+    expect(tracks(frame)[1]).toBe(DETAILS_DEFAULT + 60)
   })
 
   it('drag base is the rendered (concession-clamped) width, not the preference', () => {
-    frameWidth = 1250 // step-2 squeeze: details renders 330 while preference is 360
+    frameWidth = 1250 // step-2 squeeze: details renders 1250-280-560 = 410 while preference is 460
     const { frame, instance } = mountFrame()
     act(() => { instance.actions.openDetails() })
-    expect(tracks(frame)).toEqual([280, 330])
+    expect(tracks(frame)).toEqual([280, 1250 - 280 - CENTER_MIN])
     const handles = frame.querySelectorAll('[class*="handle"]')
     drag(handles[1]!, 920, 930) // shrink by 10 from the rendered width
-    expect(instance.getSnapshot().details).toBe(320)
+    expect(instance.getSnapshot().details).toBe(400)
   })
 
   it('details column stays mounted at zero width', () => {
@@ -266,10 +270,10 @@ describe('AppFrame', () => {
     act(() => { instance.actions.openDetails() })
     frameWidth = 1250
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
-    expect(tracks(frame)).toEqual([280, 330])
+    expect(tracks(frame)).toEqual([280, 1250 - 280 - CENTER_MIN])
     frameWidth = 1920
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
-    expect(tracks(frame)).toEqual([280, 360])
+    expect(tracks(frame)).toEqual([280, DETAILS_DEFAULT])
   })
 
   it('drag handles disappear for collapsed columns', () => {
@@ -393,6 +397,6 @@ describe('AppFrame — unmount with an in-flight resize frame', () => {
     act(() => { instance.actions.openDetails() })
     frameWidth = 1250
     act(() => { fireResize?.(); fireResize?.(); vi.advanceTimersByTime(20) })
-    expect(tracks(frame)).toEqual([280, 330])
+    expect(tracks(frame)).toEqual([280, 1250 - 280 - CENTER_MIN])
   })
 })

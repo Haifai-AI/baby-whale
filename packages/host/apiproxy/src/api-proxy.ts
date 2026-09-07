@@ -20,7 +20,7 @@ const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.md': 'text/plain',
   '.json': 'application/json',
 }
-import { convertToPdfCached, findSoffice, parseDocxPreview, parsePptxPreview, parseXlsxCharts, parseXlsxPreview, previewCacheDir, recalcXlsxBytes, resetSofficeLookup, xlsxHasUncachedFormulas } from './artifacts-preview.ts'
+import { convertToPdfCached, findSoffice, parseDocxPreview, parsePptxPreview, parseTextPreview, parseXlsxCharts, parseXlsxPreview, previewCacheDir, recalcXlsxBytes, resetSofficeLookup, textPreviewKind, xlsxHasUncachedFormulas } from './artifacts-preview.ts'
 import { beginManagedSofficeInstall, managedInstallSupport, managedSofficePath, sofficeInstallState } from './soffice-runtime.ts'
 import { homedir } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
@@ -3314,7 +3314,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const artifacts: Array<{
           path: string
           name: string
-          kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'text' | 'other'
+          kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'other'
           size: number
           modifiedAt: number
           origin: 'deliverable' | 'upload'
@@ -3330,8 +3330,9 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
                   : ext === '.csv' || ext === '.tsv' ? 'csv' as const
                     : ext === '.pdf' ? 'pdf' as const
                       : ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext) ? 'image' as const
-                        : ['.txt', '.md', '.json'].includes(ext) ? 'text' as const
-                          : 'other' as const
+                        : textPreviewKind(ext) === 'markdown' ? 'markdown' as const
+                          : textPreviewKind(ext) === 'text' ? 'text' as const
+                            : 'other' as const
             artifacts.push({
               path, name, kind,
               size: info.size,
@@ -3468,9 +3469,20 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             }
           }
           if (preview === undefined) {
-            if (ext === '.pptx') preview = parsePptxPreview(bytes, path)
-            else preview = parseDocxPreview(bytes, path)
+            // The fallback studios carry an install hint when LibreOffice is
+            // absent — the pixel-true preview is one install away, and the
+            // client maps the code to localized copy.
+            const notice = soffice === undefined ? 'soffice-missing' as const : undefined
+            if (ext === '.pptx') {
+              const parsed = parsePptxPreview(bytes, path)
+              preview = notice !== undefined ? { ...parsed, notice } : parsed
+            } else {
+              const parsed = parseDocxPreview(bytes, path)
+              preview = notice !== undefined ? { ...parsed, notice } : parsed
+            }
           }
+        } else if (textPreviewKind(ext) !== undefined) {
+          preview = parseTextPreview(bytes, path)
         }
         if (preview === undefined) {
           if (ext === '.csv' || ext === '.tsv') {

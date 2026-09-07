@@ -82,7 +82,9 @@ function pinLabel(s: ConversationSnapshot | null, callId: string, toolName: stri
   return toolName
 }
 
-export function DetailsPanel({ useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, t }: DetailsPanelProps) {
+export function DetailsPanel({
+  useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, setDetailsExpanded, expanded, toggleExpanded, t,
+}: DetailsPanelProps) {
   const selectPin = actions.select
   const unpin = (callId: NonNullable<SelectionTarget['callId']>): void => { actions.unpin(callId) }
   const closeAll = (): void => {
@@ -91,6 +93,9 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, act
   }
   const selection = useStore(s => s.selection)
   const pins = useStore(s => s.pins ?? [])
+  // Whole-panel deliverable preview (produced-file cards write it): when set,
+  // the panel shows the rendered file instead of the call details.
+  const filePreview = useStore(s => s.filePreview ?? null)
   // Session workspace root: an omitted or relative terminal cwd resolves
   // against it, which the pure presenter cannot see.
   const sessionCwd = useSessions(list => list.byId[sessionId]?.cwd)
@@ -113,49 +118,86 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, act
     <div className={css.root}>
       <div className={css.header}>
         <div className={css.tabs} role="tablist">
-          {(pins.length > 0
-            ? pins.map((pin, index) => (
-              <Fragment key={pin.callId ?? index}>
+          {(filePreview !== null
+            ? (
+              <Fragment key="file-preview">
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={(activeCallId ?? '') === pin.callId}
-                  data-active={(activeCallId ?? '') === pin.callId || undefined}
+                  aria-selected
+                  data-active
                   className={css.tab}
-                  onClick={() => {
-                    if (pin.callId === undefined) return
-                    const callId2: NonNullable<SelectionTarget['callId']> = pin.callId
-                    selectPin({
-                      ...(pin.turnSeq !== undefined ? { turnSeq: pin.turnSeq } : {}),
-                      ...(pin.stepSeq !== undefined ? { stepSeq: pin.stepSeq } : {}),
-                      callId: callId2,
-                      ...(pin.toolName !== undefined ? { toolName: pin.toolName } : {}),
-                    })
-                  }}
+                  title={filePreview}
                 >
-                  {labels.get(pin.callId ?? '') ?? pin.toolName ?? t('details.title')}
+                  {filePreview.slice(Math.max(filePreview.lastIndexOf('/'), filePreview.lastIndexOf('\\')) + 1)}
                 </button>
                 <button
                   type="button" className={css.tabClose}
                   aria-label={t('details.close')}
-                  onClick={() => { if (pin.callId !== undefined) unpin(pin.callId) }}
+                  onClick={() => { actions.closeFilePreview(); setDetailsExpanded(false) }}
                 >
                   ×
                 </button>
               </Fragment>
-            ))
-            : null)}
+            )
+            : (pins.length > 0
+              ? pins.map((pin, index) => (
+                <Fragment key={pin.callId ?? index}>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={(activeCallId ?? '') === pin.callId}
+                    data-active={(activeCallId ?? '') === pin.callId || undefined}
+                    className={css.tab}
+                    onClick={() => {
+                      if (pin.callId === undefined) return
+                      actions.closeFilePreview()
+                      setDetailsExpanded(false)
+                      const callId2: NonNullable<SelectionTarget['callId']> = pin.callId
+                      selectPin({
+                        ...(pin.turnSeq !== undefined ? { turnSeq: pin.turnSeq } : {}),
+                        ...(pin.stepSeq !== undefined ? { stepSeq: pin.stepSeq } : {}),
+                        callId: callId2,
+                        ...(pin.toolName !== undefined ? { toolName: pin.toolName } : {}),
+                      })
+                    }}
+                  >
+                    {labels.get(pin.callId ?? '') ?? pin.toolName ?? t('details.title')}
+                  </button>
+                  <button
+                    type="button" className={css.tabClose}
+                    aria-label={t('details.close')}
+                    onClick={() => { if (pin.callId !== undefined) unpin(pin.callId) }}
+                  >
+                    ×
+                  </button>
+                </Fragment>
+              ))
+              : null))}
           <div className={css.title}>
-            {pins.length > 0
+            {filePreview !== null || pins.length > 0
               ? null
               : selection === null
                 ? t('details.title')
                 : material?.name ?? selection.toolName ?? t('details.title')}
           </div>
         </div>
+        {filePreview !== null && toggleExpanded !== undefined && (
+          <button
+            type="button" className={css.close} aria-label={expanded ? t('details.collapse') : t('details.expand')}
+            title={expanded ? t('details.collapse') : t('details.expand')}
+            onClick={() => { toggleExpanded() }}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden data-expanded={expanded || undefined}>
+              {expanded
+                ? <path d="M9 3h4v4M7 13H3V9M13 3l-5 5M3 13l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+                : <path d="M10 3h3v3M6 13H3v-3M13 3L8 8M3 13l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />}
+            </svg>
+          </button>
+        )}
         <button
           type="button" className={css.close} aria-label={t('details.close')}
-          onClick={() => { closeAll() }}
+          onClick={() => { actions.closeFilePreview(); closeAll() }}
         >
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
             <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -163,43 +205,47 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, act
         </button>
       </div>
       <div className={css.body}>
-        {activeCallId === undefined
-          ? <div className={css.empty}>{t('details.empty')}</div>
-          : material === null
-            ? <div className={css.empty}>{t('details.notInWindow')}</div>
-            : (
-              <>
-                {material.argsRaw !== null && (
+        {filePreview !== null
+          ? renderSlot('conversation.details.fileview', { path: filePreview }, {
+            fallback: <div className={css.empty}>{t('details.empty')}</div>,
+          })
+          : activeCallId === undefined
+            ? <div className={css.empty}>{t('details.empty')}</div>
+            : material === null
+              ? <div className={css.empty}>{t('details.notInWindow')}</div>
+              : (
+                <>
+                  {material.argsRaw !== null && (
+                    <section className={css.section}>
+                      <div className={css.sectionLabel}>{t('details.input')}</div>
+                      <CodeBlock code={pretty(material.argsRaw)} lang="json" copyLabel={t('copy')} copiedLabel={t('copied')} />
+                    </section>
+                  )}
                   <section className={css.section}>
-                    <div className={css.sectionLabel}>{t('details.input')}</div>
-                    <CodeBlock code={pretty(material.argsRaw)} lang="json" copyLabel={t('copy')} copiedLabel={t('copied')} />
-                  </section>
-                )}
-                <section className={css.section}>
-                  <div className={css.sectionLabel}>{t('details.output')}</div>
-                  {/* Keyed by the selected call: the body owns per-call view
+                    <div className={css.sectionLabel}>{t('details.output')}</div>
+                    {/* Keyed by the selected call: the body owns per-call view
                       state (the terminal card's expand and copy), which React
                       would otherwise carry into the next selection because the
                       panel does not unmount between calls. */}
-                  <Fragment key={activeCallId}>
-                    {renderSlot('conversation.details.toolview', { block: material.block, cwd: sessionCwd }, {
-                      entryKey: 'kind' in material.block
-                        ? material.block.call?.name ?? ''
-                        : material.block.name,
-                      fallback: renderSlot('conversation.details.tool', { block: material.block, cwd: sessionCwd }, {
-                        fallback: 'kind' in material.block
-                          ? (
-                            <pre className={css.code} data-error={material.block.isError || undefined}>
-                              {rawResultText(material.block)}
-                            </pre>
-                          )
-                          : <div className={css.empty}>{t('details.running')}</div>,
-                      }),
-                    })}
-                  </Fragment>
-                </section>
-              </>
-            )}
+                    <Fragment key={activeCallId}>
+                      {renderSlot('conversation.details.toolview', { block: material.block, cwd: sessionCwd }, {
+                        entryKey: 'kind' in material.block
+                          ? material.block.call?.name ?? ''
+                          : material.block.name,
+                        fallback: renderSlot('conversation.details.tool', { block: material.block, cwd: sessionCwd }, {
+                          fallback: 'kind' in material.block
+                            ? (
+                              <pre className={css.code} data-error={material.block.isError || undefined}>
+                                {rawResultText(material.block)}
+                              </pre>
+                            )
+                            : <div className={css.empty}>{t('details.running')}</div>,
+                        }),
+                      })}
+                    </Fragment>
+                  </section>
+                </>
+              )}
       </div>
     </div>
   )

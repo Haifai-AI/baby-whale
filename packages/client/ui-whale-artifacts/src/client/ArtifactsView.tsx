@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { ArtifactEntry } from '@deepseek-ai/dsh-host-apiproxy/api'
+import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client'
 // Cross-package render reuse (client bundle face): the studio is public API.
@@ -27,6 +28,9 @@ interface ParsedPreview {
   readonly pdfPath?: string
   readonly truncated?: boolean
   readonly charts?: readonly WorkbookChart[]
+  readonly text?: string
+  readonly language?: string
+  readonly notice?: string
 }
 
 /** Human byte size. */
@@ -51,7 +55,7 @@ export function formatModifiedAt(value: number, fallback: string): string {
 /** Whether this entry has a right-side preview. */
 function previewable(kind: ArtifactEntry['kind']): boolean {
   return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv'
-    || kind === 'pdf' || kind === 'image'
+    || kind === 'pdf' || kind === 'image' || kind === 'markdown' || kind === 'text'
 }
 
 /**
@@ -189,7 +193,7 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
               />
             )}
             {preview?.status === 'raw' && selected.kind === 'image' && (
-              <img src={preview.url} alt={selected.name} className={css.rawImage} />
+              <ZoomableImage src={preview.url} alt={selected.name} />
             )}
             {preview?.status === 'raw' && selected.kind !== 'image' && (
               <iframe title={selected.name} src={preview.url} className={css.pdfFrame} />
@@ -197,8 +201,24 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
             {preview?.status === 'ready' && preview.data.kind === 'xlsx' && (
               <WorkbookPreview key={selected.path} data={preview.data as unknown as WorkbookPreviewData} t={t} />
             )}
-            {preview?.status === 'ready' && preview.data.kind !== 'pdf' && preview.data.kind !== 'xlsx' && (
+            {preview?.status === 'ready' && preview.data.kind === 'markdown' && (
+              <div className={css.filePreview}>
+                <MarkdownFilePreview text={preview.data.text ?? ''} />
+                {preview.data.truncated === true && <p className={css.truncNote}>{t('preview.truncated')}</p>}
+              </div>
+            )}
+            {preview?.status === 'ready' && preview.data.kind === 'text' && (
+              <div className={css.filePreview}>
+                <CodeFilePreview text={preview.data.text ?? ''} language={preview.data.language} />
+                {preview.data.truncated === true && <p className={css.truncNote}>{t('preview.truncated')}</p>}
+              </div>
+            )}
+            {preview?.status === 'ready' && preview.data.kind !== 'pdf' && preview.data.kind !== 'xlsx'
+              && preview.data.kind !== 'markdown' && preview.data.kind !== 'text' && (
               <>
+                {preview.data.notice === 'soffice-missing' && (
+                  <p className={css.sofficeNotice}>{t('preview.sofficeMissing')}</p>
+                )}
                 <ArtifactStudioBody preview={preview.data as OfficePreviewData} />
                 {preview.data.truncated === true && <p className={css.truncNote}>{t('preview.truncated')}</p>}
               </>

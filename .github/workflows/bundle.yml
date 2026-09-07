@@ -53,41 +53,34 @@ jobs:
 
       - name: Windows node_modules layout (Windows only)
         # pnpm 11 reads its settings from pnpm-workspace.yaml, NOT .npmrc —
-        # attempts 20/21 appended node-linker/inject-workspace-packages to
+        # earlier attempts appended node-linker/inject-workspace-packages to
         # .npmrc and pnpm silently ignored both (both runs left behind the
-        # identical 5,771 junctions of the isolated layout). These keys must
-        # land BEFORE the first install, so junctions are never laid down:
-        # - nodeLinker: hoisted -> flat real-file node_modules (the default
-        #   isolated layout links through node_modules/.pnpm junctions,
-        #   which cannot survive zip -> extract on user machines).
-        # - injectWorkspacePackages: workspace deps materialize as real
-        #   copies instead of junctions into the workspace tree.
+        # identical 5,771 junctions of the isolated layout). This key must
+        # land BEFORE the first install, so the .pnpm junction universe is
+        # never laid down: nodeLinker: hoisted -> flat real-file
+        # node_modules for external deps (the default isolated layout links
+        # through node_modules/.pnpm junctions, which cannot survive
+        # zip -> extract on user machines). Workspace packages STAY
+        # junctioned into the live source tree — deliberately: tests and
+        # builds deep-import sibling package sources
+        # (@deepseek-ai/x/src/index.ts), which only resolves through links
+        # to the real tree; injected copies are packed without src/ and
+        # break the build (seen on the inject attempt). The ~500 remaining
+        # workspace junctions are materialized by make-bundle.ps1.
         if: runner.os == 'Windows'
         run: |
-          printf '\nnodeLinker: hoisted\ninjectWorkspacePackages: true\n' >> pnpm-workspace.yaml
-          tail -3 pnpm-workspace.yaml
+          printf '\nnodeLinker: hoisted\n' >> pnpm-workspace.yaml
+          tail -2 pnpm-workspace.yaml
 
-      - name: Install dependencies (macOS/Linux)
-        if: runner.os != 'Windows'
+      - name: Install dependencies
         timeout-minutes: 30
         run: pnpm install --frozen-lockfile
 
-      - name: Install dependencies (Windows)
-        # injectWorkspacePackages is recorded INSIDE the lockfile (settings
-        # block), so turning it on makes --frozen-lockfile refuse to run
-        # (ERR_PNPM_LOCKFILE_CONFIG_MISMATCH). The lockfile update is
-        # CI-local — never committed — and resolution is unchanged: same
-        # specs, same pinned versions.
-        if: runner.os == 'Windows'
-        timeout-minutes: 30
-        run: pnpm install --no-frozen-lockfile
-
       - name: Verify node_modules layout (Windows only)
         # Fail in minutes, not after a 45-minute assemble grind: if the
-        # pnpm-workspace.yaml settings above were ignored, the isolated
-        # linker leaves ~5,800 junctions behind. Hoisted + injected should
-        # leave near zero; a few hundred workspace links are tolerable and
-        # the assemble pass dereferences whatever remains.
+        # pnpm-workspace.yaml setting above was ignored, the isolated
+        # linker leaves ~5,800 junctions behind. Hoisted leaves a few
+        # hundred workspace links, which the assemble pass dereferences.
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -116,16 +109,6 @@ jobs:
         env:
           RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: ./scripts/make-bundle.sh
-
-      - name: Refresh injected workspace copies (Windows only)
-        # The build wrote lib/dist into the workspace source dirs AFTER the
-        # install snapshot, so the injected node_modules copies are stale.
-        # --force makes pnpm rebuild node_modules from the hot store, picking
-        # up the fresh build output. A plain re-install does NOT work here:
-        # pnpm sees "Already up to date" and never revisits existing copies.
-        if: runner.os == 'Windows'
-        timeout-minutes: 30
-        run: pnpm install --no-frozen-lockfile --force
 
       - name: Assemble portable bundle (Windows)
         # With the inject-first layout there are ~no junctions to dereference,

@@ -29,7 +29,10 @@ $PLATFORM = 'windows'
 $ARCH = 'x86_64'
 $NODE_VERSION = (node -v)  # e.g. v22.19.0 — bundle the running major
 
-$STAGE_ROOT = Join-Path ([IO.Path]::GetTempPath()) ("bwhale-stage-" + [Guid]::NewGuid().ToString('N'))
+# Stage on the biggest scratch disk: CI gives RUNNER_TEMP on the data drive;
+# the dereferenced tree easily outgrows the small system volume.
+$stageTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$STAGE_ROOT = Join-Path $stageTemp ("bwhale-stage-" + [Guid]::NewGuid().ToString('N'))
 $STAGE = Join-Path $STAGE_ROOT "baby-whale-$PLATFORM-$ARCH-$VERSION"
 New-Item -ItemType Directory -Force -Path $STAGE | Out-Null
 

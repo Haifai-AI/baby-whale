@@ -114,7 +114,12 @@ try {
   # where each package has its own dep links. Here the links became plain
   # copies, so the walk-up must always succeed: every @deepseek-ai/* package
   # is materialized (real files, /XJ) in the bundle-root scope as well.
-  $pkgFiles = Get-ChildItem -Path (Join-Path $root 'packages'), (Join-Path $root 'apps') `
+  # Every pnpm-workspace root that can hold a @deepseek-ai/* package
+  # (vendor holds the cordis ecosystem: cosmokit, schemastery, ...).
+  $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples') |
+    ForEach-Object { Join-Path $root $_ } |
+    Where-Object { Test-Path $_ }
+  $pkgFiles = Get-ChildItem -Path $scanRoots `
     -Recurse -Depth 4 -Filter package.json -ErrorAction SilentlyContinue
   $materialized = 0
   foreach ($pkgFile in $pkgFiles) {

@@ -47,6 +47,9 @@ try {
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
   # robocopy's code sticks to the shell; reset so the next check is meaningful.
   $global:LASTEXITCODE = 0
+  if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli'))) {
+    throw "main copy lost apps\cli — robocopy exclusion or path issue (stage root: $STAGE)"
+  }
 
   Write-Host "==> dereferencing workspace links into node_modules"
   # Workspace links live PER-PACKAGE (apps/cli/node_modules/@deepseek-ai/x ->
@@ -78,6 +81,12 @@ try {
     if ($LASTEXITCODE -ge 8) { throw "dereference of $link failed (robocopy $LASTEXITCODE)" }
     $global:LASTEXITCODE = 0
   }
+  if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {
+    Write-Host "stage baby-whale top level:"
+    Get-ChildItem (Join-Path $STAGE 'baby-whale') -ErrorAction SilentlyContinue |
+      Select-Object -First 30 -ExpandProperty Name
+    throw "dereference loop lost apps\cli\lib — a bad link dest clobbered the stage"
+  }
 
   Write-Host "==> verifying the staged entrypoint"
   # The CLI entrypoint is what every launcher runs; assert it at both ends
@@ -86,7 +95,13 @@ try {
   $srcEntry = Join-Path $root 'apps\cli\lib\bin.js'
   $stageEntry = Join-Path $STAGE 'baby-whale\apps\cli\lib\bin.js'
   if (-not (Test-Path $srcEntry)) { throw "source build output missing: $srcEntry — did build:lib:host produce apps/cli/lib?" }
-  if (-not (Test-Path $stageEntry)) { throw "stage lost apps\cli\lib\bin.js during copy — robocopy gap" }
+  if (-not (Test-Path $stageEntry)) {
+    Write-Host "stage apps\cli tree:"
+    Get-ChildItem (Join-Path $STAGE 'baby-whale\apps\cli') -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+      Select-Object -First 40 -ExpandProperty FullName
+    Write-Host "stage apps\cli\lib exists: $(Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))"
+    throw "stage lost apps\cli\lib\bin.js during copy — robocopy gap"
+  }
   Write-Host "    entrypoint ok: apps\cli\lib\bin.js"
 
   Write-Host "==> fetching portable Node $NODE_VERSION (win-x64)"

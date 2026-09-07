@@ -153,6 +153,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const { set, source } = makeSource(init)
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
+  const openFilePreview = vi.fn<(path: string) => void>()
   const loadOlder = vi.fn()
   const inspectCall = vi.fn<(callId: string) => void>()
   // In-memory scroll memory matching the apply.ts per-session map contract.
@@ -242,6 +243,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
           block,
           selectedCallId: nodeOwner.selectedCallId,
           openFile: nodeOwner.openFile,
+          openFilePreview: nodeOwner.openFilePreview,
           inspectCall: nodeOwner.inspectCall,
         }
         toolOwners.push(tool)
@@ -282,6 +284,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     SessionProvider: SessionProviderStub,
     openDetails,
     openFile,
+    openFilePreview,
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     inspectCall,

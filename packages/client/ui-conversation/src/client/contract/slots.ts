@@ -172,6 +172,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.details.toolview': { kind: 'keyed'; scope: 'session'; owner: DetailsToolOwnerProps }
     /**
+     * Whole-panel deliverable file preview: the produced-file cards' Preview
+     * gesture routes here instead of a modal, so the chat stays live beside
+     * the rendered file. One occupant; ui-deliverables owns the renderer.
+     */
+    'conversation.details.fileview': { kind: 'single'; scope: 'session'; owner: FilePreviewOwnerProps }
+    /**
      * The composer takeover chain: entries are selector-routed replacements
      * of the default InputBar. Declared by this package's 'conversation'
      * entry; the owner dispatches the {@link ComposerChainProps} currency and
@@ -398,6 +404,8 @@ export interface TurnTailOwnerProps {
    * view resolves relative paths against the session cwd).
    */
   openFile: (path: string) => void
+  /** Open a produced file in the details panel's preview mode (pane, not modal). */
+  openFilePreview: (path: string) => void
   /** Owning session — artifact surfaces (preview/download) address it. */
   sessionId: SessionId
 }
@@ -433,6 +441,8 @@ export interface ChatNodeOwnerProps {
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
   openFile: (path: string) => void
+  /** Open a produced file in the details panel's preview mode (pane, not modal). */
+  openFilePreview: (path: string) => void
   inspectCall: (callId: CallId) => void
   forkAt: (seq: number) => void
   /** Render a historical image group through the attachment slot. */
@@ -445,6 +455,12 @@ export type ChatNodeViewProps<Kind extends ChatNodeKind = ChatNodeKind> =
   PropsRuntime<'conversation.chat.node', Kind> & PropsLocale<'conversation'>
 
 /** Owner currency of the details panel's Tool output renderer. */
+/** Owner currency of the whole-panel deliverable preview: the file to render. */
+export interface FilePreviewOwnerProps {
+  /** Workspace-relative path (deliverables/… or uploads/…). */
+  path: string
+}
+
 export interface DetailsToolOwnerProps {
   /** Frozen selected call slice. */
   block: ToolCallBlock
@@ -771,6 +787,8 @@ export interface ChatViewInjected {
    * hand the path off (the chat view shows that reason and a retry).
    */
   openFile: (path: string) => Promise<void>
+  /** Open a workspace file in the details panel's preview mode (pane, not modal). */
+  openFilePreview: (path: string) => void
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
@@ -821,7 +839,7 @@ export interface DetailsInjected {
 }
 
 /** Full details-slot props: selection store, Tool output seat, injected close callback, and locale. */
-export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool' | 'conversation.details.toolview'>
+export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool' | 'conversation.details.toolview' | 'conversation.details.fileview'>
   & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */

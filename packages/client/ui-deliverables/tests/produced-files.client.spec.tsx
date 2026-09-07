@@ -75,8 +75,9 @@ function tailOwner(
   seq: number,
   openFile: (path: string) => void = () => {},
   turn = 1,
+  openFilePreview: (path: string) => void = () => {},
 ): TurnTailOwnerProps {
-  return { seq, openFile, turn: turnLocation(turn, data), sessionId: 'sess-test' as never }
+  return { seq, openFile, openFilePreview, turn: turnLocation(turn, data), sessionId: 'sess-test' as never }
 }
 
 interface TimelineSnapshot {
@@ -384,6 +385,7 @@ describe('ProducedFiles row', () => {
   it('keeps one measured line, updates on resize, and opens a file or the workspace folder', () => {
     const paths = ['deep/a.html', 'b.css', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts'].map((path, i) => ({ seq: i + 1, path, tool: 'write' }))
     const openFile = vi.fn<(path: string) => void>()
+    const openFilePreview = vi.fn<(path: string) => void>()
     let available = 226
     let resize: ResizeObserverCallback | undefined
     const disconnect = vi.fn()
@@ -412,7 +414,7 @@ describe('ProducedFiles row', () => {
       })
 
     const view = render(
-      <ProducedFiles matched={paths} openFile={openFile} {...capability(true)} t={t} />,
+      <ProducedFiles matched={paths} openFile={openFile} openFilePreview={openFilePreview} {...capability(true)} t={t} />,
     )
     expect(view.getByText('写入的文件')).toBeTruthy()
     const row = view.container.querySelector('[data-produced-files-row]')
@@ -446,7 +448,7 @@ describe('ProducedFiles row', () => {
     // shrinks; the replacement observer must skip those stale slots.
     observeNode.mockClear()
     view.rerender(
-      <ProducedFiles matched={paths.slice(0, 1)} openFile={openFile} {...capability(true)} t={t} />,
+      <ProducedFiles matched={paths.slice(0, 1)} openFile={openFile} openFilePreview={openFilePreview} {...capability(true)} t={t} />,
     )
     expect(within(row).getAllByRole('button')).toHaveLength(1)
     expect(observeNode).toHaveBeenCalledTimes(6)
@@ -458,13 +460,14 @@ describe('ProducedFiles row', () => {
 
   it('keeps the folder action absent without overflow or a local native opener', () => {
     const openFile = vi.fn<(path: string) => void>()
+    const openFilePreview = vi.fn<(path: string) => void>()
     const view = render(
-      <ProducedFiles matched={[{ seq: 1, path: 'a.md', tool: 'write' }]} openFile={openFile} {...capability(true)} t={t} />,
+      <ProducedFiles matched={[{ seq: 1, path: 'a.md', tool: 'write' }]} openFile={openFile} openFilePreview={openFilePreview} {...capability(true)} t={t} />,
     )
     const overflowing = ['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md'].map((path, i) => ({ seq: i + 1, path, tool: 'write' }))
     expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
     for (const unavailable of [capability(false), capability(true, false), capability(undefined)]) {
-      view.rerender(<ProducedFiles matched={overflowing} openFile={openFile} {...unavailable} t={t} />)
+      view.rerender(<ProducedFiles matched={overflowing} openFile={openFile} openFilePreview={openFilePreview} {...unavailable} t={t} />)
       expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
     }
   })
@@ -474,6 +477,7 @@ describe('ProducedFiles row', () => {
       <ProducedFiles
         matched={[{ seq: 1, path: 'a.md', tool: 'write' }, { seq: 2, path: 'b.md', tool: 'write' }, { seq: 3, path: 'c.md', tool: 'write' }, { seq: 4, path: 'd.md', tool: 'write' }, { seq: 5, path: 'e.md', tool: 'write' }, { seq: 6, path: 'f.md', tool: 'write' }, { seq: 7, path: 'g.md', tool: 'write' }, { seq: 8, path: 'h.md', tool: 'write' }, { seq: 9, path: 'i.md', tool: 'write' }, { seq: 10, path: 'j.md', tool: 'write' }, { seq: 11, path: 'k.md', tool: 'write' }, { seq: 12, path: 'l.md', tool: 'write' }, { seq: 13, path: 'm.md', tool: 'write' }, { seq: 14, path: 'n.md', tool: 'write' }, { seq: 15, path: 'o.md', tool: 'write' }, { seq: 16, path: 'p.md', tool: 'write' }, { seq: 17, path: 'q.md', tool: 'write' }, { seq: 18, path: 'r.md', tool: 'write' }, { seq: 19, path: 's.md', tool: 'write' }, { seq: 20, path: 't.md', tool: 'write' }, { seq: 21, path: 'u.md', tool: 'write' }, { seq: 22, path: 'v.md', tool: 'write' }, { seq: 23, path: 'w.md', tool: 'write' }, { seq: 24, path: 'x.md', tool: 'write' }, { seq: 25, path: 'y.md', tool: 'write' }]}
         openFile={() => {}}
+        openFilePreview={() => {}}
         {...capability(false)}
         t={makeTranslate(en)}
       />,

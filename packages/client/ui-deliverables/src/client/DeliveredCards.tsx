@@ -10,12 +10,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { HostDescriptionSource } from '@deepseek-ai/dsh-client-connection/client'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
-// Cross-package render reuse (client bundle face): the studio is public API.
-import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
-import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
 
@@ -140,22 +136,12 @@ export interface DeliveredCardsInjected {
 }
 
 /** Props composed by reference from the contract + the injected face. */
-export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'sessionId'> & {
+export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'openFilePreview' | 'sessionId'> & {
   matched: readonly string[]
   isLoopback: boolean
   useHostDescription: (selector: (value: { canOpenPath?: boolean } | undefined) => boolean) => boolean
   connection: ConnectionHandle
   t: TranslateNS<'deliverables'>
-}
-
-/** The preview payload served by `artifacts.preview` (narrowed client-side). */
-interface ParsedPreview {
-  readonly kind: string
-  readonly pdfPath?: string
-  readonly text?: string
-  readonly language?: string
-  readonly truncated?: boolean
-  readonly notice?: string
 }
 
 /** Trigger a browser download of one artifact through the raw channel. */
@@ -180,113 +166,14 @@ function artifactPath(path: string): string {
   return `deliverables/${basename(trimmed)}`
 }
 
-/** In-chat preview modal: the same pipeline the Artifacts pane renders. */
-function PreviewModal({ path, sessionId, connection, openFile, canOpenPath, t, onClose }: {
-  path: string
-  sessionId: SessionId
-  connection: ConnectionHandle
-  openFile: (path: string) => void
-  canOpenPath: boolean
-  t: TranslateNS<'deliverables'>
-  onClose: () => void
-}) {
-  const [preview, setPreview] = useState<
-    { readonly status: 'loading' } | { readonly status: 'unsupported' }
-    | { readonly status: 'ready'; readonly data: ParsedPreview }
-  >({ status: 'loading' })
-  // PDFs and images render straight from the raw channel (browser-native),
-  // exactly like the Artifacts pane; other kinds ride the preview RPC.
-  const servedPath = artifactPath(path)
-  const mode = isImage(servedPath) ? 'image' : (/\.pdf$/i.test(servedPath) ? 'pdf' : 'rpc')
-  useEffect(() => {
-    if (mode !== 'rpc') return
-    let cancelled = false
-    void (async () => {
-      try {
-        const response = await connection.api.artifacts.preview({ sessionId, path: servedPath })
-        const value = response.result.ok ? response.result.value : undefined
-        const parsed = value?.preview as ParsedPreview | undefined
-        if (!cancelled) {
-          setPreview(parsed !== undefined && typeof parsed.kind === 'string'
-            ? { status: 'ready', data: parsed }
-            : { status: 'unsupported' })
-        }
-      } catch {
-        if (!cancelled) setPreview({ status: 'unsupported' })
-      }
-    })()
-    return () => { cancelled = true }
-  }, [connection, mode, path, servedPath, sessionId])
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => { window.removeEventListener('keydown', onKey) }
-  }, [onClose])
-  return (
-    <div className={css.scrim} role="presentation" onClick={onClose}>
-      <div className={css.modal} role="dialog" aria-label={basename(path)} onClick={(event) => { event.stopPropagation() }}>
-        <div className={css.modalHead}>
-          <span className={css.modalTitle} title={path}>{basename(path).replace(/\.[^.]+$/, '')}</span>
-          <span className={css.modalKind}>{extensionOf(path)}</span>
-          <div className={css.modalActions}>
-            <a className={css.modalAction} href={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path, download: '1' }).toString()}`}>
-              {t('delivered.download')}
-            </a>
-            {canOpenPath && (
-              <button type="button" className={css.modalAction} onClick={() => { openFile(path) }}>
-                {t('delivered.open')}
-              </button>
-            )}
-            <button type="button" className={css.modalClose} aria-label={t('preview.close')} onClick={onClose}>×</button>
-          </div>
-        </div>
-        <div className={css.modalBody}>
-          {mode === 'image' && <ZoomableImage src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} alt={basename(path)} />}
-          {mode === 'pdf' && <iframe title={basename(path)} src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} className={css.modalFrame} />}
-          {mode === 'rpc' && preview.status === 'loading' && <p className={css.modalNote}>{t('preview.loading')}</p>}
-          {mode === 'rpc' && preview.status === 'unsupported' && <p className={css.modalNote}>{t('preview.unsupported')}</p>}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind === 'pdf' && (
-            <iframe
-              title={basename(path)}
-              src={`/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`}
-              className={css.modalFrame}
-            />
-          )}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind === 'markdown' && (
-            <div className={css.modalFilePreview}>
-              <MarkdownFilePreview text={preview.data.text ?? ''} />
-            </div>
-          )}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind === 'text' && (
-            <div className={css.modalFilePreview}>
-              <CodeFilePreview text={preview.data.text ?? ''} language={preview.data.language} />
-            </div>
-          )}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind !== 'pdf'
-            && preview.data.kind !== 'markdown' && preview.data.kind !== 'text' && (
-            <div className={css.modalStudio}>
-              {preview.data.notice === 'soffice-missing' && (
-                <p className={css.sofficeNotice}>{t('preview.sofficeMissing')}</p>
-              )}
-              <ArtifactStudioBody preview={preview.data as OfficePreviewData} />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 /** The delivered row: label + one card per claimed file. */
 export function DeliveredCards({
-  matched, openFile, sessionId, isLoopback, useHostDescription, connection, t,
+  matched, openFile, openFilePreview, sessionId, isLoopback, useHostDescription, t,
 }: DeliveredCardsProps) {
   const hostCanOpenPath = useHostDescription(description => description?.canOpenPath === true)
   const canOpenPath = isLoopback && hostCanOpenPath
   const [showAll, setShowAll] = useState(false)
-  const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -315,7 +202,7 @@ export function DeliveredCards({
         {visible.map((path) => {
           const kind = kindOf(path)
           const mainAction = previewable(kind) || isImage(path)
-            ? (): void => { setPreviewPath(path) }
+            ? (): void => { openFilePreview(artifactPath(path)) }
             : (): void => { openFile(path) }
           const mainLabel = previewable(kind) || isImage(path) ? t('delivered.preview') : t('delivered.open')
           return (
@@ -394,17 +281,6 @@ export function DeliveredCards({
         <button type="button" className={css.showFolder} onClick={() => { setShowAll(true) }}>
           {t('produced.more', { count: hidden })}
         </button>
-      )}
-      {previewPath !== null && (
-        <PreviewModal
-          path={previewPath}
-          sessionId={sessionId}
-          connection={connection}
-          openFile={openFile}
-          canOpenPath={canOpenPath}
-          t={t}
-          onClose={() => { setPreviewPath(null) }}
-        />
       )}
     </div>
   )

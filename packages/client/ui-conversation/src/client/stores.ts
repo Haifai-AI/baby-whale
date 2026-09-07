@@ -13,6 +13,8 @@ type ChatActions = {
   setDraft: (draft: ChatStoreState, text: string) => void
   setView: (draft: ChatStoreState, view: string) => void
   setInspect: (draft: ChatStoreState, target: { callId: CallId } | null) => void
+  openFilePreview: (draft: ChatStoreState, path: string) => void
+  closeFilePreview: (draft: ChatStoreState) => void
 }
 
 /**
@@ -24,7 +26,7 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
     // Anchored to the contract shape: consumers read the store through
     // PropsStore<ChatStore>'s SnapshotSelectorHook<ChatStoreState>, so init
     // and the contract cannot drift.
-    init: (): ChatStoreState => ({ selection: null, draft: '', view: null, inspect: null }),
+    init: (): ChatStoreState => ({ selection: null, draft: '', view: null, inspect: null, filePreview: null }),
     persist: 'dsh.conversation.chat',
     actions: {
       select: (d, target: SelectionTarget | null) => { d.selection = target },
@@ -40,6 +42,8 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
       setDraft: (d, text: string) => { d.draft = text },
       setView: (d, view: string) => { d.view = view },
       setInspect: (d, target: { callId: CallId } | null) => { d.inspect = target },
+      openFilePreview: (d, path: string) => { d.filePreview = path },
+      closeFilePreview: (d) => { d.filePreview = null },
     },
   })
 }

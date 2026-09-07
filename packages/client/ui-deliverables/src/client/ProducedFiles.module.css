@@ -477,3 +477,38 @@
   font-size: 12px;
   line-height: 18px;
 }
+
+/* Whole-panel file preview (details panel preview mode). */
+.filePreviewPane {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.filePreviewFrame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.filePreviewScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.filePreviewStudio {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.filePreviewNote {
+  margin: auto;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}

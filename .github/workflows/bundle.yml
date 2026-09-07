@@ -52,21 +52,44 @@ jobs:
           cache: pnpm
 
       - name: Windows node_modules layout (Windows only)
-        # Both properties decided BEFORE the first install, so junctions are
-        # never laid down in the first place:
-        # - hoisted: flat real-file node_modules (the default isolated layout
-        #   links through node_modules/.pnpm junctions, which cannot survive
-        #   zip -> extract on user machines).
-        # - inject-workspace-packages: workspace deps materialize as real
+        # pnpm 11 reads its settings from pnpm-workspace.yaml, NOT .npmrc —
+        # attempts 20/21 appended node-linker/inject-workspace-packages to
+        # .npmrc and pnpm silently ignored both (both runs left behind the
+        # identical 5,771 junctions of the isolated layout). These keys must
+        # land BEFORE the first install, so junctions are never laid down:
+        # - nodeLinker: hoisted -> flat real-file node_modules (the default
+        #   isolated layout links through node_modules/.pnpm junctions,
+        #   which cannot survive zip -> extract on user machines).
+        # - injectWorkspacePackages: workspace deps materialize as real
         #   copies instead of junctions into the workspace tree.
         if: runner.os == 'Windows'
         run: |
-          printf 'node-linker=hoisted\n' >> .npmrc
-          printf 'inject-workspace-packages=true\n' >> .npmrc
+          printf '\nnodeLinker: hoisted\ninjectWorkspacePackages: true\n' >> pnpm-workspace.yaml
+          tail -3 pnpm-workspace.yaml
 
       - name: Install dependencies
         timeout-minutes: 30
         run: pnpm install --frozen-lockfile
+
+      - name: Verify node_modules layout (Windows only)
+        # Fail in minutes, not after a 45-minute assemble grind: if the
+        # pnpm-workspace.yaml settings above were ignored, the isolated
+        # linker leaves ~5,800 junctions behind. Hoisted + injected should
+        # leave near zero; a few hundred workspace links are tolerable and
+        # the assemble pass dereferences whatever remains.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nm = Get-ChildItem -Path . -Recurse -Depth 3 -Directory -Filter node_modules -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\(\.git|dist)(\\|$)' }
+          $j = @($nm | ForEach-Object {
+            Get-ChildItem $_.FullName -Recurse -Directory -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue
+          }).Count
+          Write-Host "junction count after install: $j"
+          if ($j -gt 1500) {
+            Write-Host "::error::pnpm layout settings did not apply — isolated linker still active ($j junctions)"
+            exit 1
+          }
 
       - name: Build host, client, and web bundles
         run: |

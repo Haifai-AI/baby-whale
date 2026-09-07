@@ -133,19 +133,20 @@ try {
   # is listed exactly once per link.
   $failures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
   $pairs | ForEach-Object -Parallel {
+    $failBag = $using:failures
     $pair = $_
     $destParent = Split-Path $pair.dest -Parent
     if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
     if (Test-Path $pair.dest) { Remove-Item -Recurse -Force $pair.dest }
     robocopy $pair.src $pair.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { $using:failures.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)"); return }
+    if ($LASTEXITCODE -ge 8) { $failBag.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)"); return }
     $subLinks = Get-ChildItem $pair.src -Recurse -Directory -Force `
       -Attributes ReparsePoint -ErrorAction SilentlyContinue
     foreach ($sub in $subLinks) {
       $subRel = $sub.FullName.Substring($pair.src.Length).TrimStart('\')
       $subDest = Join-Path $pair.dest $subRel
       robocopy $sub.FullName $subDest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-      if ($LASTEXITCODE -ge 8) { $using:failures.Add("nested dereference of $($sub.FullName) into $subDest (robocopy $LASTEXITCODE)") }
+      if ($LASTEXITCODE -ge 8) { $failBag.Add("nested dereference of $($sub.FullName) into $subDest (robocopy $LASTEXITCODE)") }
     }
   } -ThrottleLimit 12
   if ($failures.Count -gt 0) {

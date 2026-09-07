@@ -79,45 +79,12 @@ try {
     $pkgMap += @{ src = $pkgFile.Directory.FullName; dest = (Join-Path $STAGE "baby-whale\node_modules\$name") }
   }
   if ($pkgMap.Count -eq 0) { throw "no @deepseek-ai/* workspace packages were discovered" }
-  foreach ($pkg in $pkgMap) {
-    if (Test-Path (Join-Path $pkg.dest 'package.json')) { continue }
-    robocopy $pkg.src $pkg.dest /E /XJ /NFL /NDL /NJH /NJS /NP `
-      /XD tests test __tests__ docs examples | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "materialize $($pkg.dest) failed (robocopy $LASTEXITCODE)" }
-    $global:LASTEXITCODE = 0
-  }
-  Write-Host ("    {0} packages at the root scope" -f $pkgMap.Count)
-
-  Write-Host "==> dereferencing workspace links"
-  # Junctions live at the root scope, per-package (apps/cli/node_modules/...),
-  # and inside each package's own node_modules — robocopy /XJ skipped every
-  # one of them. Enumerate all reparse points (PS7 -Recurse does NOT descend
-  # into junctions, so this cannot cycle), then copy THROUGH each:
-  #   1. into its in-place stage path, and
-  #   2. into EVERY root-scope package copy whose source contains the junction
-  #      (longest-prefix owner wins), so those copies resolve their own nested
-  #      deps exactly like the real tree does.
-  # PowerShell's .Target reports mangled paths for pnpm junctions, so it is
-  # never read. /XJ in the per-link copy keeps nested links from recursing;
-  # they are loop items themselves.
-  $linkDirs = @(
-    # The root node_modules tree recursively — hoisted layouts nest per-package
-    # node_modules (exceljs/node_modules/jszip) at any depth. PS7 -Recurse
-    # does not descend into junctions, so this cannot cycle.
-    Get-ChildItem "$root\node_modules" -Recurse -Directory -Force `
-      -Attributes ReparsePoint -ErrorAction SilentlyContinue
-    Get-ChildItem -Path $scanRoots -Recurse -Directory -Force `
-      -Attributes ReparsePoint -ErrorAction SilentlyContinue
-  )
-  # Distinct source paths only.
-  $links = $linkDirs | ForEach-Object { $_.FullName } | Sort-Object -Unique
-  if ($links.Count -eq 0) { throw "no workspace links found — was the install hoisted?" }
-  $owners = $pkgMap | ForEach-Object { $_.src } | Sort-Object { $_.Length } -Descending
-  Write-Host ("    {0} links to dereference" -f $links.Count)
-  # Plan every (link -> dest) pair first, then copy in parallel: thousands of
-  # junctions at one robocopy spawn each exceed the step budget serially, and
-  # the pairs are fully independent (distinct sources and destinations).
+  # Plan every copy as an independent (real source -> stage dest) pair:
+  #   - each @deepseek-ai/* package -> its root-scope copy, and
+  #   - each junction -> its in-place path and every owning root-scope copy.
   $pairs = [System.Collections.Generic.List[object]]::new()
+  foreach ($pkg in $pkgMap) { $pairs.Add(@{ src = $pkg.src; dest = $pkg.dest }) }
+  $owners = $pkgMap | ForEach-Object { $_.src } | Sort-Object { $_.Length } -Descending
   $rootLen = $root.Length
   foreach ($link in $links) {
     $stagePath = $link.Substring($rootLen).TrimStart('\', '/')
@@ -130,32 +97,39 @@ try {
     }
     foreach ($d in $dests) { $pairs.Add(@{ src = $link; dest = $d }) }
   }
-  Write-Host ("    {0} copies to make" -f $pairs.Count)
-  # The junction target's OWN internal junctions must exist inside every copy
-  # too — a copy of session-title without its nested zod fails exactly like a
-  # missing package. PS7 enumeration does not descend into junctions, so each
-  # is listed exactly once per link.
+  Write-Host ("    {0} real-tree copies to make" -f $pairs.Count)
+
+  # Copy each pair as a FULLY REAL tree: descend directories, and when a
+  # junction is met, recurse THROUGH it (cycle-guarded per pair) so a copy
+  # carries its own nested dependencies to any depth — the transitive chains
+  # (plugin -> llm variant -> base package -> zod) resolve inside the copy
+  # exactly as symlink resolution would in the source tree. Merging into an
+  # existing destination is safe: identical content from a prior pair.
   $failures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
   $pairs | ForEach-Object -Parallel {
     $failBag = $using:failures
     $pair = $_
-    $destParent = Split-Path $pair.dest -Parent
-    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
-    if (Test-Path $pair.dest) { Remove-Item -Recurse -Force $pair.dest }
-    robocopy $pair.src $pair.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { $failBag.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)"); return }
-    $subLinks = Get-ChildItem $pair.src -Recurse -Directory -Force `
-      -Attributes ReparsePoint -ErrorAction SilentlyContinue
-    foreach ($sub in $subLinks) {
-      $subRel = $sub.FullName.Substring($pair.src.Length).TrimStart('\')
-      $subDest = Join-Path $pair.dest $subRel
-      robocopy $sub.FullName $subDest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-      if ($LASTEXITCODE -ge 8) { $failBag.Add("nested dereference of $($sub.FullName) into $subDest (robocopy $LASTEXITCODE)") }
+    function Copy-RealTree([string]$src, [string]$dest, $seen) {
+      New-Item -ItemType Directory -Force -Path $dest | Out-Null
+      foreach ($item in (Get-ChildItem -LiteralPath $src -Force -ErrorAction SilentlyContinue)) {
+        $to = Join-Path $dest $item.Name
+        if ($item.PSIsContainer) {
+          if ($item.LinkType) { if (-not $seen.Add($item.FullName)) { continue } }
+          Copy-RealTree $item.FullName $to $seen
+        } else {
+          Copy-Item -LiteralPath $item.FullName -Destination $to -Force
+        }
+      }
+    }
+    try {
+      Copy-RealTree $pair.src $pair.dest (New-Object 'System.Collections.Generic.HashSet[string]')
+    } catch {
+      $failBag.Add("copy $($pair.src) -> $($pair.dest): $($_.Exception.Message)")
     }
   } -ThrottleLimit 12
   if ($failures.Count -gt 0) {
     $failures | Select-Object -First 10 | ForEach-Object { Write-Host "    FAILED: $_" }
-    throw "dereference failures: $($failures.Count)"
+    throw "real-tree copy failures: $($failures.Count)"
   }
 
   if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {

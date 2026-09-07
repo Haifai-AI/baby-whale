@@ -97,10 +97,11 @@ try {
   # never read. /XJ in the per-link copy keeps nested links from recursing;
   # they are loop items themselves.
   $linkDirs = @(
-    Get-ChildItem "$root\node_modules" -Directory -Force -ErrorAction SilentlyContinue |
-      Where-Object LinkType
-    Get-ChildItem "$root\node_modules\@deepseek-ai" -Directory -Force -ErrorAction SilentlyContinue |
-      Where-Object LinkType
+    # The root node_modules tree recursively — hoisted layouts nest per-package
+    # node_modules (exceljs/node_modules/jszip) at any depth. PS7 -Recurse
+    # does not descend into junctions, so this cannot cycle.
+    Get-ChildItem "$root\node_modules" -Recurse -Directory -Force `
+      -Attributes ReparsePoint -ErrorAction SilentlyContinue
     Get-ChildItem -Path $scanRoots -Recurse -Directory -Force `
       -Attributes ReparsePoint -ErrorAction SilentlyContinue
   )

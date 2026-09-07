@@ -73,6 +73,16 @@ jobs:
           RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: ./scripts/make-bundle.sh
 
+      - name: Re-inject workspace packages (Windows only)
+        # pnpm injects workspace dependencies as REAL copies of the package
+        # dirs — resolution-correct by construction, no junctions survive.
+        # Running the install again AFTER the build means the injected copies
+        # carry the freshly built lib/dist output.
+        if: runner.os == 'Windows'
+        run: |
+          printf 'inject-workspace-packages=true\n' >> .npmrc
+          pnpm install --frozen-lockfile
+
       - name: Assemble portable bundle (Windows)
         timeout-minutes: 100
         if: runner.os == 'Windows'

@@ -58,78 +58,43 @@ try {
     throw "main copy lost apps\cli — robocopy exclusion or path issue (stage root: $STAGE)"
   }
 
-  Write-Host "==> materializing @deepseek-ai/* packages at the bundle root scope"
-  # ESM resolves imports through the importer's REAL path. On POSIX the app's
-  # node_modules entries are symlinks, so imports resolve from packages/*,
-  # where each package has its own dep links. Here the links become plain
-  # copies, so resolution must not depend on them: every @deepseek-ai/*
-  # package is materialized (real files, /XJ) in the bundle-root scope, so
-  # the node walk-up from ANY copy always reaches every workspace package.
-  # Every pnpm-workspace root that can hold a @deepseek-ai/* package
-  # (vendor holds the cordis ecosystem: cosmokit, schemastery, ...).
+  Write-Host "==> dereferencing leftover junctions"
+  # With inject-workspace-packages (the CI step before this), pnpm itself
+  # materializes every workspace dependency as a complete real copy, so the
+  # tree is nearly junction-free. Whatever junctions remain (registry-side
+  # nesting), materialize IN PLACE — same relative location, same content —
+  # which preserves resolution and versions exactly. Parallel: each pair is
+  # independent. PS7 -Recurse does not descend into junctions, so the scan
+  # cannot cycle; .Target is never read (pnpm junction targets report
+  # mangled paths through PowerShell).
   $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples') |
     ForEach-Object { Join-Path $root $_ } |
     Where-Object { Test-Path $_ }
-  $pkgFiles = Get-ChildItem -Path $scanRoots `
-    -Recurse -Depth 4 -Filter package.json -ErrorAction SilentlyContinue
-  $pkgMap = @()   # @{ src = package dir; dest = root-scope copy in the stage }
-  foreach ($pkgFile in $pkgFiles) {
-    $name = (Get-Content $pkgFile.FullName -Raw | ConvertFrom-Json).name
-    if (-not $name -or -not $name.StartsWith('@deepseek-ai/')) { continue }
-    $pkgMap += @{ src = $pkgFile.Directory.FullName; dest = (Join-Path $STAGE "baby-whale\node_modules\$name") }
-  }
-  if ($pkgMap.Count -eq 0) { throw "no @deepseek-ai/* workspace packages were discovered" }
-  # Plan every copy as an independent (real source -> stage dest) pair:
-  #   - each @deepseek-ai/* package -> its root-scope copy, and
-  #   - each junction -> its in-place path and every owning root-scope copy.
+  $links = @(
+    Get-ChildItem "$root\node_modules" -Recurse -Directory -Force `
+      -Attributes ReparsePoint -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $scanRoots -Recurse -Directory -Force `
+      -Attributes ReparsePoint -ErrorAction SilentlyContinue
+  ) | ForEach-Object { $_.FullName } | Sort-Object -Unique
+  Write-Host ("    {0} leftover junctions" -f $links.Count)
   $pairs = [System.Collections.Generic.List[object]]::new()
-  foreach ($pkg in $pkgMap) { $pairs.Add(@{ src = $pkg.src; dest = $pkg.dest }) }
-  $owners = $pkgMap | ForEach-Object { $_.src } | Sort-Object { $_.Length } -Descending
   $rootLen = $root.Length
   foreach ($link in $links) {
     $stagePath = $link.Substring($rootLen).TrimStart('\', '/')
-    $dests = @((Join-Path $STAGE "baby-whale\$stagePath"))
-    foreach ($owner in $owners) {
-      if (-not $link.StartsWith($owner + '\', 'OrdinalIgnoreCase')) { continue }
-      $relInPkg = $link.Substring($owner.Length).TrimStart('\')
-      $ownerPkg = $pkgMap | Where-Object { $_.src -eq $owner } | Select-Object -First 1
-      $dests += Join-Path $ownerPkg.dest $relInPkg
-    }
-    foreach ($d in $dests) { $pairs.Add(@{ src = $link; dest = $d }) }
+    $pairs.Add(@{ src = $link; dest = (Join-Path $STAGE "baby-whale\$stagePath") })
   }
-  Write-Host ("    {0} real-tree copies to make" -f $pairs.Count)
-
-  # Copy each pair as a FULLY REAL tree: descend directories, and when a
-  # junction is met, recurse THROUGH it (cycle-guarded per pair) so a copy
-  # carries its own nested dependencies to any depth — the transitive chains
-  # (plugin -> llm variant -> base package -> zod) resolve inside the copy
-  # exactly as symlink resolution would in the source tree. Merging into an
-  # existing destination is safe: identical content from a prior pair.
   $failures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
   $pairs | ForEach-Object -Parallel {
     $failBag = $using:failures
     $pair = $_
-    function Copy-RealTree([string]$src, [string]$dest, $seen) {
-      New-Item -ItemType Directory -Force -Path $dest | Out-Null
-      foreach ($item in (Get-ChildItem -LiteralPath $src -Force -ErrorAction SilentlyContinue)) {
-        $to = Join-Path $dest $item.Name
-        if ($item.PSIsContainer) {
-          if ($item.LinkType) { if (-not $seen.Add($item.FullName)) { continue } }
-          Copy-RealTree $item.FullName $to $seen
-        } else {
-          Copy-Item -LiteralPath $item.FullName -Destination $to -Force
-        }
-      }
-    }
-    try {
-      Copy-RealTree $pair.src $pair.dest (New-Object 'System.Collections.Generic.HashSet[string]')
-    } catch {
-      $failBag.Add("copy $($pair.src) -> $($pair.dest): $($_.Exception.Message)")
-    }
+    $destParent = Split-Path $pair.dest -Parent
+    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
+    robocopy $pair.src $pair.dest /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { $failBag.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)") }
   } -ThrottleLimit 12
   if ($failures.Count -gt 0) {
     $failures | Select-Object -First 10 | ForEach-Object { Write-Host "    FAILED: $_" }
-    throw "real-tree copy failures: $($failures.Count)"
+    throw "dereference failures: $($failures.Count)"
   }
 
   if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {

@@ -20,7 +20,7 @@ import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
 
 /** Kind bucket from extension, for the badge glyph. */
-type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'other'
+type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'md' | 'text' | 'other'
 
 /** Human kind label + extension for the card subtitle ("Spreadsheet · XLSX"). */
 const KIND_META: Record<Kind, { label: string }> = {
@@ -30,6 +30,8 @@ const KIND_META: Record<Kind, { label: string }> = {
   csv: { label: 'Spreadsheet' },
   pdf: { label: 'PDF' },
   py: { label: 'Script' },
+  md: { label: 'Markdown' },
+  text: { label: 'Code' },
   other: { label: 'File' },
 }
 
@@ -98,6 +100,8 @@ function kindOf(path: string): Kind {
   if (ext === '.csv' || ext === '.tsv') return 'csv'
   if (ext === '.pdf') return 'pdf'
   if (ext === '.py') return 'py'
+  if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'md'
+  if (TEXT_PREVIEW_KINDS.test(ext)) return 'text'
   return 'other'
 }
 
@@ -105,9 +109,22 @@ function isImage(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(path)
 }
 
+/** Extensions that preview as text/code (mirrors the server's textPreviewKind). */
+const TEXT_PREVIEW_EXTENSIONS = [
+  'txt', 'log', 'json', 'jsonc', 'json5', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env',
+  'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs',
+  'py', 'pyw', 'rb', 'go', 'rs', 'java', 'kt', 'kts', 'swift', 'dart', 'scala', 'clj',
+  'c', 'h', 'cpp', 'hpp', 'cc', 'hh', 'cs', 'php', 'lua', 'pl', 'ex', 'exs', 'erl',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'psm1', 'bat', 'cmd',
+  'html', 'htm', 'xml', 'css', 'scss', 'sass', 'less', 'vue', 'svelte', 'astro',
+  'sql', 'graphql', 'gql', 'prisma', 'proto', 'tf', 'hcl', 'r', 'jl', 'zig', 'nim',
+]
+const TEXT_PREVIEW_KINDS = new RegExp(`\\.(${TEXT_PREVIEW_EXTENSIONS.join('|')})$`, 'i')
+
 /** Kinds the preview pipeline can render. */
 function previewable(kind: Kind): boolean {
   return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv' || kind === 'pdf'
+    || kind === 'md' || kind === 'text' || kind === 'py'
 }
 
 /** Registration-side capability facts (mirrors ProducedFilesInjected). */

@@ -19,7 +19,7 @@ describe('clampWidth', () => {
 describe('computeColumns', () => {
   it('step 1: everything fits at preferred widths', () => {
     const cols = computeColumns(1920, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT))
-    expect(cols).toEqual({ sidebar: 280, center: 1920 - 280 - 360, details: 360 })
+    expect(cols).toEqual({ sidebar: 280, center: 1920 - 280 - DETAILS_DEFAULT, details: DETAILS_DEFAULT })
   })
 
   it('closed sidebar keeps its compact rail while closed details contribute zero width', () => {
@@ -35,9 +35,9 @@ describe('computeColumns', () => {
   })
 
   it('step 2: details shrinks first, center pinned at min', () => {
-    // 280 + 360 + 640 = 1280 > 1250; details concedes to 1250-280-640 = 330.
+    // 280 + 460 + 560 = 1300 > 1250; details concedes to 1250-280-560 = 410.
     const cols = computeColumns(1250, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT))
-    expect(cols).toEqual({ sidebar: 280, center: CENTER_MIN, details: 330 })
+    expect(cols).toEqual({ sidebar: 280, center: CENTER_MIN, details: 1250 - SIDEBAR_DEFAULT - CENTER_MIN })
   })
 
   it('boundary: exactly at the step-1/step-2 seam', () => {
@@ -48,9 +48,28 @@ describe('computeColumns', () => {
   })
 
   it('step 3: details auto-closes when its min still starves center — sidebar holds its preference', () => {
-    // 280 + 300 + 640 = 1220 > 1210 → details 0; sidebar untouched: center = 1210-280 = 930.
-    const cols = computeColumns(1210, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT))
-    expect(cols).toEqual({ sidebar: 280, center: 930, details: 0 })
+    // 280 + 300 + 560 = 1140 > 1130 → details 0; sidebar untouched: center = 1130-280 = 850.
+    const viewport = SIDEBAR_DEFAULT + DETAILS_MIN + CENTER_MIN - 10
+    const cols = computeColumns(viewport, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT))
+    expect(cols).toEqual({ sidebar: 280, center: viewport - SIDEBAR_DEFAULT, details: 0 })
+  })
+
+  it('expanded: the file preview takes everything above the expanded center floor', () => {
+    const cols = computeColumns(1280, open(SIDEBAR_DEFAULT), open(DETAILS_DEFAULT), true)
+    expect(cols).toEqual({ sidebar: 280, center: 380, details: 1280 - 280 - 380 })
+  })
+
+  it('expanded narrow viewport: center concedes before details overflows the frame', () => {
+    // 264 + 380 + 300 = 944 > 768 → center concedes to 768-264-300 = 204.
+    const cols = computeColumns(768, open(264), open(DETAILS_DEFAULT), true)
+    expect(cols).toEqual({ sidebar: 264, center: 204, details: DETAILS_MIN })
+    const tiny = computeColumns(500, open(264), open(DETAILS_DEFAULT), true)
+    expect(tiny).toEqual({ sidebar: 264, center: 0, details: 236 })
+  })
+
+  it('expanded is a no-op while the panel is closed', () => {
+    expect(computeColumns(1280, open(SIDEBAR_DEFAULT), closed(DETAILS_DEFAULT), true))
+      .toEqual({ sidebar: SIDEBAR_DEFAULT, center: 1280 - SIDEBAR_DEFAULT, details: 0 })
   })
 
   it('the sidebar never concedes: center absorbs the deficit below CENTER_MIN', () => {

@@ -74,6 +74,14 @@ const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
   ['sql', () => import('@shikijs/langs/sql')],
   ['xml', () => import('@shikijs/langs/xml')],
   ['lua', () => import('@shikijs/langs/lua')],
+  ['dart', () => import('@shikijs/langs/dart')],
+  ['perl', () => import('@shikijs/langs/perl')],
+  ['elixir', () => import('@shikijs/langs/elixir')],
+  ['powershell', () => import('@shikijs/langs/powershell')],
+  ['vue', () => import('@shikijs/langs/vue')],
+  ['svelte', () => import('@shikijs/langs/svelte')],
+  ['graphql', () => import('@shikijs/langs/graphql')],
+  ['r', () => import('@shikijs/langs/r')],
 ])
 
 /**

@@ -5,7 +5,7 @@
 // Replaces the old in-chat modal: the chat stays live beside the rendered
 // file, which is also what makes future file watching a natural fit here.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -46,26 +46,30 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
   >({ status: 'loading' })
   const mode = isImage(path) ? 'image' : (/\.pdf$/i.test(path) ? 'pdf' : 'rpc')
   const rawQuery = new URLSearchParams({ session: sessionId, path })
-  // Race guard across rapid pane retargets (cards spam-open the same seat).
-  const cancelled = useRef(false)
+  // Race guard across rapid pane retargets: the flag is PER EFFECT RUN (a
+  // closure local, not a shared ref) — cleanup(A) must not cancel effect(B),
+  // and A's late response must never render under B's path. The state reset
+  // below also keeps the previous file's content from lingering while the
+  // new one loads.
   useEffect(() => {
     if (mode !== 'rpc') return
-    cancelled.current = false
+    let cancelled = false
+    setPreview({ status: 'loading' })
     void (async () => {
       try {
         const response = await connection.api.artifacts.preview({ sessionId, path })
         const value = response.result.ok ? response.result.value : undefined
         const parsed = value?.preview as ParsedPreview | undefined
-        if (!cancelled.current) {
+        if (!cancelled) {
           setPreview(parsed !== undefined && typeof parsed.kind === 'string'
             ? { status: 'ready', data: parsed }
             : { status: 'unsupported' })
         }
       } catch {
-        if (!cancelled.current) setPreview({ status: 'unsupported' })
+        if (!cancelled) setPreview({ status: 'unsupported' })
       }
     })()
-    return () => { cancelled.current = true }
+    return () => { cancelled = true }
   }, [connection, mode, path, sessionId])
 
   const rawUrl = `/api/artifacts.raw?${rawQuery.toString()}`

@@ -71,8 +71,11 @@ export function computeColumns(viewport: number, sidebar: number, details: numbe
   // the expanded center floor — the width preference is irrelevant while
   // expanded and restored verbatim on collapse.
   if (expanded && d0 > 0) {
-    const center = Math.min(viewport - s, EXPANDED_CENTER_MIN)
-    return { sidebar: s, center, details: Math.max(DETAILS_MIN, viewport - s - center) }
+    // Center concedes first (down to 0) so details keeps its minimum: the
+    // expanded frame never exceeds the viewport.
+    const available = viewport - s
+    const center = Math.max(0, Math.min(EXPANDED_CENTER_MIN, available - DETAILS_MIN))
+    return { sidebar: s, center, details: Math.max(0, available - center) }
   }
 
   // Step 1: everything fits at preferred widths.

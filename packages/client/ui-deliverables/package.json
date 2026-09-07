@@ -69,8 +69,7 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@types/react": "~18.3.1",
     "@deepseek-ai/cordis": "workspace:^",
-    "react": "^18.2.0",
-    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^"
+    "react": "^18.2.0"
   },
   "files": [
     "lib/index.js",
@@ -79,6 +78,7 @@
     "lib/types/**/*.d.ts"
   ],
   "dependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-whale-artifact": "workspace:^"
   }
 }

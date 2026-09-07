@@ -836,6 +836,8 @@ export type MessageImagesProps = PropsRuntime<'conversation.message.images'> & P
 export interface DetailsInjected {
   /** Close the details panel (layout geometry stays with ctx.layout). */
   closeDetails: () => void
+  /** Collapse the expanded geometry mode (layout geometry stays with ctx.layout). */
+  setDetailsExpanded: (on: boolean) => void
 }
 
 /** Expansion owner currency: AppFrame owns the geometry mode, the panel owns the button. */

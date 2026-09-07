@@ -83,7 +83,7 @@ function pinLabel(s: ConversationSnapshot | null, callId: string, toolName: stri
 }
 
 export function DetailsPanel({
-  useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, expanded, toggleExpanded, t,
+  useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, setDetailsExpanded, expanded, toggleExpanded, t,
 }: DetailsPanelProps) {
   const selectPin = actions.select
   const unpin = (callId: NonNullable<SelectionTarget['callId']>): void => { actions.unpin(callId) }
@@ -134,7 +134,7 @@ export function DetailsPanel({
                 <button
                   type="button" className={css.tabClose}
                   aria-label={t('details.close')}
-                  onClick={() => { actions.closeFilePreview() }}
+                  onClick={() => { actions.closeFilePreview(); setDetailsExpanded(false) }}
                 >
                   ×
                 </button>
@@ -152,6 +152,7 @@ export function DetailsPanel({
                     onClick={() => {
                       if (pin.callId === undefined) return
                       actions.closeFilePreview()
+                      setDetailsExpanded(false)
                       const callId2: NonNullable<SelectionTarget['callId']> = pin.callId
                       selectPin({
                         ...(pin.turnSeq !== undefined ? { turnSeq: pin.turnSeq } : {}),

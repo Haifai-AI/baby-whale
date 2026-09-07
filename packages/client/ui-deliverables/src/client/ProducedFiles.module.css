@@ -458,3 +458,22 @@
   max-height: 100%;
   object-fit: contain;
 }
+
+/* Markdown/code file previews share the studio's scroll context; the shared
+   atoms draw their own surfaces. */
+.modalFilePreview {
+  height: 100%;
+  overflow: auto;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* LibreOffice-absent hint above a text-extraction fallback studio. */
+.sofficeNotice {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--dsw-alias-fill-secondary);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}

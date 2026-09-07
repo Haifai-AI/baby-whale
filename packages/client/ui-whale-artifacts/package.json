@@ -82,6 +82,7 @@
     "lib/types/**/*.d.ts"
   ],
   "dependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-whale-artifact": "workspace:^"
   }
 }

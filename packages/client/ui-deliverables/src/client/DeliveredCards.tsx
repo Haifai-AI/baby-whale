@@ -15,6 +15,7 @@ import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 // Cross-package render reuse (client bundle face): the studio is public API.
 import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
+import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
 
@@ -134,6 +135,10 @@ export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'session
 interface ParsedPreview {
   readonly kind: string
   readonly pdfPath?: string
+  readonly text?: string
+  readonly language?: string
+  readonly truncated?: boolean
+  readonly notice?: string
 }
 
 /** Trigger a browser download of one artifact through the raw channel. */
@@ -221,7 +226,7 @@ function PreviewModal({ path, sessionId, connection, openFile, canOpenPath, t, o
           </div>
         </div>
         <div className={css.modalBody}>
-          {mode === 'image' && <img src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} alt={basename(path)} className={css.modalImage} />}
+          {mode === 'image' && <ZoomableImage src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} alt={basename(path)} />}
           {mode === 'pdf' && <iframe title={basename(path)} src={`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: servedPath }).toString()}`} className={css.modalFrame} />}
           {mode === 'rpc' && preview.status === 'loading' && <p className={css.modalNote}>{t('preview.loading')}</p>}
           {mode === 'rpc' && preview.status === 'unsupported' && <p className={css.modalNote}>{t('preview.unsupported')}</p>}
@@ -232,8 +237,22 @@ function PreviewModal({ path, sessionId, connection, openFile, canOpenPath, t, o
               className={css.modalFrame}
             />
           )}
-          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind !== 'pdf' && (
+          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind === 'markdown' && (
+            <div className={css.modalFilePreview}>
+              <MarkdownFilePreview text={preview.data.text ?? ''} />
+            </div>
+          )}
+          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind === 'text' && (
+            <div className={css.modalFilePreview}>
+              <CodeFilePreview text={preview.data.text ?? ''} language={preview.data.language} />
+            </div>
+          )}
+          {mode === 'rpc' && preview.status === 'ready' && preview.data.kind !== 'pdf'
+            && preview.data.kind !== 'markdown' && preview.data.kind !== 'text' && (
             <div className={css.modalStudio}>
+              {preview.data.notice === 'soffice-missing' && (
+                <p className={css.sofficeNotice}>{t('preview.sofficeMissing')}</p>
+              )}
               <ArtifactStudioBody preview={preview.data as OfficePreviewData} />
             </div>
           )}

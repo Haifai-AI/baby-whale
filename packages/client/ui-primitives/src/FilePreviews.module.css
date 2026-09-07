@@ -1,0 +1,90 @@
+/* File preview atoms (FilePreviews.tsx). Tokens mirror ReadBlock/CodeBlock so
+   a code preview, a chat code block, and a read card read as one family. */
+
+.codeFile {
+  padding: 8px 4px;
+  height: 100%;
+  overflow: auto;
+}
+
+.codeFile > * {
+  margin: 0;
+}
+
+.markdownFile {
+  padding: 20px 24px 32px;
+  max-width: 860px;
+  margin: 0 auto;
+  color: var(--dsw-alias-label-primary);
+}
+
+.zoomRoot {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.zoomBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-secondary);
+  background: var(--dsw-alias-markdown-code-block-banner);
+}
+
+.zoomBtn {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.zoomBtn:hover:not(:disabled) {
+  background: var(--dsw-alias-fill-secondary);
+}
+
+.zoomBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.zoomLevel {
+  min-width: 48px;
+  text-align: center;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.zoomFrame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.zoomFit {
+  align-items: center;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.zoomFree {
+  align-items: flex-start;
+  overflow: auto;
+  padding: 16px;
+}
+
+.zoomImg {
+  display: block;
+  border-radius: 4px;
+}

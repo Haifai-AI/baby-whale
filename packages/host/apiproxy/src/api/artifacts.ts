@@ -18,7 +18,7 @@ export interface ArtifactEntry {
   /** Base name for display. */
   readonly name: string
   /** Kind bucket driving the icon and preview mode. */
-  readonly kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'text' | 'other'
+  readonly kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'other'
   /** Stored byte length. */
   readonly size: number
   /** Last-modified instant (epoch ms). */
@@ -41,7 +41,7 @@ export interface ArtifactsApi {
    * cannot parse (the caller falls back to Open-in-app).
    */
   preview(request: RpcRequest<{ sessionId: SessionId; path: string }>):
-    Promise<RpcResponse<{ preview?: PreviewValue; size: number }>>
+  Promise<RpcResponse<{ preview?: PreviewValue; size: number }>>
 
   /**
    * Host-only GET channel: serves ONE converted preview PDF from the

@@ -3224,6 +3224,9 @@ importers:
 
   packages/client/ui-whale-artifacts:
     dependencies:
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../ui-primitives
       '@deepseek-ai/dsh-client-ui-whale-artifact':
         specifier: workspace:^
         version: link:../ui-whale-artifact

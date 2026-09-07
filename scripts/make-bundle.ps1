@@ -112,30 +112,34 @@ try {
   Write-Host ("    {0} links to dereference" -f $links.Count)
   foreach ($link in $links) {
     $stagePath = $link.Substring($root.Length).TrimStart('\', '/')
-    # (1) in-place, (2) into owning root-scope package copies, and
-    # (3) a root top-level backstop under the package's own name — so ANY
-    # import of that name, from any copy at any depth, resolves at the
-    # final walk-up step even when nesting gets deep. First version wins:
-    # the backstop never overwrites an already-materialized package.
-    $dests = @([pscustomobject]@{ path = (Join-Path $STAGE "baby-whale\$stagePath"); skipIfExists = $false })
+    # (1) in-place, (2) into owning root-scope package copies. NO root
+    # backstop: planting a first-wins version at the root top level skews
+    # versions across packages (a wrong minipass breaks class extension).
+    $dests = @((Join-Path $STAGE "baby-whale\$stagePath"))
     foreach ($owner in $owners) {
       if (-not $link.StartsWith($owner + '\', 'OrdinalIgnoreCase')) { continue }
       $relInPkg = $link.Substring($owner.Length).TrimStart('\')
       $ownerPkg = $pkgMap | Where-Object { $_.src -eq $owner } | Select-Object -First 1
-      $dests += [pscustomobject]@{ path = (Join-Path $ownerPkg.dest $relInPkg); skipIfExists = $false }
+      $dests += Join-Path $ownerPkg.dest $relInPkg
     }
-    $nmIndex = $link.LastIndexOf('\node_modules\')
-    if ($nmIndex -ge 0) {
-      $nameRel = $link.Substring($nmIndex + '\node_modules\'.Length)
-      $dests += [pscustomobject]@{ path = (Join-Path $STAGE "baby-whale\node_modules\$nameRel"); skipIfExists = $true }
-    }
+    # The junction target's OWN internal junctions must exist inside every
+    # copy too — a copy of session-title without its nested zod fails exactly
+    # like a missing package. PS7 enumeration does not descend into them, so
+    # each is listed exactly once here.
+    $subLinks = Get-ChildItem $link -Recurse -Directory -Force `
+      -Attributes ReparsePoint -ErrorAction SilentlyContinue
     foreach ($d in $dests) {
-      if ($d.skipIfExists -and (Test-Path (Join-Path $d.path 'package.json'))) { continue }
-      $destParent = Split-Path $d.path -Parent
+      $destParent = Split-Path $d -Parent
       if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
-      if (Test-Path $d.path) { Remove-Item -Recurse -Force $d.path }
-      robocopy $link $d.path /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-      if ($LASTEXITCODE -ge 8) { throw "dereference of $link into $($d.path) failed (robocopy $LASTEXITCODE)" }
+      if (Test-Path $d) { Remove-Item -Recurse -Force $d }
+      robocopy $link $d /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+      if ($LASTEXITCODE -ge 8) { throw "dereference of $link into $d failed (robocopy $LASTEXITCODE)" }
+      foreach ($sub in $subLinks) {
+        $subRel = $sub.FullName.Substring($link.Length).TrimStart('\')
+        $subDest = Join-Path $d $subRel
+        robocopy $sub.FullName $subDest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "nested dereference of $($sub.FullName) into $subDest failed (robocopy $LASTEXITCODE)" }
+      }
       $global:LASTEXITCODE = 0
     }
   }

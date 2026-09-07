@@ -32,9 +32,9 @@ if (-not (Test-Path $cli)) {
 
 # Boot with a throwaway home so the check mirrors a first run. The env var
 # must be set BEFORE Start-Process — the child inherits it at spawn time.
-$home = Join-Path $root 'home'
-New-Item -ItemType Directory -Force -Path $home | Out-Null
-$env:DSH_HOME = $home
+$fakeHome = Join-Path $root 'home'
+New-Item -ItemType Directory -Force -Path $fakeHome | Out-Null
+$env:DSH_HOME = $fakeHome
 $proc = Start-Process -FilePath $node -ArgumentList @($cli, 'web', '--no-open') `
   -WorkingDirectory (Join-Path $stage.FullName 'baby-whale') `
   -WindowStyle Hidden -PassThru

@@ -49,8 +49,12 @@ try {
   # all. Exit codes 0-7 are success.
   $root = (Get-Location).Path
   $stageInner = Join-Path $STAGE 'baby-whale'
+  # /XD node_modules\.pnpm: under the hoisted linker .pnpm holds HARD-LINKED
+  # real files (pnpm's staging area — it exists under hoisted too), so without
+  # this exclusion every external package would ship twice (root + .pnpm).
+  # Runtime resolution never goes through .pnpm in hoisted mode.
   robocopy . $stageInner /E /XJ /NFL /NDL /NJH /NJS /NP /MT:16 `
-    /XD "$root\.git" "$root\.github" "$root\.artifacts" "$root\.dsh-build" "$root\coverage" "$root\tmp" "$root\dist" "$root\scripts\tmp" `
+    /XD "$root\.git" "$root\.github" "$root\.artifacts" "$root\.dsh-build" "$root\coverage" "$root\tmp" "$root\dist" "$root\scripts\tmp" "$root\node_modules\.pnpm" `
     /XF "*.tsbuildinfo" | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
   # robocopy's code sticks to the shell; reset so the next check is meaningful.

@@ -78,24 +78,27 @@ jobs:
 
       - name: Verify node_modules layout (Windows only)
         # Fail in minutes, not after a 45-minute assemble grind. The
-        # discriminator is binary, not a junction-count threshold: the
-        # isolated linker ALWAYS builds node_modules/.pnpm, hoisted NEVER
-        # does. (Counts for calibration: isolated ~5,771 junctions,
-        # hoisted-only ~2,546 — workspace dep edges — hoisted+inject 492;
-        # inject was dropped: injected copies lack src/ and break builds.)
+        # discriminator: junctions DIRECTLY under node_modules. Isolated
+        # links ~1,500+ external packages there through .pnpm; hoisted
+        # leaves real dirs (hardlinks) with junctions only for workspace
+        # packages (~100). (.pnpm exists under BOTH linkers — it is pnpm's
+        # staging area, not an isolated-only marker; that assumption
+        # misfired on attempt 25. Calibration: isolated ~5,771 total
+        # junctions, hoisted-only ~2,546, hoisted+inject 492.)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          if (Test-Path node_modules\.pnpm) {
-            Write-Host "::error::isolated linker active (node_modules\.pnpm exists) — nodeLinker: hoisted did not apply"
+          $rootJ = @(Get-ChildItem node_modules -Directory -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count
+          $rootJ += @(Get-ChildItem node_modules -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSIsContainer -and $_.Name -like '*@*' } |
+            ForEach-Object { Get-ChildItem $_.FullName -Directory -Force -ErrorAction SilentlyContinue } |
+            Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count
+          Write-Host "root-level node_modules junctions: $rootJ (isolated ~1500+, hoisted ~100)"
+          if ($rootJ -gt 400) {
+            Write-Host "::error::isolated linker active — nodeLinker: hoisted did not apply ($rootJ root junctions)"
             exit 1
           }
-          $nm = Get-ChildItem -Path . -Recurse -Depth 3 -Directory -Filter node_modules -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch '\\(\.git|dist)(\\|$)' }
-          $j = @($nm | ForEach-Object {
-            Get-ChildItem $_.FullName -Recurse -Directory -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue
-          }).Count
-          Write-Host "hoisted layout confirmed; junction count after install: $j (workspace links — assemble dereferences them)"
 
       - name: Build host, client, and web bundles
         run: |

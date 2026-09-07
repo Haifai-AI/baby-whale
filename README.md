@@ -1,5 +1,9 @@
 # Baby Whale
 
+
+https://github.com/user-attachments/assets/87803b2a-8f83-47b3-afa1-b43b5d46fad5
+
+
 **Baby Whale** is a local-first knowledge-work coworker. Give it a task in
 the chat; it writes the code that builds the finished file — Excel
 workbooks with live formulas, PowerPoint decks, Word documents, PDFs —

@@ -81,7 +81,8 @@ try {
   if ($pkgMap.Count -eq 0) { throw "no @deepseek-ai/* workspace packages were discovered" }
   foreach ($pkg in $pkgMap) {
     if (Test-Path (Join-Path $pkg.dest 'package.json')) { continue }
-    robocopy $pkg.src $pkg.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy $pkg.src $pkg.dest /E /XJ /NFL /NDL /NJH /NJS /NP `
+      /XD tests test __tests__ docs examples | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "materialize $($pkg.dest) failed (robocopy $LASTEXITCODE)" }
     $global:LASTEXITCODE = 0
   }
@@ -266,7 +267,7 @@ Everything stays on this machine - files, sessions, and the workspace.
   if (Test-Path $OUT) { Remove-Item -Force $OUT }
   # tar.exe (Windows 10+) writes a plain zip via -a; the staged tree is all
   # real files, so no symlink/junction semantics are involved.
-  tar.exe -a -cf $OUT -C $STAGE_ROOT (Split-Path $STAGE -Leaf)
+  tar.exe -a --options "zip:compression-level=1" -cf $OUT -C $STAGE_ROOT (Split-Path $STAGE -Leaf)
   if ($LASTEXITCODE -ne 0) { throw "tar pack failed" }
   Get-Item $OUT | ForEach-Object { Write-Host ("==> bundle ready: {0} ({1:N0} MB)" -f $_.FullName, ($_.Length / 1MB)) }
 } finally {

@@ -74,7 +74,7 @@ jobs:
         run: ./scripts/make-bundle.sh
 
       - name: Assemble portable bundle (Windows)
-        timeout-minutes: 70
+        timeout-minutes: 100
         if: runner.os == 'Windows'
         env:
           RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}

@@ -8,10 +8,11 @@
 # node_modules is real files, not junctions: junctions do not survive
 # zip -> extract on machines without symlink privileges, and pnpm's
 # default isolated layout resolves transitive deps THROUGH junctions.
-# With hoisted, every resolution path is a real directory in the flat
-# node_modules root. Workspace packages stay junctioned into node_modules
-# — robocopy follows those, so the staged copies carry the freshly built
-# lib/dist output.
+# With hoisted, external deps are real files in the flat node_modules
+# root; whatever workspace links remain (link: overrides, dependency
+# cycles pnpm cannot inject) are materialized in place below, layer by
+# layer, never recursing through links — the workspace has cyclic
+# package deps, so following them copies forever.
 #
 # Env: RELEASE_VERSION (optional) — the git tag (v0.1.6 -> 0.1.6); falls
 # back to apps/cli/package.json's version.
@@ -59,42 +60,64 @@ try {
   }
 
   Write-Host "==> dereferencing leftover junctions"
-  # With inject-workspace-packages (the CI step before this), pnpm itself
-  # materializes every workspace dependency as a complete real copy, so the
-  # tree is nearly junction-free. Whatever junctions remain (registry-side
-  # nesting), materialize IN PLACE — same relative location, same content —
-  # which preserves resolution and versions exactly. Parallel: each pair is
-  # independent. PS7 -Recurse does not descend into junctions, so the scan
-  # cannot cycle; .Target is never read (pnpm junction targets report
-  # mangled paths through PowerShell).
-  $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples') |
+  # The main /XJ copy skipped every junction, so the stage has GAPS where
+  # node_modules links lived. Fill them layer by layer, cycle-safe:
+  # scan the SOURCE tree for reparse points (the list is static — the
+  # source never changes), copy each one's target into the same relative
+  # stage path with /XJ (real files only; nested junctions are skipped,
+  # and since they are also on the scan list, they become the next
+  # pass's gaps). Repeat until every source junction has a real stage
+  # counterpart. Cycles converge because each pass turns at least one
+  # link per cycle into real files. PS7 -Recurse does not descend into
+  # junctions, so the scans cannot cycle; .Target is never read (pnpm
+  # junction targets report mangled paths through PowerShell).
+  $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples', 'python') |
     ForEach-Object { Join-Path $root $_ } |
     Where-Object { Test-Path $_ }
-  $links = @(
+  $srcLinks = @(
     Get-ChildItem "$root\node_modules" -Recurse -Directory -Force `
       -Attributes ReparsePoint -ErrorAction SilentlyContinue
     Get-ChildItem -Path $scanRoots -Recurse -Directory -Force `
       -Attributes ReparsePoint -ErrorAction SilentlyContinue
   ) | ForEach-Object { $_.FullName } | Sort-Object -Unique
-  Write-Host ("    {0} leftover junctions" -f $links.Count)
-  $pairs = [System.Collections.Generic.List[object]]::new()
+  Write-Host ("    {0} source junctions to materialize" -f $srcLinks.Count)
   $rootLen = $root.Length
-  foreach ($link in $links) {
-    $stagePath = $link.Substring($rootLen).TrimStart('\', '/')
-    $pairs.Add(@{ src = $link; dest = (Join-Path $STAGE "baby-whale\$stagePath") })
-  }
   $failures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
-  $pairs | ForEach-Object -Parallel {
-    $failBag = $using:failures
-    $pair = $_
-    $destParent = Split-Path $pair.dest -Parent
-    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
-    robocopy $pair.src $pair.dest /E /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { $failBag.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)") }
-  } -ThrottleLimit 12
+  for ($pass = 1; $pass -le 8; $pass++) {
+    # Gaps: source junctions whose stage counterpart does not exist yet.
+    $gaps = @($srcLinks | Where-Object {
+      $rel = $_.Substring($rootLen).TrimStart('\', '/')
+      -not (Test-Path (Join-Path $STAGE "baby-whale\$rel"))
+    })
+    Write-Host ("    pass {0}: {1} junctions left to materialize" -f $pass, $gaps.Count)
+    if ($gaps.Count -eq 0) { break }
+    $pairs = [System.Collections.Generic.List[object]]::new()
+    foreach ($link in $gaps) {
+      $stagePath = $link.Substring($rootLen).TrimStart('\', '/')
+      $pairs.Add(@{ src = $link; dest = (Join-Path $STAGE "baby-whale\$stagePath") })
+    }
+    $pairs | ForEach-Object -Parallel {
+      $failBag = $using:failures
+      $pair = $_
+      $destParent = Split-Path $pair.dest -Parent
+      if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
+      # /XJ is the cycle guard: never recurse through links — the
+      # workspace has cyclic package deps (gateway <-> connection <-> ...).
+      robocopy $pair.src $pair.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+      if ($LASTEXITCODE -ge 8) { $failBag.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)") }
+    } -ThrottleLimit 12
+  }
   if ($failures.Count -gt 0) {
     $failures | Select-Object -First 10 | ForEach-Object { Write-Host "    FAILED: $_" }
     throw "dereference failures: $($failures.Count)"
+  }
+  $stillMissing = @($srcLinks | Where-Object {
+    $rel = $_.Substring($rootLen).TrimStart('\', '/')
+    -not (Test-Path (Join-Path $STAGE "baby-whale\$rel"))
+  })
+  if ($stillMissing.Count -gt 0) {
+    Write-Host "    example unresolved: $($stillMissing[0])"
+    throw "dereference did not converge: $($stillMissing.Count) junctions still missing after 8 passes"
   }
 
   if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {

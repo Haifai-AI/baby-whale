@@ -67,9 +67,20 @@ jobs:
           printf '\nnodeLinker: hoisted\ninjectWorkspacePackages: true\n' >> pnpm-workspace.yaml
           tail -3 pnpm-workspace.yaml
 
-      - name: Install dependencies
+      - name: Install dependencies (macOS/Linux)
+        if: runner.os != 'Windows'
         timeout-minutes: 30
         run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies (Windows)
+        # injectWorkspacePackages is recorded INSIDE the lockfile (settings
+        # block), so turning it on makes --frozen-lockfile refuse to run
+        # (ERR_PNPM_LOCKFILE_CONFIG_MISMATCH). The lockfile update is
+        # CI-local — never committed — and resolution is unchanged: same
+        # specs, same pinned versions.
+        if: runner.os == 'Windows'
+        timeout-minutes: 30
+        run: pnpm install --no-frozen-lockfile
 
       - name: Verify node_modules layout (Windows only)
         # Fail in minutes, not after a 45-minute assemble grind: if the
@@ -114,7 +125,7 @@ jobs:
         # pnpm sees "Already up to date" and never revisits existing copies.
         if: runner.os == 'Windows'
         timeout-minutes: 30
-        run: pnpm install --frozen-lockfile --force
+        run: pnpm install --no-frozen-lockfile --force
 
       - name: Assemble portable bundle (Windows)
         # With the inject-first layout there are ~no junctions to dereference,

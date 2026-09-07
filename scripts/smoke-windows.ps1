@@ -35,21 +35,35 @@ if (-not (Test-Path $cli)) {
 $fakeHome = Join-Path $root 'home'
 New-Item -ItemType Directory -Force -Path $fakeHome | Out-Null
 $env:DSH_HOME = $fakeHome
+# Capture the server's streams: an early exit is a product bug we need to see.
+$outLog = Join-Path $root 'server-out.log'
+$errLog = Join-Path $root 'server-err.log'
 $proc = Start-Process -FilePath $node -ArgumentList @($cli, 'web', '--no-open') `
   -WorkingDirectory (Join-Path $stage.FullName 'baby-whale') `
-  -WindowStyle Hidden -PassThru
+  -WindowStyle Hidden -PassThru `
+  -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
 $up = $false
 try {
   foreach ($i in 1..60) {
     Start-Sleep -Seconds 3
-    if ($proc.HasExited) { throw "server exited early with code $($proc.ExitCode)" }
+    if ($proc.HasExited) {
+      Write-Host "==> server stdout:"
+      Get-Content $outLog -ErrorAction SilentlyContinue | Select-Object -First 40
+      Write-Host "==> server stderr:"
+      Get-Content $errLog -ErrorAction SilentlyContinue | Select-Object -First 40
+      throw "server exited early with code $($proc.ExitCode)"
+    }
     try {
       $response = Invoke-WebRequest -Uri 'http://127.0.0.1:24680/' -UseBasicParsing -TimeoutSec 5
       if ($response.StatusCode -lt 500) { $up = $true; break }
     } catch { Write-Host "  waiting for the server ($i)" }
   }
-  if (-not $up) { throw "server never answered on http://127.0.0.1:24680" }
+  if (-not $up) {
+    Write-Host "==> server stderr (timeout):"
+    Get-Content $errLog -ErrorAction SilentlyContinue | Select-Object -First 40
+    throw "server never answered on http://127.0.0.1:24680"
+  }
   Write-Host "==> smoke test passed: server answered HTTP $($response.StatusCode)"
 } finally {
   if (-not $proc.HasExited) {

@@ -108,6 +108,28 @@ try {
   }
   Write-Host "    entrypoint ok: apps\cli\lib\bin.js"
 
+  Write-Host "==> materializing every workspace package at the bundle root scope"
+  # ESM resolves imports through the importer's REAL path. On POSIX the app's
+  # node_modules entries are symlinks, so imports resolve from packages/*,
+  # where each package has its own dep links. Here the links became plain
+  # copies, so the walk-up must always succeed: every @deepseek-ai/* package
+  # is materialized (real files, /XJ) in the bundle-root scope as well.
+  $pkgFiles = Get-ChildItem -Path (Join-Path $root 'packages'), (Join-Path $root 'apps') `
+    -Recurse -Depth 4 -Filter package.json -ErrorAction SilentlyContinue
+  $materialized = 0
+  foreach ($pkgFile in $pkgFiles) {
+    $name = (Get-Content $pkgFile.FullName -Raw | ConvertFrom-Json).name
+    if (-not $name -or -not $name.StartsWith('@deepseek-ai/')) { continue }
+    $dest = Join-Path $STAGE "baby-whale\node_modules\@deepseek-ai\$($name.Split('/')[1])"
+    if (Test-Path (Join-Path $dest 'package.json')) { continue }
+    robocopy $pkgFile.Directory.FullName $dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "materialize $name failed (robocopy $LASTEXITCODE)" }
+    $global:LASTEXITCODE = 0
+    $materialized++
+  }
+  if ($materialized -eq 0) { throw "no workspace packages were materialized at the root scope" }
+  Write-Host ("    {0} packages at the root scope" -f $materialized)
+
   Write-Host "==> fetching portable Node $NODE_VERSION (win-x64)"
   $nodeDir = Join-Path $STAGE 'node'
   New-Item -ItemType Directory -Force -Path $nodeDir | Out-Null
@@ -134,6 +156,16 @@ try {
   $probe = & (Join-Path $nodeDir 'node.exe') -e "require.resolve('@deepseek-ai/$probePkg/package.json', { paths: [process.argv[1]] }); console.log('resolve ok: @deepseek-ai/$probePkg')" $cliDir
   if ($LASTEXITCODE -ne 0) { throw "staged tree failed module resolution probe" }
   Write-Host $probe
+  # Second probe: a DIFFERENT root-scope package resolved from the same app
+  # directory — exercises exactly the walk-up that failed at first boot
+  # (a workspace dep of a dep, found only via the bundle root scope).
+  $secondPkg = (Get-ChildItem (Join-Path $STAGE 'baby-whale\node_modules\@deepseek-ai') -Directory |
+    Where-Object { $_.Name -ne $probePkg } | Select-Object -First 1).Name
+  if ($secondPkg) {
+    $probe2 = & (Join-Path $nodeDir 'node.exe') -e "require.resolve('@deepseek-ai/$secondPkg/package.json', { paths: [process.argv[1]] }); console.log('resolve ok via root: @deepseek-ai/$secondPkg')" $cliDir
+    if ($LASTEXITCODE -ne 0) { throw "root-scope walk-up resolution probe failed" }
+    Write-Host $probe2
+  }
 
   Write-Host "==> writing launchers + readme"
   $startBat = @'

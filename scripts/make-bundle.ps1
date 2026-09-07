@@ -9,10 +9,11 @@
 # zip -> extract on machines without symlink privileges, and pnpm's
 # default isolated layout resolves transitive deps THROUGH junctions.
 # With hoisted, external deps are real files in the flat node_modules
-# root; whatever workspace links remain (link: overrides, dependency
-# cycles pnpm cannot inject) are materialized in place below, layer by
-# layer, never recursing through links — the workspace has cyclic
-# package deps, so following them copies forever.
+# root; the workspace links (one physical junction per dependency edge)
+# are materialized by scripts/bundle-junction-pool.mjs: each unique
+# target becomes a fully-closed pool entry (inner links filled from
+# other pool entries to a fixpoint — cycle-safe), and every site is
+# then copied from the pool, so no site copy can have holes.
 #
 # Env: RELEASE_VERSION (optional) — the git tag (v0.1.6 -> 0.1.6); falls
 # back to apps/cli/package.json's version.
@@ -63,66 +64,77 @@ try {
     throw "main copy lost apps\cli — robocopy exclusion or path issue (stage root: $STAGE)"
   }
 
-  Write-Host "==> dereferencing leftover junctions"
-  # The main /XJ copy skipped every junction, so the stage has GAPS where
-  # node_modules links lived. Fill them layer by layer, cycle-safe:
-  # scan the SOURCE tree for reparse points (the list is static — the
-  # source never changes), copy each one's target into the same relative
-  # stage path with /XJ (real files only; nested junctions are skipped,
-  # and since they are also on the scan list, they become the next
-  # pass's gaps). Repeat until every source junction has a real stage
-  # counterpart. Cycles converge because each pass turns at least one
-  # link per cycle into real files. PS7 -Recurse does not descend into
-  # junctions, so the scans cannot cycle; .Target is never read (pnpm
-  # junction targets report mangled paths through PowerShell).
-  $scanRoots = @('vendor', 'packages', 'native', 'apps', 'website', 'examples', 'python') |
-    ForEach-Object { Join-Path $root $_ } |
-    Where-Object { Test-Path $_ }
-  $srcLinks = @(
-    Get-ChildItem "$root\node_modules" -Recurse -Directory -Force `
-      -Attributes ReparsePoint -ErrorAction SilentlyContinue
-    Get-ChildItem -Path $scanRoots -Recurse -Directory -Force `
-      -Attributes ReparsePoint -ErrorAction SilentlyContinue
-  ) | ForEach-Object { $_.FullName } | Sort-Object -Unique
-  Write-Host ("    {0} source junctions to materialize" -f $srcLinks.Count)
-  $rootLen = $root.Length
+  Write-Host "==> materializing junction sites from a closed content pool"
+  # scripts/bundle-junction-pool.mjs scans the SOURCE tree for physical
+  # link sites (never descending into them — that is the cycle guard),
+  # materializes each UNIQUE target once into a pool as a one-level real
+  # copy (inner dir links skipped; file links dereferenced inline), and
+  # additionally emits root canonical copies: every workspace package
+  # also at node_modules/<name>. Node resolves bare specifiers by
+  # walking UP, so skipped inner links fall through to the canonical
+  # copy — no infinite closure needed for dependency cycles. Node does
+  # the scan/target work because it resolves links natively;
+  # PowerShell's .Target reports mangled paths for pnpm junctions.
+  # Copying sites from live targets left holes at through-paths, and the
+  # first boot smoke died on exactly such a hole (@deepseek-ai/cosmokit
+  # inside the apps\cli copy of cordis; hoisted leaves root node_modules
+  # nearly link-free, so walk-up resolution had no fallback).
+  $poolDir = Join-Path $STAGE_ROOT ("pool-" + [Guid]::NewGuid().ToString('N'))
+  $mapFile = Join-Path $STAGE_ROOT ("pool-map-" + [Guid]::NewGuid().ToString('N') + ".json")
+  New-Item -ItemType Directory -Force -Path $poolDir | Out-Null
+  $env:BW_POOL_DIR = $poolDir
+  node "$root\scripts\bundle-junction-pool.mjs" $root $mapFile
+  if ($LASTEXITCODE -ne 0) { throw "junction pool materialization failed (exit $LASTEXITCODE)" }
+  $global:LASTEXITCODE = 0
+  $poolMap = Get-Content $mapFile -Raw | ConvertFrom-Json
   $failures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
-  for ($pass = 1; $pass -le 8; $pass++) {
-    # Gaps: source junctions whose stage counterpart does not exist yet.
-    $gaps = @($srcLinks | Where-Object {
-      $rel = $_.Substring($rootLen).TrimStart('\', '/')
-      -not (Test-Path (Join-Path $STAGE "baby-whale\$rel"))
-    })
-    Write-Host ("    pass {0}: {1} junctions left to materialize" -f $pass, $gaps.Count)
-    if ($gaps.Count -eq 0) { break }
-    $pairs = [System.Collections.Generic.List[object]]::new()
-    foreach ($link in $gaps) {
-      $stagePath = $link.Substring($rootLen).TrimStart('\', '/')
-      $pairs.Add(@{ src = $link; dest = (Join-Path $STAGE "baby-whale\$stagePath") })
+  $poolMap.sites | ForEach-Object -Parallel {
+    $failBag = $using:failures
+    $stageInnerLocal = $using:stageInner
+    $poolDirLocal = $using:poolDir
+    $item = $_
+    $dest = Join-Path $stageInnerLocal $item.site
+    $destParent = Split-Path $dest -Parent
+    if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
+    if ($item.isFile) {
+      Copy-Item (Join-Path $poolDirLocal $item.pool) $dest -Force
+    } else {
+      robocopy (Join-Path $poolDirLocal $item.pool) $dest /E /NFL /NDL /NJH /NJS /NP | Out-Null
+      if ($LASTEXITCODE -ge 8) { $failBag.Add("site copy of $($item.site) (robocopy $LASTEXITCODE)") }
     }
-    $pairs | ForEach-Object -Parallel {
-      $failBag = $using:failures
-      $pair = $_
-      $destParent = Split-Path $pair.dest -Parent
-      if (-not (Test-Path $destParent)) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
-      # /XJ is the cycle guard: never recurse through links — the
-      # workspace has cyclic package deps (gateway <-> connection <-> ...).
-      robocopy $pair.src $pair.dest /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
-      if ($LASTEXITCODE -ge 8) { $failBag.Add("dereference of $($pair.src) into $($pair.dest) (robocopy $LASTEXITCODE)") }
-    } -ThrottleLimit 12
-  }
+  } -ThrottleLimit 12
+  $global:LASTEXITCODE = 0
   if ($failures.Count -gt 0) {
     $failures | Select-Object -First 10 | ForEach-Object { Write-Host "    FAILED: $_" }
-    throw "dereference failures: $($failures.Count)"
+    throw "site copy failures: $($failures.Count)"
   }
-  $stillMissing = @($srcLinks | Where-Object {
-    $rel = $_.Substring($rootLen).TrimStart('\', '/')
-    -not (Test-Path (Join-Path $STAGE "baby-whale\$rel"))
-  })
-  if ($stillMissing.Count -gt 0) {
-    Write-Host "    example unresolved: $($stillMissing[0])"
-    throw "dereference did not converge: $($stillMissing.Count) junctions still missing after 8 passes"
+  # Root canonical copies: every workspace package also at
+  # node_modules/<name>, so any inner link a site copy skipped resolves
+  # by walk-up. Skip names that already exist (external deps are real
+  # dirs at root under hoisted; workspace names never collide).
+  $rootFailures = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
+  $poolMap.roots | ForEach-Object -Parallel {
+    $failBag = $using:rootFailures
+    $stageInnerLocal = $using:stageInner
+    $poolDirLocal = $using:poolDir
+    $item = $_
+    $dest = Join-Path $stageInnerLocal $item.site
+    if (Test-Path $dest) { return }
+    robocopy (Join-Path $poolDirLocal $item.pool) $dest /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { $failBag.Add("root canonical copy of $($item.site) (robocopy $LASTEXITCODE)") }
+  } -ThrottleLimit 12
+  $global:LASTEXITCODE = 0
+  if ($rootFailures.Count -gt 0) {
+    $rootFailures | Select-Object -First 10 | ForEach-Object { Write-Host "    FAILED: $_" }
+    throw "root canonical copy failures: $($rootFailures.Count)"
   }
+  Write-Host ("    populated {0} site copies + {1} root canonical copies" -f $poolMap.sites.Count, $poolMap.roots.Count)
+  Remove-Item -Recurse -Force $poolDir -ErrorAction SilentlyContinue
+  Remove-Item -Force $mapFile -ErrorAction SilentlyContinue
+  $stageJunctions = @(Get-ChildItem $stageInner -Recurse -Directory -Force `
+    -Attributes ReparsePoint -ErrorAction SilentlyContinue).Count
+  if ($stageJunctions -gt 0) { throw "stage still contains $stageJunctions junction(s) after pool materialization" }
+  Write-Host "    stage is junction-free"
 
   if (-not (Test-Path (Join-Path $STAGE 'baby-whale\apps\cli\lib'))) {
     Write-Host "stage baby-whale top level:"

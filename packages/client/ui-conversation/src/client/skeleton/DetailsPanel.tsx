@@ -82,7 +82,9 @@ function pinLabel(s: ConversationSnapshot | null, callId: string, toolName: stri
   return toolName
 }
 
-export function DetailsPanel({ useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, t }: DetailsPanelProps) {
+export function DetailsPanel({
+  useSession, useSessions, sessionId, useStore, actions, renderSlot, closeDetails, expanded, toggleExpanded, t,
+}: DetailsPanelProps) {
   const selectPin = actions.select
   const unpin = (callId: NonNullable<SelectionTarget['callId']>): void => { actions.unpin(callId) }
   const closeAll = (): void => {
@@ -179,6 +181,19 @@ export function DetailsPanel({ useSession, useSessions, sessionId, useStore, act
                 : material?.name ?? selection.toolName ?? t('details.title')}
           </div>
         </div>
+        {filePreview !== null && toggleExpanded !== undefined && (
+          <button
+            type="button" className={css.close} aria-label={expanded ? t('details.collapse') : t('details.expand')}
+            title={expanded ? t('details.collapse') : t('details.expand')}
+            onClick={() => { toggleExpanded() }}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden data-expanded={expanded || undefined}>
+              {expanded
+                ? <path d="M9 3h4v4M7 13H3V9M13 3l-5 5M3 13l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+                : <path d="M10 3h3v3M6 13H3v-3M13 3L8 8M3 13l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />}
+            </svg>
+          </button>
+        )}
         <button
           type="button" className={css.close} aria-label={t('details.close')}
           onClick={() => { actions.closeFilePreview(); closeAll() }}

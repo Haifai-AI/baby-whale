@@ -139,7 +139,7 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details, panels.detailsExpanded)
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -188,14 +188,21 @@ export function AppFrame({
             is session-maybe; the strict details entry naturally renders
             empty while no session is current. */}
         <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
-        <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
+        <DetailsColumn>
+          {renderSlot('details', {
+            expanded: panels.detailsExpanded,
+            toggleExpanded: () => { actions.setDetailsExpanded(!panels.detailsExpanded) },
+          })}
+        </DetailsColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+      {/* No resize handle while expanded: the rendered width ignores the
+          preference, so a drag would fight the mode. Collapse first. */}
+      {cols.details > 0 && !panels.detailsExpanded && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
     </div>
   )
 }

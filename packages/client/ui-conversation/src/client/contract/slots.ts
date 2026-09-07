@@ -838,9 +838,17 @@ export interface DetailsInjected {
   closeDetails: () => void
 }
 
+/** Expansion owner currency: AppFrame owns the geometry mode, the panel owns the button. */
+export interface DetailsExpansionOwnerProps {
+  /** Whether the details panel is expanded over the chat column. */
+  expanded: boolean
+  /** Toggle the expanded geometry mode. */
+  toggleExpanded: () => void
+}
+
 /** Full details-slot props: selection store, Tool output seat, injected close callback, and locale. */
 export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conversation.details.tool' | 'conversation.details.toolview' | 'conversation.details.fileview'>
-  & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'>
+  & PropsStore<ChatStore> & DetailsInjected & PropsLocale<'conversation'> & Partial<DetailsExpansionOwnerProps>
 
 /** Owner share common to the hero / New-Session Workspace pickers. */
 export interface EmptyWorkspaceOwnerProps {

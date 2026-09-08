@@ -52,6 +52,23 @@ runs start instantly and update themselves.
 
 Platforms: macOS (arm64 + x64), Linux (x64 + arm64), Windows x64.
 
+## Give the coworker a real office engine (optional)
+
+Baby Whale previews spreadsheets and documents out of the box. If you want
+to go further — the coworker drafting slides, docs, and multi-sheet
+workbooks in a live office canvas with drag-and-resize windows, reviewing
+each change before it lands, and exporting to `.xlsx` / `.docx` / `.pptx` —
+install the Univer Office plugin:
+
+```bash
+bwhale plugin --profile web add dsh-univer-office
+```
+
+Restart `bwhale` and refresh the browser page. The plugin runs fully local
+and is maintained by the Univer (DreamNum) team; it adds its own skills and
+tools next to the built-in ones, and the built-in previews keep working
+exactly as before without it.
+
 ## Connect a model (one time)
 
 Create `~/.dsh/.credentials.yaml`:

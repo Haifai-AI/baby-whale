@@ -16,7 +16,7 @@ import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
 
 /** Kind bucket from extension, for the badge glyph. */
-type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'md' | 'text' | 'other'
+type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'md' | 'text' | 'video' | 'audio' | 'other'
 
 /** Human kind label + extension for the card subtitle ("Spreadsheet · XLSX"). */
 const KIND_META: Record<Kind, { label: string }> = {
@@ -28,6 +28,8 @@ const KIND_META: Record<Kind, { label: string }> = {
   py: { label: 'Script' },
   md: { label: 'Markdown' },
   text: { label: 'Code' },
+  video: { label: 'Video' },
+  audio: { label: 'Audio' },
   other: { label: 'File' },
 }
 
@@ -80,6 +82,23 @@ function KindGlyph({ kind }: { kind: Kind }) {
       </svg>
     )
   }
+  if (kind === 'video') {
+    return (
+      <svg {...common}>
+        <rect x="1.8" y="3.4" width="12.4" height="9.2" rx="1.6" {...stroke} />
+        <path d="M6.6 6.2l3.6 1.8-3.6 1.8z" {...stroke} />
+      </svg>
+    )
+  }
+  if (kind === 'audio') {
+    return (
+      <svg {...common}>
+        <path d="M6.2 11.4V3.6l6-1.2v7.8" {...stroke} />
+        <circle cx="4.6" cy="11.6" r="1.7" {...stroke} />
+        <circle cx="10.6" cy="10.4" r="1.7" {...stroke} />
+      </svg>
+    )
+  }
   return (
     <svg {...common}>
       <path d="M3.4 1.8h6L13 5.4v8.8H3.4z" {...stroke} />
@@ -98,6 +117,8 @@ function kindOf(path: string): Kind {
   if (ext === '.py') return 'py'
   if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'md'
   if (TEXT_PREVIEW_KINDS.test(ext)) return 'text'
+  if (/\.(mp4|m4v|webm|mov)$/i.test(ext)) return 'video'
+  if (/\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)$/i.test(ext)) return 'audio'
   return 'other'
 }
 
@@ -120,7 +141,7 @@ const TEXT_PREVIEW_KINDS = new RegExp(`\\.(${TEXT_PREVIEW_EXTENSIONS.join('|')})
 /** Kinds the preview pipeline can render. */
 function previewable(kind: Kind): boolean {
   return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv' || kind === 'pdf'
-    || kind === 'md' || kind === 'text' || kind === 'py'
+    || kind === 'md' || kind === 'text' || kind === 'py' || kind === 'video' || kind === 'audio'
 }
 
 /** Registration-side capability facts (mirrors ProducedFilesInjected). */

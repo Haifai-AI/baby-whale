@@ -56,6 +56,7 @@ export function formatModifiedAt(value: number, fallback: string): string {
 function previewable(kind: ArtifactEntry['kind']): boolean {
   return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv'
     || kind === 'pdf' || kind === 'image' || kind === 'markdown' || kind === 'text'
+    || kind === 'video' || kind === 'audio'
 }
 
 /**
@@ -103,7 +104,8 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
       return
     }
     cancelledRef.current = false
-    if (selected.kind === 'pdf' || selected.kind === 'image') {
+    if (selected.kind === 'pdf' || selected.kind === 'image'
+      || selected.kind === 'video' || selected.kind === 'audio') {
       // Browser-native rendering: serve the original bytes directly.
       const query = new URLSearchParams({ session: sessionId, path: selected.path })
       setPreview({ status: 'raw', url: `/api/artifacts.raw?${query.toString()}` })
@@ -195,7 +197,14 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
             {preview?.status === 'raw' && selected.kind === 'image' && (
               <ZoomableImage src={preview.url} alt={selected.name} />
             )}
-            {preview?.status === 'raw' && selected.kind !== 'image' && (
+            {preview?.status === 'raw' && selected.kind === 'video' && (
+              <video key={preview.url} src={preview.url} controls preload="metadata" className={css.mediaPlayerVideo} />
+            )}
+            {preview?.status === 'raw' && selected.kind === 'audio' && (
+              <audio key={preview.url} src={preview.url} controls preload="metadata" className={css.mediaPlayerAudio} />
+            )}
+            {preview?.status === 'raw' && selected.kind !== 'image' && selected.kind !== 'video'
+              && selected.kind !== 'audio' && (
               <iframe title={selected.name} src={preview.url} className={css.pdfFrame} />
             )}
             {preview?.status === 'ready' && preview.data.kind === 'xlsx' && (

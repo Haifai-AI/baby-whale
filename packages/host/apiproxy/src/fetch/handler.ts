@@ -291,6 +291,9 @@ export function toFetchHandler(api: ApiProxy): { fetch: typeof fetch } {
             sessionId: parsed.data.session,
             path: parsed.data.path,
             ...(parsed.data.download !== undefined ? { download: parsed.data.download } : {}),
+            // Media scrubbing: the Range header rides verbatim; the raw
+            // handler answers 206 slices when the range is satisfiable.
+            ...(req.headers.get('range') !== null ? { range: req.headers.get('range') as string } : {}),
           },
           req.signal,
         )

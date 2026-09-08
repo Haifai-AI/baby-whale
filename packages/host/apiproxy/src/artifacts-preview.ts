@@ -86,6 +86,10 @@ export type ParsedPreview =
   | { kind: 'markdown'; file_name: string; text: string; truncated: boolean }
   /** Text/code source, rendered client-side by the highlighted line viewer. */
   | { kind: 'text'; file_name: string; text: string; language?: string; truncated: boolean }
+  /** Video file — identity only; bytes stream from the raw channel with Range support. */
+  | { kind: 'video'; file_name: string }
+  /** Audio file — identity only; bytes stream from the raw channel with Range support. */
+  | { kind: 'audio'; file_name: string }
 
 const MAX_ROWS = 100
 const MAX_COLS = 60
@@ -131,6 +135,30 @@ export function textPreviewKind(ext: string): 'markdown' | 'text' | undefined {
   if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'markdown'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
   return undefined
+}
+
+/** Extensions that preview as a native browser video player. */
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.webm', '.mov'])
+/** Extensions that preview as a native browser audio player. */
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.flac', '.aac', '.opus'])
+
+/** Media preview bucket for an extension; undefined when the type is not a playable medium. */
+export function mediaPreviewKind(ext: string): 'video' | 'audio' | undefined {
+  const normalized = ext.toLowerCase()
+  if (VIDEO_EXTENSIONS.has(normalized)) return 'video'
+  if (AUDIO_EXTENSIONS.has(normalized)) return 'audio'
+  return undefined
+}
+
+/**
+ * Build the media preview payload. Bytes are never parsed — the player rides
+ * the raw channel (Range-capable), so the preview only carries identity.
+ */
+export function parseMediaPreview(filePath: string): ParsedPreview {
+  if (mediaPreviewKind((/[.][a-z0-9]+$/i.exec(filePath)?.[0] ?? '').toLowerCase()) === 'video') {
+    return { kind: 'video', file_name: basename(filePath) }
+  }
+  return { kind: 'audio', file_name: basename(filePath) }
 }
 
 /** Shiki grammar hint for a text extension; undefined renders plain monospace. */

@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, stat } from 'node:fs/promises'
+import { mkdir, open, readFile, stat } from 'node:fs/promises'
 import { UPLOAD_MAX_BYTES, storeUpload } from './uploads-intake.ts'
 
 /** Content types the artifacts.raw channel may serve. */
@@ -19,8 +19,46 @@ const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.txt': 'text/plain',
   '.md': 'text/plain',
   '.json': 'application/json',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
+  '.opus': 'audio/opus',
 }
-import { convertToPdfCached, findSoffice, parseDocxPreview, parsePptxPreview, parseTextPreview, parseXlsxCharts, parseXlsxPreview, previewCacheDir, recalcXlsxBytes, resetSofficeLookup, textPreviewKind, xlsxHasUncachedFormulas } from './artifacts-preview.ts'
+
+/**
+ * Parse an HTTP `Range: bytes=...` header into byte offsets. Only the
+ * single-range `bytes` unit is understood; anything else (multi-range,
+ * other units, malformed) yields undefined and the caller serves the
+ * whole file. `bytes=a-` means through EOF; `bytes=-n` is a suffix range
+ * (start undefined — the caller resolves it against the file size).
+ */
+export function parseByteRange(header: string | undefined): { start?: number | undefined; end: number } | undefined {
+  if (header === undefined) return undefined
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim())
+  if (match === null) return undefined
+  const rawStart = match[1]
+  const rawEnd = match[2]
+  if (rawStart === undefined || rawEnd === undefined) return undefined
+  if (rawStart === '' && rawEnd === '') return undefined
+  if (rawStart === '') {
+    const suffix = Number.parseInt(rawEnd, 10)
+    return suffix > 0 ? { end: suffix } : undefined
+  }
+  const start = Number.parseInt(rawStart, 10)
+  if (!Number.isSafeInteger(start) || start < 0) return undefined
+  const end = rawEnd === '' ? Number.MAX_SAFE_INTEGER : Number.parseInt(rawEnd, 10)
+  if (!Number.isSafeInteger(end) || end < start) return undefined
+  return { start, end }
+}
+import { convertToPdfCached, findSoffice, mediaPreviewKind, parseDocxPreview, parseMediaPreview, parsePptxPreview, parseTextPreview, parseXlsxCharts, parseXlsxPreview, previewCacheDir, recalcXlsxBytes, resetSofficeLookup, textPreviewKind, xlsxHasUncachedFormulas } from './artifacts-preview.ts'
 import { beginManagedSofficeInstall, managedInstallSupport, managedSofficePath, sofficeInstallState } from './soffice-runtime.ts'
 import { homedir } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
@@ -3314,7 +3352,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const artifacts: Array<{
           path: string
           name: string
-          kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'other'
+          kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'video' | 'audio' | 'other'
           size: number
           modifiedAt: number
           origin: 'deliverable' | 'upload'
@@ -3332,7 +3370,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
                       : ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext) ? 'image' as const
                         : textPreviewKind(ext) === 'markdown' ? 'markdown' as const
                           : textPreviewKind(ext) === 'text' ? 'text' as const
-                            : 'other' as const
+                            : mediaPreviewKind(ext) ?? 'other' as const
             artifacts.push({
               path, name, kind,
               size: info.size,
@@ -3367,6 +3405,58 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         if (!resolved.startsWith(boundary)) {
           return new Response('path escapes the workspace', { status: 403 })
         }
+        const ext = (/[.][a-z0-9]+$/i.exec(normalized)?.[0] ?? '').toLowerCase()
+        const contentType = RAW_CONTENT_TYPES[ext] ?? 'application/octet-stream'
+        const headers: Record<string, string> = {
+          'content-type': contentType,
+          'accept-ranges': 'bytes',
+        }
+        if (query.download === '1') {
+          headers['content-disposition'] = `attachment; filename="${basename(normalized).replaceAll('"', '')}"`
+        }
+        // Range request (media scrubbing): answer 206 with just the asked
+        // slice, read through a file handle so a multi-hundred-MB video is
+        // never fully buffered. Malformed or unsatisfiable ranges fall back
+        // to the whole-file 200 — players treat that as plain success.
+        const range = parseByteRange(query.range)
+        if (range !== undefined) {
+          try {
+            const handle = await open(resolved, 'r')
+            try {
+              const { size } = await handle.stat()
+              let { start, end } = range
+              if (start === undefined) {
+                // Suffix form `bytes=-N`: the final N bytes.
+                start = Math.max(0, size - end)
+                end = size - 1
+              }
+              end = Math.min(end, size - 1)
+              if (start > end || start >= size) {
+                return new Response('requested range not satisfiable', {
+                  status: 416,
+                  headers: { 'content-range': `bytes */${size}` },
+                })
+              }
+              const length = end - start + 1
+              const slice = new Uint8Array(length)
+              const { bytesRead } = await handle.read(slice, 0, length, start)
+              signal.throwIfAborted()
+              return new Response(slice.subarray(0, bytesRead), {
+                status: 206,
+                headers: {
+                  ...headers,
+                  'content-range': `bytes ${start}-${end}/${size}`,
+                  'content-length': String(bytesRead),
+                },
+              })
+            } finally {
+              await handle.close()
+            }
+          } catch {
+            signal.throwIfAborted()
+            // Fall through to the whole-file response below.
+          }
+        }
         let bytes: Uint8Array
         try {
           bytes = new Uint8Array(await readFile(resolved))
@@ -3375,12 +3465,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           return new Response('file not found', { status: 404 })
         }
         signal.throwIfAborted()
-        const ext = (/[.][a-z0-9]+$/i.exec(normalized)?.[0] ?? '').toLowerCase()
-        const contentType = RAW_CONTENT_TYPES[ext] ?? 'application/octet-stream'
-        const headers: Record<string, string> = { 'content-type': contentType }
-        if (query.download === '1') {
-          headers['content-disposition'] = `attachment; filename="${basename(normalized).replaceAll('"', '')}"`
-        }
         return new Response(new Uint8Array(bytes), { headers })
       },
 
@@ -3419,13 +3503,22 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         if (!absolute.startsWith(resolve(cwd))) {
           return err(request, { code: 'internal', message: 'preview path escapes the workspace', details: {} })
         }
+        const ext = (/[.][a-z0-9]+$/i.exec(path)?.[0] ?? '').toLowerCase()
+        // Media previews carry identity only — answer before the byte read so
+        // a feature-length video is never buffered just to learn its name.
+        if (mediaPreviewKind(ext) !== undefined) {
+          const info = await stat(absolute).catch(() => undefined)
+          if (info === undefined) {
+            return err(request, { code: 'internal', message: 'preview target unreadable', details: {} })
+          }
+          return ok(request, { preview: parseMediaPreview(path), size: info.size })
+        }
         let bytes: Uint8Array
         try {
           bytes = new Uint8Array(await readFile(absolute))
         } catch {
           return err(request, { code: 'internal', message: 'preview target unreadable', details: {} })
         }
-        const ext = (/[.][a-z0-9]+$/i.exec(path)?.[0] ?? '').toLowerCase()
         let preview
         // Spreadsheets get the three-lens payload in one response: the Data
         // grid (parsed sheets), the Charts tab (chart parts with their cached

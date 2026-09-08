@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type {
-  ChatConversationViewNode, ChatSnapshot, ConversationEventInput,
+  ChatConversationViewNode, ChatSnapshot, ConversationEventInput, ConversationTimelineSnapshot,
   ConversationNodeDefinition, ConversationViewDefinition,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { ConversationNodeAssembler } from '@deepseek-ai/dsh-client-runtime/client'
 import { assistantDefinition } from '../src/client/conversation-nodes/assistant.ts'
-import { chatViewDefinition } from '../src/client/conversation-nodes/chat-snapshot-builder.ts'
+import { ChatSnapshotBuilder, chatViewDefinition } from '../src/client/conversation-nodes/chat-snapshot-builder.ts'
 import { commandDefinition } from '../src/client/conversation-nodes/command.ts'
 import { compactionDefinition } from '../src/client/conversation-nodes/compaction.ts'
 import { unknownFallbackDefinition } from '../src/client/conversation-nodes/fallback.ts'
@@ -1054,5 +1054,64 @@ describe('built-in conversation node Definitions', () => {
       command: { commandId: 'command-1', name: 'compact', outcome: { kind: 'success' } },
       compaction: { summary: 'manual summary', summaryEventSeq: 20 },
     })
+  })
+})
+describe('chat order drops bootstrap noise before the opening prompt', () => {
+  const timeline = { turnOrder: [], turns: new Map() } as unknown as ConversationTimelineSnapshot
+
+  function viewNode(kind: string, seq: number, data: unknown = {}): ChatConversationViewNode {
+    return {
+      key: `${kind}:${seq}`,
+      kind,
+      id: `${kind}-${seq}`,
+      target: 'chat',
+      anchorSeq: seq,
+      location: { kind: 'session' },
+      visibility: 'visible',
+      data,
+    }
+  }
+
+  function orderKinds(nodes: readonly ChatConversationViewNode[]): readonly (string | undefined)[] {
+    const snapshot = new ChatSnapshotBuilder().replace({ nodes, timeline })
+    return snapshot.order.map(key => snapshot.nodes.get(key)?.kind)
+  }
+
+  it('hides auto-dispatched permission commands and plugin injections ahead of the first user message', () => {
+    const nodes = [
+      viewNode('command', 0, { name: 'permission' }),
+      viewNode('command', 1, { name: 'permission' }),
+      viewNode('context', 4, { provenance: { role: 'inject', label: 'user-approval' } }),
+      viewNode('unknown', 5, { type: 'permission/preset' }),
+      viewNode('user', 6),
+    ]
+    expect(orderKinds(nodes)).toEqual(['user'])
+  })
+
+  it('keeps the same events visible once conversation has started', () => {
+    const nodes = [
+      viewNode('user', 6),
+      viewNode('command', 7, { name: 'permission' }),
+      viewNode('context', 9, { provenance: { role: 'inject', label: 'user-approval' } }),
+    ]
+    const kinds = orderKinds(nodes)
+    expect(kinds.filter(kind => kind === 'command')).toHaveLength(1)
+    expect(kinds).toContain('context')
+  })
+
+  it('keeps recall context ahead of the prompt: continuity, not plumbing', () => {
+    const nodes = [
+      viewNode('context', 0, { provenance: { role: 'recall', label: 'earlier session' } }),
+      viewNode('user', 2),
+    ]
+    expect(orderKinds(nodes)).toEqual(['context', 'user'])
+  })
+
+  it('keeps user-typed commands ahead of the prompt (a /plan before the ask is intent)', () => {
+    const nodes = [
+      viewNode('command', 0, { name: 'plan' }),
+      viewNode('user', 2),
+    ]
+    expect(orderKinds(nodes)).toEqual(['command', 'user'])
   })
 })

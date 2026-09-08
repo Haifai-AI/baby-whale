@@ -139,6 +139,37 @@ function orderedVisible(nodes: readonly ChatConversationViewNode[]): ChatConvers
     .sort((left, right) => left.anchorSeq - right.anchorSeq || left.key.localeCompare(right.key))
 }
 
+/**
+ * Whether a chat row is standalone session plumbing: an auto-dispatched
+ * `/permission` switch (its state already lives in the composer's permission
+ * select), an event no business module claimed (the unknown-surface
+ * fallback), or a plugin context injection. Recall context is exempt: it is
+ * conversational continuity.
+ */
+function isBootstrapNoise(node: ChatConversationViewNode): boolean {
+  const kind = (node as ChatNode).kind
+  if (kind === 'command') return ((node as ChatNode<'command'>).data as { name?: unknown }).name === 'permission'
+  if (kind === 'unknown') return true
+  if (kind === 'context') return (node as ChatNode<'context'>).data.provenance.role !== 'recall'
+  return false
+}
+
+/**
+ * The Chat's visible row order. Setup events recorded before the first user
+ * message are plumbing the session wrote at bootstrap — rendered there they
+ * appear as orphan rows above the opening prompt. Everything from the first
+ * user message on renders exactly as before, and the Trajectory still shows
+ * the complete system timeline.
+ */
+function chatOrderKeys(nodes: readonly ChatConversationViewNode[]): readonly string[] {
+  const visible = orderedVisible(nodes)
+  const opening = visible.find(node => (node as ChatNode).kind === 'user')
+  const cutoff = opening === undefined ? Number.POSITIVE_INFINITY : opening.anchorSeq
+  return visible
+    .filter(node => node.anchorSeq >= cutoff || !isBootstrapNoise(node))
+    .map(node => node.key)
+}
+
 function referenceMessageSeq(node: ChatConversationViewNode): number | undefined {
   const candidate = node as ChatNode
   return candidate.kind === 'user' || candidate.kind === 'steering'
@@ -492,7 +523,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
   }): ChatSnapshot {
     const nodes = this.referenceLabels.replace(input.nodes)
     this.store.replace(nodes)
-    this.order = orderedVisible(nodes).map(node => node.key)
+    this.order = chatOrderKeys(nodes)
     this.locations.rebuild(this.order, this.store)
     return this.snapshot(input.timeline, this.legacy.replace(nodes, input.timeline))
   }
@@ -515,7 +546,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     }
     this.store.upsert(upserts)
     if (structural) {
-      const next = orderedVisible(this.store.values()).map(node => node.key)
+      const next = chatOrderKeys(this.store.values())
       this.order = sameReferences(this.order, next) ? this.order : next
       this.locations.rebuild(this.order, this.store)
     }

@@ -58,6 +58,57 @@ describe('whale-guardrails', () => {
     expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
   })
 
+  it('stands down for an in-workspace overwrite under the workspace-write preset', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const exec = {
+      ...execution('write', { file_path: 'existing.txt' }),
+      agent: { session: { header: { cwd: root }, events: [
+        { type: 'permission/preset', data: { preset: 'workspace-write' } },
+      ] } },
+    } as unknown as ToolExecution
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    // The preset grants in-workspace writes outright — an overwrite ask
+    // would contradict the promise the user just selected.
+    expect(decision).toEqual({ kind: 'allow' })
+  })
+
+  it('still asks a workspace-write session for an overwrite outside the workspace', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, '..', 'outside-guard.txt'), 'x')
+    const exec = {
+      ...execution('write', { file_path: '../outside-guard.txt' }),
+      agent: { session: { header: { cwd: root }, events: [
+        { type: 'permission/preset', data: { preset: 'workspace-write' } },
+      ] } },
+    } as unknown as ToolExecution
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "../outside-guard.txt"?' })
+  })
+
+  it('keeps asking without a recorded preset (conservative default)', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const exec = {
+      ...execution('write', { file_path: 'existing.txt' }),
+      agent: { session: { header: { cwd: root }, events: [] } },
+    } as unknown as ToolExecution
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+  })
+
   it('allows a write to a fresh path', async () => {
     const { ctx } = await booted()
     const decision = await ctx.waterfall(

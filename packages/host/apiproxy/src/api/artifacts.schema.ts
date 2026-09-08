@@ -18,7 +18,7 @@ export const artifactsListValueSchema = z.object({
   artifacts: z.array(z.object({
     path: z.string().min(1),
     name: z.string().min(1),
-    kind: z.enum(['xlsx', 'docx', 'pptx', 'csv', 'pdf', 'image', 'markdown', 'text', 'other']),
+    kind: z.enum(['xlsx', 'docx', 'pptx', 'csv', 'pdf', 'image', 'markdown', 'text', 'video', 'audio', 'other']),
     size: z.number(),
     modifiedAt: z.number(),
     origin: z.enum(['deliverable', 'upload']),

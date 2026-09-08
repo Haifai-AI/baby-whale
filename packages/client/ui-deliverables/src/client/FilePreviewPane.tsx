@@ -32,7 +32,10 @@ function isImage(path: string): boolean {
 /**
  * Whole-panel file preview for one deliverable. Images and PDFs ride the raw
  * channel (browser-native); everything else parses through the preview RPC
- * and renders with the shared atoms. Bare text on unsupported kinds.
+ * and renders with the shared atoms. Bare text on unsupported kinds. Media
+ * extensions dispatch to native players — keep that list in sync with the
+ * host media classifier (artifacts-preview.ts) and DeliveredCards.kindOf
+ * (.mov is excluded: no Chromium/Firefox playback).
  */
 export function FilePreviewPane({ path, sessionId, connection, t }: {
   path: string
@@ -44,7 +47,10 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
     { readonly status: 'loading' } | { readonly status: 'unsupported' }
     | { readonly status: 'ready'; readonly data: ParsedPreview }
   >({ status: 'loading' })
-  const mode = isImage(path) ? 'image' : (/\.pdf$/i.test(path) ? 'pdf' : 'rpc')
+  const mode = isImage(path) ? 'image' : (/\.pdf$/i.test(path) ? 'pdf'
+    : /\.(mp4|m4v|webm)$/i.test(path) ? 'video'
+      : /\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)$/i.test(path) ? 'audio'
+        : 'rpc')
   const rawQuery = new URLSearchParams({ session: sessionId, path })
   // Race guard across rapid pane retargets: the flag is PER EFFECT RUN (a
   // closure local, not a shared ref) — cleanup(A) must not cancel effect(B),
@@ -82,6 +88,22 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
   }
   if (mode === 'pdf') {
     return <iframe title={basename(path)} src={rawUrl} className={css.filePreviewFrame} />
+  }
+  if (mode === 'video') {
+    return (
+      <div className={css.filePreviewMedia}>
+        {/* keyed by path: swapping files must reset the player element, not
+            just its src, so playback state never leaks across retargets. */}
+        <video key={path} src={rawUrl} controls preload="metadata" className={css.filePreviewVideo} />
+      </div>
+    )
+  }
+  if (mode === 'audio') {
+    return (
+      <div className={css.filePreviewMedia}>
+        <audio key={path} src={rawUrl} controls preload="metadata" className={css.filePreviewAudio} />
+      </div>
+    )
   }
   return (
     <div className={css.filePreviewPane}>

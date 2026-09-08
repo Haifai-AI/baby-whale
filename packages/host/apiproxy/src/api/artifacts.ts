@@ -18,7 +18,7 @@ export interface ArtifactEntry {
   /** Base name for display. */
   readonly name: string
   /** Kind bucket driving the icon and preview mode. */
-  readonly kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'other'
+  readonly kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'video' | 'audio' | 'other'
   /** Stored byte length. */
   readonly size: number
   /** Last-modified instant (epoch ms). */
@@ -54,7 +54,9 @@ export interface ArtifactsApi {
    * Host-only GET channel: serves the ORIGINAL bytes of one file under the
    * session workspace's `deliverables/` or `uploads/`. Path is canonicalized
    * host-side and jailed to those two directories. `download` switches the
-   * response to a `Content-Disposition: attachment` download.
+   * response to a `Content-Disposition: attachment` download. `range` carries
+   * the request's HTTP `Range` header verbatim; when present and satisfiable
+   * the response is a 206 byte slice (media scrubbing), else the whole file.
    */
-  raw(query: { sessionId: SessionId; path: string; download?: '1' }, signal: AbortSignal): Promise<Response>
+  raw(query: { sessionId: SessionId; path: string; download?: '1'; range?: string }, signal: AbortSignal): Promise<Response>
 }

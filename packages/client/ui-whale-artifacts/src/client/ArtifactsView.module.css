@@ -97,6 +97,8 @@
 .icon_csv { background: #4c9f70; }
 .icon_pdf { background: #b04a5a; }
 .icon_image { background: #7a5fb0; }
+.icon_video { background: #b03a5b; }
+.icon_audio { background: #2c8ca2; }
 .icon_text { background: #6b7a8d; }
 
 .text {
@@ -393,6 +395,15 @@
   height: 100%;
   border: none;
   background: var(--dsw-alias-bg-layer-1);
+}
+
+.mediaPlayerVideo {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.mediaPlayerAudio {
+  width: min(100%, 420px);
 }
 
 .rawImage {

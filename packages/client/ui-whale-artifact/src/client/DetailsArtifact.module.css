@@ -162,6 +162,12 @@
   border-spacing: 0;
   font-size: 12px;
   table-layout: fixed;
+  /* Hug the capped columns instead of stretching them across the panel:
+     with fixed layout and an auto width, a few-column sheet distributes the
+     whole panel width to its columns, so one long cell blows the grid out
+     to the right. Pinned columns + max-content keeps Excel-like widths and
+     scrolls horizontally instead. */
+  width: max-content;
 }
 
 .columnHead {
@@ -175,7 +181,9 @@
   text-align: center;
   padding: 4px 8px;
   border: 1px solid var(--dsw-alias-border-l2);
+  width: 90px;
   min-width: 90px;
+  max-width: 200px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -191,6 +199,7 @@
   border: 1px solid var(--dsw-static-blue-950);
   border-top: none;
   width: 90px;
+  max-width: 200px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -228,6 +237,7 @@
   border: 1px solid var(--dsw-alias-border-l1);
   padding: 4px 8px;
   color: var(--dsw-alias-brand-text);
+  max-width: 200px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

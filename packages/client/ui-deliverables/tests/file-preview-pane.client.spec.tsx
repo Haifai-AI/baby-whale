@@ -43,6 +43,16 @@ describe('FilePreviewPane mode dispatch', () => {
     expect(connection.api.artifacts.preview).not.toHaveBeenCalled()
   })
 
+  it('keeps .mov off the native player: rpc fallback, no video element', () => {
+    const connection = fakeConnection()
+    const { container } = render(
+      <FilePreviewPane path="deliverables/clip.mov" sessionId={sessionId} connection={connection} t={t} />,
+    )
+    expect(container.querySelector('video')).toBeNull()
+    // The fallback is the preview RPC, not a dead player.
+    expect(connection.api.artifacts.preview).toHaveBeenCalledTimes(1)
+  })
+
   it('renders an audio element for audio extensions, also RPC-free', () => {
     const connection = fakeConnection()
     const { container } = render(

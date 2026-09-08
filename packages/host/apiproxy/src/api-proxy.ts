@@ -7,7 +7,9 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, stat } from 'node:fs/promises'
 import { UPLOAD_MAX_BYTES, storeUpload } from './uploads-intake.ts'
 
-/** Content types the artifacts.raw channel may serve. */
+/** Content types the artifacts.raw channel may serve. Media entries here
+ * cover downloads too; the native-PLAYER set lives in artifacts-preview.ts
+ * (VIDEO/AUDIO_EXTENSIONS) and is narrower (.mov serves, never plays). */
 const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',
   '.png': 'image/png',

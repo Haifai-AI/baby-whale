@@ -32,7 +32,10 @@ function isImage(path: string): boolean {
 /**
  * Whole-panel file preview for one deliverable. Images and PDFs ride the raw
  * channel (browser-native); everything else parses through the preview RPC
- * and renders with the shared atoms. Bare text on unsupported kinds.
+ * and renders with the shared atoms. Bare text on unsupported kinds. Media
+ * extensions dispatch to native players — keep that list in sync with the
+ * host media classifier (artifacts-preview.ts) and DeliveredCards.kindOf
+ * (.mov is excluded: no Chromium/Firefox playback).
  */
 export function FilePreviewPane({ path, sessionId, connection, t }: {
   path: string
@@ -45,7 +48,7 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
     | { readonly status: 'ready'; readonly data: ParsedPreview }
   >({ status: 'loading' })
   const mode = isImage(path) ? 'image' : (/\.pdf$/i.test(path) ? 'pdf'
-    : /\.(mp4|m4v|webm|mov)$/i.test(path) ? 'video'
+    : /\.(mp4|m4v|webm)$/i.test(path) ? 'video'
       : /\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)$/i.test(path) ? 'audio'
         : 'rpc')
   const rawQuery = new URLSearchParams({ session: sessionId, path })

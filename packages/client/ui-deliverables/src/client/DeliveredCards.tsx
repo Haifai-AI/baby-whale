@@ -15,7 +15,9 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
 
-/** Kind bucket from extension, for the badge glyph. */
+/** Kind bucket from extension, for the badge glyph. Media buckets mirror the
+ * host media classifier (artifacts-preview.ts) and FilePreviewPane's
+ * dispatch; .mov stays 'other' (no Chromium/Firefox playback). */
 type Kind = 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'py' | 'md' | 'text' | 'video' | 'audio' | 'other'
 
 /** Human kind label + extension for the card subtitle ("Spreadsheet · XLSX"). */
@@ -117,7 +119,7 @@ function kindOf(path: string): Kind {
   if (ext === '.py') return 'py'
   if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'md'
   if (TEXT_PREVIEW_KINDS.test(ext)) return 'text'
-  if (/\.(mp4|m4v|webm|mov)$/i.test(ext)) return 'video'
+  if (/\.(mp4|m4v|webm)$/i.test(ext)) return 'video'
   if (/\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)$/i.test(ext)) return 'audio'
   return 'other'
 }

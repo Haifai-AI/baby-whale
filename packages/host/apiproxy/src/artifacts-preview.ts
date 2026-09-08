@@ -137,8 +137,12 @@ export function textPreviewKind(ext: string): 'markdown' | 'text' | undefined {
   return undefined
 }
 
-/** Extensions that preview as a native browser video player. */
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.webm', '.mov'])
+/** Extensions that preview as a native browser video player. .mov is
+ * deliberately absent — the QuickTime container does not play outside
+ * Safari, so it keeps the generic preview and an external open. Keep in
+ * sync with RAW_CONTENT_TYPES (api-proxy.ts) and the client dispatchers
+ * (DeliveredCards.kindOf, FilePreviewPane). */
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.webm'])
 /** Extensions that preview as a native browser audio player. */
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.flac', '.aac', '.opus'])
 

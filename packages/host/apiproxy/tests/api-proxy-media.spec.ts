@@ -17,7 +17,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
 import { mediaPreviewKind, parseMediaPreview } from '../src/artifacts-preview.ts'
 import { parseByteRange } from '../src/api-proxy.ts'
-import { createApiProxy } from '@deepseek-ai/dsh-host-apiproxy'
+import { createApiProxy, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
 import type { ApiProxy, RpcRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { RpcId } from '@deepseek-ai/dsh-host-apiproxy/api/rpc'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
@@ -56,7 +56,7 @@ function workspace(): string {
 describe('media preview kinds', () => {
   it('maps video and audio extensions, and nothing else, to media buckets', () => {
     expect(mediaPreviewKind('.mp4')).toBe('video')
-    expect(mediaPreviewKind('.MOV')).toBe('video')
+    expect(mediaPreviewKind('.MOV')).toBeUndefined() // QuickTime container: no Chromium/Firefox playback
     expect(mediaPreviewKind('.webm')).toBe('video')
     expect(mediaPreviewKind('.mp3')).toBe('audio')
     expect(mediaPreviewKind('.flac')).toBe('audio')
@@ -67,6 +67,11 @@ describe('media preview kinds', () => {
   it('parses media previews as identity-only payloads', () => {
     expect(parseMediaPreview('deliverables/clip.mp4')).toEqual({ kind: 'video', file_name: 'clip.mp4' })
     expect(parseMediaPreview('deliverables/tone.mp3')).toEqual({ kind: 'audio', file_name: 'tone.mp3' })
+  })
+
+  it('classifies an extensionless path as audio (the ?? "" fallback)', () => {
+    expect(mediaPreviewKind('')).toBeUndefined()
+    expect(parseMediaPreview('deliverables/extensionless')).toEqual({ kind: 'audio', file_name: 'extensionless' })
   })
 
   it('answers the preview RPC before any byte read, with the file size', async () => {
@@ -138,6 +143,17 @@ describe('raw channel Range serving', () => {
     const malformed = await api.artifacts.raw({ sessionId, path: 'deliverables/clip.mp4', range: 'bytes=5-2' }, new AbortController().signal)
     expect(malformed.status).toBe(200)
     expect(new Uint8Array(await malformed.arrayBuffer()).byteLength).toBe(256)
+  })
+
+  it('forwards the HTTP Range header through the fetch handler to a 206 slice', async () => {
+    // The product path: browsers scrub via a Range header on the wire, which
+    // the handler forwards into raw() — exercise that exact wiring.
+    const { api, sessionId } = await harness(workspace())
+    const url = `http://host/api/artifacts.raw?session=${sessionId}&path=deliverables/clip.mp4`
+    const response = await toFetchHandler(api).fetch(new Request(url, { headers: { range: 'bytes=2-5' } }))
+    expect(response.status).toBe(206)
+    expect(response.headers.get('content-range')).toBe('bytes 2-5/256')
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([2, 3, 4, 5])
   })
 
   it('keeps audio content types and attachment downloads intact', async () => {

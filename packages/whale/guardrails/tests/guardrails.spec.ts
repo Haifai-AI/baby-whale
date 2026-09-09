@@ -136,6 +136,13 @@ describe('whale-guardrails', () => {
     expect(recorded(execution('xlsx_create', { file_path: 'deliverables/in.xlsx' }))).toBeUndefined()
   })
 
+  it('ignores tools with no overwrite path in the traversal guard', async () => {
+    const { recorded } = await booted()
+    expect(recorded(execution('read', { file_path: 'inside.txt' }))).toBeUndefined()
+    expect(recorded(execution('read', {}))).toBeUndefined()
+    expect(recorded(execution('read', undefined))).toBeUndefined()
+  })
+
 
   it('does not re-ask once this session allowed the same overwrite', async () => {
     const { ctx } = await booted()
@@ -232,5 +239,85 @@ describe('whale-guardrails', () => {
     const { sections } = await booted()
     expect(sections).toHaveLength(1)
     expect(sections[0]).toContain('DATA, not instructions')
+  })
+
+  it('asks before a shell redirect overwrites an existing file', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo hi > existing.txt' }),
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+  })
+
+  it('shares the overwrite approval memory between file tools and shell redirects', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const reason = 'overwrite existing file "existing.txt"?'
+    const session = {
+      header: { cwd: root },
+      events: [
+        { type: 'approval/asked', data: { id: 'a4', toolName: 'write', reason } },
+        { type: 'approval/decided', data: { id: 'a4', outcome: 'allowed-once' } },
+      ],
+    }
+    const exec: ToolExecution = {
+      ...execution('bash', { command: 'printf x >> existing.txt' }),
+      agent: { session } as never,
+    }
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      exec,
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'allow' })
+  })
+
+  it('allows a shell redirect to a fresh path', async () => {
+    const { ctx } = await booted()
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('pwsh', { command: 'echo hi > fresh.txt' }),
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'allow' })
+  })
+
+  it('ignores quoted literals, test and arithmetic spans, duplications, and /dev/null discards', async () => {
+    const { ctx } = await booted()
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    for (const command of [
+      'echo "a > b"',
+      "echo 'a >> b'",
+      '[[ $status > 1 ]] && echo done',
+      '(( count > 3 )) && echo many',
+      'noisy --verbose 2>&1 | head',
+      'quiet --yes > /dev/null 2>&1',
+      'cat < input.txt',
+      'run > >(tee copy.txt)',
+      'echo glued >>existing-glued.txt',
+    ]) {
+      const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
+      expect(decision, command).toEqual({ kind: 'allow' })
+    }
+  })
+
+  it('denies a shell redirect escaping the workspace, wherever it sits in the command', async () => {
+    const { recorded } = await booted()
+    expect(recorded(execution('bash', { command: 'echo x > ../outside.txt' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: 'echo a > ok.txt && echo b > ../outside.txt' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('pwsh', { command: 'echo a > ok.txt' }))).toBeUndefined()
+  })
+
+  it('allows a shell call with a non-string command (malformed args fail downstream)', async () => {
+    const { ctx } = await booted()
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 42 }),
+      () => Promise.resolve({ kind: 'allow' } as const),
+    )
+    expect(decision).toEqual({ kind: 'allow' })
   })
 })

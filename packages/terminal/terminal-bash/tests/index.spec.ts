@@ -219,7 +219,7 @@ describe('BashTerminalBackend startup rollback', () => {
     expect(initialized).toHaveBeenCalledWith(undefined)
     expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/workspace') },
+      policy: { mode: 'workspace-write', egress: 'deny', sessionId: 'agent', workspaceRoot: resolve('/workspace') },
     }])
   })
 
@@ -251,7 +251,7 @@ describe('BashTerminalBackend startup rollback', () => {
     })
     expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/session-workspace') },
+      policy: { mode: 'workspace-write', egress: 'deny', sessionId: 'agent', workspaceRoot: resolve('/session-workspace') },
     }])
   })
 

@@ -12,8 +12,10 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
+import { rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { networkInterfaces } from 'node:os'
+import { networkInterfaces, tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -159,6 +161,48 @@ function localWebUrl(ctx: Context): string {
   return `http://${LOOPBACK_HOST}:${String(port)}`
 }
 
+/**
+ * The instance API-token file for one serving port. Non-browser automation
+ * and later launcher runs read the credential here instead of scraping
+ * terminal output; the launcher derives the same path from its own port.
+ * @param port - the bound webserver port.
+ * @returns the token file path.
+ */
+export function apiTokenFile(port: number): string {
+  return join(tmpdir(), `dsh-web-${String(port)}.token`)
+}
+
+/**
+ * The connection plugin's per-instance token, when that sibling is mounted.
+ * Structural read of `HostConnectionHandle.apiToken` (owner:
+ * `@deepseek-ai/dsh-client-connection`): importing the owner would pull its
+ * host-face sources into this face's program, so the one field is matched
+ * structurally instead.
+ */
+function instanceApiToken(ctx: Context): string | undefined {
+  const token = (ctx.get('connection') as { apiToken?: unknown } | undefined)?.apiToken
+  return typeof token === 'string' && token.length > 0 ? token : undefined
+}
+
+/**
+ * The entry-URL token fragment (`#token=…`, or empty without a connection
+ * sibling). Fragments stay client-side, so the token never crosses the HTTP
+ * boundary it authorizes; the page captures it into tab storage on load.
+ */
+function tokenFragment(ctx: Context): string {
+  const token = instanceApiToken(ctx)
+  return token === undefined ? '' : `#token=${token}`
+}
+
+/**
+ * The operator's entry URL: the canonical URL plus the instance token as a
+ * fragment. Without a connection sibling there is no token to hand out
+ * (today's URL).
+ */
+function entryUrl(ctx: Context): string {
+  return `${localWebUrl(ctx)}${tokenFragment(ctx)}`
+}
+
 /** Dist location is workspace knowledge of this bundle: resolved through the frontend package exports, not configured. */
 function resolveDistIndex(): string {
   const require = createRequire(import.meta.url)
@@ -250,6 +294,26 @@ export function apply(ctx: Context, config: Config): void {
       })
     })
   }
+  // The token file publishes on every serving boot regardless of the URL
+  // flags: non-browser automation and later launcher runs need the credential
+  // even when nobody prints or opens a URL.
+  const publishTokenFile = (): void => {
+    const port = ctx.get('webServer')?.port
+    const token = instanceApiToken(ctx)
+    if (port === undefined || token === undefined) return
+    const file = apiTokenFile(port)
+    // Drop a predecessor first: overwriting would inherit its permissions,
+    // and a world-readable token file would leak the credential.
+    rmSync(file, { force: true })
+    writeFileSync(file, `${token}\n`, { mode: 0o600 })
+  }
+  const settledForToken = ctx.get('loader')?.await()
+  if (settledForToken === undefined) publishTokenFile()
+  else {
+    void settledForToken.then(() => {
+      if (ctx.get('webServer') !== undefined) publishTokenFile()
+    }, () => {})
+  }
   if (config.printUrl || handoffBrowser) {
     // The URL line and browser handoff are readiness signals: supervisors RPC
     // as soon as they observe the line, while a browser requests the page as
@@ -257,12 +321,12 @@ export function apply(ctx: Context, config: Config): void {
     // route owner are still mounting. Await Loader settlement first; a
     // hand-built tree without a Loader is already the complete tree.
     const announceReady = (): void => {
-      const webUrl = localWebUrl(ctx)
+      const webUrl = entryUrl(ctx)
       // Reuse the exact LAN snapshot provided to the /api trust fence.
       const lanCandidate = runtime.lanAddresses[0]
       const port = ctx.webServer.port
       if (config.printUrl) {
-        console.log(`dsh web: ${webUrl}${lanCandidate === undefined ? '' : ` (LAN: http://${lanCandidate}:${String(port)})`}`)
+        console.log(`dsh web: ${webUrl}${lanCandidate === undefined ? '' : ` (LAN: http://${lanCandidate}:${String(port)}${tokenFragment(ctx)})`}`)
       }
       if (handoffBrowser) {
         console.log('dsh web: opening the default browser; pass --no-open to disable')

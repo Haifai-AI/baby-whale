@@ -7,7 +7,7 @@
 
 import { EventEmitter } from 'node:events'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -16,7 +16,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { createLaunchEnvironmentSnapshot, DSH_LAUNCH_ENVIRONMENT_KEY } from '@deepseek-ai/dsh-launch-environment'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
-import { apply, Config, internals } from '../src/index.ts'
+import { apiTokenFile, apply, Config, internals } from '../src/index.ts'
 
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
@@ -162,6 +162,54 @@ describe('web-app runtime glue', () => {
     const assembly = await ctx.systemPrompt.assemble()
     expect(assembly.sections.find(entry => entry.name === 'app:web-surface')?.text)
       .toContain('rebuilding the affected Web artifacts')
+    await ctx.fiber.dispose()
+  })
+
+  it('hands the instance token to the operator as a URL fragment and publishes the token file', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    ctx.provide('connection', { apiToken: '0123456789abcdef0123456789abcdef' } as never)
+    const file = apiTokenFile(4567)
+    rmSync(file, { force: true })
+    try {
+      const lines: string[] = []
+      const log = vi.spyOn(console, 'log').mockImplementation((message) => { lines.push(String(message)) })
+      const openBrowser = vi.fn(async () => {})
+      internals.openBrowser = openBrowser
+      apply(ctx, new Config({ openBrowser: true, printUrl: true, surfaceContext: false, trustedHosts: [] }))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(log).toHaveBeenCalledWith(
+        'dsh web: http://127.0.0.1:4567#token=0123456789abcdef0123456789abcdef'
+        + ' (LAN: http://192.168.1.5:4567#token=0123456789abcdef0123456789abcdef)',
+      )
+      expect(openBrowser).toHaveBeenCalledWith('http://127.0.0.1:4567#token=0123456789abcdef0123456789abcdef')
+      expect(lines).toHaveLength(2)
+      expect(readFileSync(file, 'utf8')).toBe('0123456789abcdef0123456789abcdef\n')
+      expect(statSync(file).mode & 0o777).toBe(0o600)
+      await ctx.fiber.dispose()
+    } finally {
+      rmSync(file, { force: true })
+    }
+  })
+
+  it('prints the plain URL and writes no token file without a connection sibling', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    const file = apiTokenFile(4567)
+    rmSync(file, { force: true })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, trustedHosts: [] }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567 (LAN: http://192.168.1.5:4567)')
+    expect(existsSync(file)).toBe(false)
     await ctx.fiber.dispose()
   })
 

@@ -317,6 +317,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   FileReadOutcome: 'filesystem.md',
   FsDirEntry: 'filesystem.md',
   FsEditOutcome: 'filesystem.md',
+  FsBinaryWriteOutcome: 'filesystem.md',
   FsEditRequest: 'filesystem.md',
   FsInfo: 'filesystem.md',
   FsObservation: 'filesystem.md',

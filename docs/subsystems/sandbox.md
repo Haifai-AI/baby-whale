@@ -198,9 +198,10 @@ The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mo
  * mode outranks the session's last `sandbox/mode` event, which outranks the
  * deployment default. A session cwd is its workspace-write boundary; the
  * configured root is the fallback for agentless calls and sessions without a
- * cwd.
+ * cwd. Egress always resolves to the deployment posture — there is no
+ * per-call override, so a call cannot widen its own network access.
  * @param request - optional session and approved mode override.
- * @returns the fully resolved per-call mode and absolute workspace root.
+ * @returns the fully resolved per-call mode, egress, and absolute workspace root.
  */
 resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy
 

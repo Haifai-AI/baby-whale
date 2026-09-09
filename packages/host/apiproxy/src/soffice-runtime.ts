@@ -11,16 +11,33 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { createWriteStream } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { finished } from 'node:stream/promises'
+import { finished, pipeline } from 'node:stream/promises'
 
 /** Pinned Document Foundation release the managed installer fetches. */
-const LIBREOFFICE_VERSION = '26.2.4'
+const LIBREOFFICE_VERSION = '26.2.6'
+
+/**
+ * Pinned SHA-256 of each managed macOS artifact, captured from the official
+ * Document Foundation release bytes. A version bump without fresh pins fails
+ * the install loudly instead of fetching an unverified disk image.
+ */
+const LIBREOFFICE_SHA256 = {
+  aarch64: '94bb3248df074c225490a8a6d1d9dc87c7d6783dbb7a8e9f0d0c3d94348552af',
+  'x86-64': '135b8a95b8133396d54bf8e726dbc0066145efa0d785963fc3d4592acbfcfe5b',
+} as const
+
+/** Display size (MiB) of each managed artifact, from the official content lengths. */
+const LIBREOFFICE_SIZE_MB = {
+  aarch64: 284,
+  'x86-64': 294,
+} as const
 
 /** Per-OS managed layout, resolved under {@link appSupportDir}. */
 export function appSupportDir(): string {
@@ -57,14 +74,18 @@ export function managedInstallSupport(): {
   url?: string
   guideUrl?: string
   sizeMb?: number
+  sha256?: string
 } {
   if (process.platform === 'darwin') {
-    const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64'
-    const dmgArch = process.arch === 'arm64' ? 'aarch64' : 'x86-64'
+    // The mirror directory spells Intel `x86_64` while the file spells it
+    // `x86-64`; the pin tables key on the file spelling.
+    const key = process.arch === 'arm64' ? 'aarch64' : 'x86-64'
+    const dir = key === 'aarch64' ? 'aarch64' : 'x86_64'
     return {
       supported: true,
-      url: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/mac/${arch}/LibreOffice_${LIBREOFFICE_VERSION}_MacOS_${dmgArch}.dmg`,
-      sizeMb: 281,
+      url: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/mac/${dir}/LibreOffice_${LIBREOFFICE_VERSION}_MacOS_${key}.dmg`,
+      sizeMb: LIBREOFFICE_SIZE_MB[key],
+      sha256: LIBREOFFICE_SHA256[key],
     }
   }
   // Both flows need an interactive installer or a package manager; the
@@ -108,14 +129,41 @@ export async function beginManagedSofficeInstall(onInstalled?: () => void): Prom
     }
     return { ...state }
   }
+  // A supported platform without a pinned hash must never fetch: downloading
+  // an unverified executable artifact is the failure this gate exists to stop.
+  if (support.sha256 === undefined) {
+    state = {
+      phase: 'error',
+      progress: 0,
+      error: `No pinned checksum for LibreOffice ${LIBREOFFICE_VERSION} on this machine; refusing the unverified download.`,
+    }
+    return { ...state }
+  }
   if (inflight !== undefined) return { ...state }
-  inflight = runManagedInstall(support.url, onInstalled).finally(() => {
+  inflight = runManagedInstall(support.url, support.sha256, onInstalled).finally(() => {
     inflight = undefined
   })
   return { ...state }
 }
 
-async function runManagedInstall(url: string, onInstalled?: () => void): Promise<void> {
+/**
+ * Verify a downloaded artifact against its pinned SHA-256 before anything
+ * mounts or executes it. Streams the file (never buffered whole) and fails
+ * closed: the caller owns cleanup of the rejected bytes.
+ * @param file - downloaded artifact path.
+ * @param expected - pinned lowercase hex digest.
+ */
+export async function verifyFileSha256(file: string, expected: string): Promise<void> {
+  const hash = createHash('sha256')
+  await pipeline(createReadStream(file), hash)
+  if (hash.digest('hex') !== expected) {
+    throw new Error(
+      'LibreOffice download checksum mismatch — the artifact may be corrupted or tampered with; refusing to install',
+    )
+  }
+}
+
+async function runManagedInstall(url: string, sha256: string, onInstalled?: () => void): Promise<void> {
   const work = await mkdtemp(path.join(tmpdir(), 'babywhale-lo-'))
   try {
     state = {
@@ -127,6 +175,10 @@ async function runManagedInstall(url: string, onInstalled?: () => void): Promise
     await downloadToFile(url, dmg, (fraction) => {
       state = { ...state, progress: Math.min(0.8, fraction * 0.8) }
     })
+    // The gate: nothing mounts, copies, or runs before the hash matches. A
+    // mismatch throws with the work directory (rejected bytes included)
+    // removed by the finally below.
+    await verifyFileSha256(dmg, sha256)
 
     state = { phase: 'installing', progress: 0.85, message: 'Installing into the application support folder' }
     const support = appSupportDir()

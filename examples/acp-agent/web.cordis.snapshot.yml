@@ -14,6 +14,10 @@
             name: '@deepseek-ai/dsh-web'
           - id: web-fetch-http
             name: '@deepseek-ai/dsh-web-fetch-http'
+            config:
+              # The fixture server listens on loopback, which the egress
+              # gate blocks by default — the scenario allowlists it.
+              egressAllowHosts: ['127.0.0.1']
           - id: web-fetch-fixture
             name: './web-fetch-fixture-server.mjs'
           - id: tool-web

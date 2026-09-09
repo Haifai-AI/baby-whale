@@ -15,7 +15,8 @@ export type FetchableKind = 'html' | 'text'
  * Validate a request URL against the basic transport hygiene the provider
  * enforces before any network access: http(s) only, no embedded credentials,
  * bounded length. Returns the parsed `URL`. Throws {@link WebError} otherwise.
- * (SSRF / private-network blocking is deferred — see the package Agent Note.)
+ * Network-destination blocking (SSRF / private-network) is the separate
+ * egress gate in `./egress.ts`, applied per request and per redirect hop.
  *
  * @param input - the raw URL string from the fetch request.
  * @param maxUrlLength - inclusive upper bound on `input`'s length.

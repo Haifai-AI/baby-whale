@@ -9,10 +9,14 @@
  * still be a rebound browser read and Host is the one header rebinding cannot
  * forge. Non-browser and remote clients pass the same fence via loopback,
  * deployment-derived LAN IP literals, or a declared `trustedHosts` authority.
- * Network reachability and authentication stay out of scope: binding policy
- * belongs to the webserver config, and this fence is not an auth layer.
+ * Network reachability stays out of scope (binding policy belongs to the
+ * webserver config), but loopback is a transport boundary, never
+ * authorization: every request additionally presents the per-instance API
+ * token ({@link createApiToken} / {@link verifyApiToken}), which other local
+ * processes do not have.
  */
 
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingHttpHeaders } from 'node:http'
 import { isLoopbackHostname } from './loopback-hostname.ts'
 
@@ -120,4 +124,76 @@ export function isTrustedApiRequest(request: ApiTrustRequest, trustedHosts: read
   } catch {
     return false
   }
+}
+
+/**
+ * Mint one per-instance host API token: 256 random bits, URL-safe text so it
+ * travels in an Authorization header, a WebSocket query, or a URL fragment
+ * without encoding. The token is the credential other local processes do not
+ * have: loopback alone is a transport boundary, never authorization.
+ * @returns a fresh unguessable token.
+ */
+export function createApiToken(): string {
+  return randomBytes(32).toString('base64url')
+}
+
+/**
+ * Extract the presented API token from a request's credential carriers: the
+ * `Authorization: Bearer <token>` header first (fetch transport), then the
+ * `token` query parameter (transports that cannot set headers: WebSocket
+ * upgrades and subresource URLs). Anything else carries no credential.
+ * @param authorization - the raw Authorization header value, when present.
+ * @param url - the request URL (absolute or origin-form), when present.
+ * @returns the presented token, or undefined when no carrier holds one.
+ */
+export function extractApiToken(authorization: unknown, url: string | undefined): string | undefined {
+  if (typeof authorization === 'string') {
+    const [scheme, token, ...rest] = authorization.split(' ')
+    if (scheme === 'Bearer' && token !== undefined && token.length > 0 && rest.length === 0) return token
+  }
+  if (url !== undefined) {
+    const query = /(?:^|[?&])token=([^&#]*)/.exec(url)?.[1]
+    if (query !== undefined && query.length > 0) {
+      try {
+        return decodeURIComponent(query)
+      } catch {
+        // A malformed percent-encoding names no token.
+        return undefined
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Verify a presented API token against the instance token in constant time.
+ * Both sides hash to the digest width first, so the comparison leaks neither
+ * value nor length.
+ * @param presented - the token from {@link extractApiToken}, when any.
+ * @param expected - the instance token minted at server start.
+ * @returns true only for an exact match against a non-empty instance token.
+ */
+export function verifyApiToken(presented: string | undefined, expected: string): boolean {
+  if (presented === undefined || presented.length === 0 || expected.length === 0) return false
+  const digest = (value: string): Buffer => createHash('sha256').update(value, 'utf8').digest()
+  return timingSafeEqual(digest(presented), digest(expected))
+}
+
+/** A deployment-pinned token must look like a token: length plus alphabet. */
+const PINNED_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,}$/
+
+/**
+ * Validate a deployment-pinned API token, failing loud on a weak value. An
+ * empty pin means unpinned (mint per boot) and never reaches this check.
+ * @param pinned - the configured token.
+ * @returns the pin unchanged.
+ * @throws Error when the pin is too short or leaves the URL-safe alphabet.
+ */
+export function assertPinnedApiToken(pinned: string): string {
+  if (!PINNED_TOKEN_PATTERN.test(pinned)) {
+    throw new Error(
+      'client-connection apiToken must be at least 16 URL-safe characters ([A-Za-z0-9_-]); omit it to mint a fresh token per boot',
+    )
+  }
+  return pinned
 }

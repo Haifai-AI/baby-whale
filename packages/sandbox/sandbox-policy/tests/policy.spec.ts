@@ -14,7 +14,11 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SandboxPolicyService, { SANDBOX_MODES, effectiveSandboxMode, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import SystemPrompt, { renderContextSnapshot, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 
-async function mounted(config: { mode?: 'read-only' | 'workspace-write' | 'danger-full-access'; workspaceRoot?: string } = {}) {
+async function mounted(config: {
+  mode?: 'read-only' | 'workspace-write' | 'danger-full-access'
+  egress?: 'deny' | 'allow'
+  workspaceRoot?: string
+} = {}) {
   const ctx = new Context()
   await ctx.plugin(SandboxPolicyService, config)
   return ctx
@@ -52,10 +56,24 @@ describe('SandboxPolicyService', () => {
     expect(ctx.sandboxPolicy.workspaceRoot).toBe(resolve('/ws/../ws/./sub'))
   })
 
+  it('denies network egress by default: a file sandbox is not an exfiltration channel', async () => {
+    const ctx = await mounted({ workspaceRoot: '/fallback' })
+    expect(ctx.sandboxPolicy.defaultEgress).toBe('deny')
+    expect(ctx.sandboxPolicy.resolve().egress).toBe('deny')
+  })
+
+  it('carries a configured egress allow to every resolved call', async () => {
+    const ctx = await mounted({ egress: 'allow', workspaceRoot: '/fallback' })
+    expect(ctx.sandboxPolicy.defaultEgress).toBe('allow')
+    expect(ctx.sandboxPolicy.resolve().egress).toBe('allow')
+    expect(ctx.sandboxPolicy.resolve({ session: session('sess-net', '/projects/net') }).egress).toBe('allow')
+  })
+
   it('resolves the deployment policy for an agentless call', async () => {
     const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
     expect(ctx.sandboxPolicy.resolve()).toEqual({
       mode: 'workspace-write',
+      egress: 'deny',
       workspaceRoot: resolve('/fallback'),
     })
   })
@@ -68,11 +86,13 @@ describe('SandboxPolicyService', () => {
 
     expect(ctx.sandboxPolicy.resolve({ session: first })).toEqual({
       mode: 'workspace-write',
+      egress: 'deny',
       workspaceRoot: resolve('/projects/first'),
       sessionId: 'sess-first',
     })
     expect(ctx.sandboxPolicy.resolve({ session: second })).toEqual({
       mode: 'read-only',
+      egress: 'deny',
       workspaceRoot: resolve('/projects/second'),
       sessionId: 'sess-second',
     })
@@ -80,6 +100,7 @@ describe('SandboxPolicyService', () => {
     expect(ctx.sandboxPolicy.overrideOf(second)).toBe('read-only')
     expect(ctx.sandboxPolicy.resolve()).toEqual({
       mode: 'workspace-write',
+      egress: 'deny',
       workspaceRoot: resolve('/fallback'),
     })
   })
@@ -99,6 +120,7 @@ describe('SandboxPolicyService', () => {
 
       expect(ctx.sandboxPolicy.resolve({ session: session('sess-symlink-parent', cwd) })).toEqual({
         mode: 'workspace-write',
+        egress: 'deny',
         workspaceRoot: realpathSync.native(physical),
         sessionId: 'sess-symlink-parent',
       })
@@ -113,6 +135,7 @@ describe('SandboxPolicyService', () => {
     setSandboxMode(active, 'read-only')
     expect(ctx.sandboxPolicy.resolve({ session: active, mode: 'danger-full-access' })).toEqual({
       mode: 'danger-full-access',
+      egress: 'deny',
       workspaceRoot: resolve('/projects/approved'),
       sessionId: 'sess-approved',
     })
@@ -127,6 +150,11 @@ describe('SandboxPolicyService', () => {
     const ctx = new Context()
     // schemastery rejects the union violation when the plugin loads.
     await expect(ctx.plugin(SandboxPolicyService, { mode: 'yolo' as never })).rejects.toThrow()
+  })
+
+  it('rejects an egress outside the closed vocabulary at load', async () => {
+    const ctx = new Context()
+    await expect(ctx.plugin(SandboxPolicyService, { egress: 'corp-net' as never })).rejects.toThrow()
   })
 
   it('disposes the service and context contribution from a child fiber (HMR safety)', async () => {

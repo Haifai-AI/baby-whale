@@ -268,6 +268,11 @@ function joinInvariantStartup(
       throw error
     }
   })
+  // A plugin may legitimately fail its startup (bounded startup deadlines,
+  // failOnStartupError probes) and nobody may consume the wrapper's thenable;
+  // the failure is inspected through fiber state. Keep that expected
+  // rejection from surfacing as an unhandled rejection.
+  readiness.catch(() => {})
   const joined = Object.create(fiber) as PluginFiber
   joined.then = readiness.then.bind(readiness)
   return joined

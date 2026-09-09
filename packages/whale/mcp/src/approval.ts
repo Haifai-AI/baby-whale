@@ -74,26 +74,54 @@ function approvedReasons(session: unknown): ReadonlySet<string> {
 }
 
 /**
- * The approval ask reason for one MCP tool call: stable per tool so a later
- * audit scan recognizes the earlier grant.
+ * Attribute a tool name to its configured server by LITERAL prefix match.
+ * Tool names are never parsed to recover identity: a server named `a__b`
+ * registers `mcp__a__b__<tool>`, and splitting at the first `__` would
+ * misattribute it to a server `a`. Longest configured name wins, so servers
+ * `a` and `a__b` coexist deterministically.
  * @param toolName - the model-facing public tool name.
+ * @param serverNames - the names of the servers currently configured.
+ * @returns the owning configured server name, or undefined when none matches.
+ */
+function configuredServerOf(toolName: string, serverNames: ReadonlySet<string>): string | undefined {
+  let owner: string | undefined
+  for (const name of serverNames) {
+    if (!toolName.startsWith(`${MCP_TOOL_PREFIX}${name}__`)) continue
+    if (owner === undefined || name.length > owner.length) owner = name
+  }
+  return owner
+}
+
+/**
+ * The approval ask reason for one MCP tool call: stable per (tool name,
+ * configured server set) so a later audit scan recognizes the earlier grant.
+ * The server clause names the CONFIGURED server owning the tool's literal
+ * prefix; an unconfigured tool (never the case for a mounted server) asks
+ * without one.
+ * @param toolName - the model-facing public tool name.
+ * @param serverNames - the names of the servers currently configured.
  * @returns the human-facing ask reason.
  */
-export function mcpAskReason(toolName: string): string {
-  const server = toolName.slice(MCP_TOOL_PREFIX.length).split('__')[0] ?? ''
-  return `run MCP tool "${toolName}"${server !== '' ? ` from server "${server}"` : ''}?`
+export function mcpAskReason(toolName: string, serverNames: ReadonlySet<string> = new Set()): string {
+  const server = configuredServerOf(toolName, serverNames)
+  return `run MCP tool "${toolName}"${server !== undefined ? ` from server "${server}"` : ''}?`
 }
 
 /**
  * Decide one tool execution for the MCP fence.
  * @param exec - the execution about to dispatch.
+ * @param serverNames - the names of the servers currently configured, used to
+ * attribute the tool to its server by literal prefix (see {@link mcpAskReason}).
  * @returns an ask decision on first use, or `undefined` to let the call pass.
  */
-export function decideMcpApproval(exec: Readonly<ToolExecution>): PreToolDecision | undefined {
+export function decideMcpApproval(
+  exec: Readonly<ToolExecution>,
+  serverNames: ReadonlySet<string> = new Set(),
+): PreToolDecision | undefined {
   if (!exec.name.startsWith(MCP_TOOL_PREFIX)) return undefined
   const session = exec.agent?.session
   if (sessionApprovalPolicy(session) === 'never') return undefined
-  const reason = mcpAskReason(exec.name)
+  const reason = mcpAskReason(exec.name, serverNames)
   if (approvedReasons(session).has(reason)) return undefined
   return { kind: 'ask', reason }
 }

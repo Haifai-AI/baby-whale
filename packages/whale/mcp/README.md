@@ -25,10 +25,12 @@ The bridge mounts with `failOnStartupError: true`, so a failed initial connectio
 ## Behavior
 
 - On section change: diff by saved `id` plus a fingerprint over the bridge-consumed fields. New and changed enabled entries mount (serially, one reconcile pass at a time); disabled, removed, and changed entries dispose. Reconcile failures are contained and logged — one bad server never blocks the others.
+- Startup is bounded: every mount carries a manager-owned startup deadline (default 30 s) into the bridge, so a server whose initial connection never settles fails visibly (`failed`, with a restartable error) instead of holding the serialized reconcile queue — and every later server, settings edit, or restart — forever. The manager additionally bounds the wait itself as a net; a healthy later server still mounts after an earlier one hangs.
+- Internal state tracks only live servers: removing or disabling an entry drops its record (including a failed one), while a still-enabled unchanged entry keeps its visible `failed` status instead of being silently retried on every unrelated edit.
 - Duplicate `name` across enabled entries: the bridge's own reservation check rejects the later mount, and that server shows `failed` with the actionable message.
-- `mcpStatus.list()` merges manager state (`connecting` / `connected` / `failed` / `disabled`) with tool names read from the live registry at call time, so a bridge that re-synced is reflected without any push channel.
+- `mcpStatus.list()` merges manager state (`connecting` / `connected` / `failed` / `disabled`) with tool names read from the live registry at call time, so a bridge that re-synced is reflected without any push channel. Tools are attributed to servers by their CONFIGURED literal `mcp__<name>__` prefix (longest match first) — never by parsing the name at the first `__`, so a server named `a__b` (legal) keeps its tools unambiguous alongside a server `a`.
 - `mcpStatus.restart({ id })` disposes one server's fiber and mounts it again — the recovery path for a `failed` server once its cause is addressed.
-- First-use approval: a `tools/pre-execute` fence asks before a session's first call of each MCP tool (`run MCP tool "mcp__x__y" …?`). The session's audit log is the memory — one allowed-once grant per tool per session; sessions under the never-prompt policy (danger-full-access) run unfenced, exactly like the whale guardrails overwrite fence.
+- First-use approval: a `tools/pre-execute` fence asks before a session's first call of each MCP tool (`run MCP tool "mcp__x__y" from server "x"?`). The server clause comes from the same literal configured-prefix attribution; the session's audit log is the memory — one allowed-once grant per tool per session; sessions under the never-prompt policy (danger-full-access) run unfenced, exactly like the whale guardrails overwrite fence.
 
 ## Model Experience
 

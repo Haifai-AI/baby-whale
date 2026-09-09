@@ -30,7 +30,8 @@ describe('parseImport', () => {
     expect(parsed.entries[0]).toMatchObject({
       name: 'remote', transport: 'streamable-http',
       url: 'https://example.com/mcp', headers: { Authorization: 'Bearer x' },
-    })  })
+    })
+  })
 
   it('respects disabled flags and skips entries without a launch target', () => {
     const parsed = parseImport(JSON.stringify({

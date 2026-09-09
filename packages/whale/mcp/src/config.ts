@@ -78,12 +78,18 @@ export const McpSettingsSchema: Schema<McpSettings> = z.object({
  * schemastery schema fills the remaining defaults; reconnect policy is left
  * to the bridge defaults (enabled, capped backoff).
  * @param entry - the saved user entry.
+ * @param startupTimeoutMs - the manager-owned startup bound for the mount;
+ * the bridge default applies when omitted.
  * @returns config for one `@deepseek-ai/dsh-mcp-client` instance.
  */
-export function toBridgeConfig(entry: McpServerEntry): BridgeConfig {
+export function toBridgeConfig(entry: McpServerEntry, startupTimeoutMs?: number): BridgeConfig {
   const common = {
     serverName: entry.name,
     toolCallTimeoutMs: entry.toolCallTimeoutMs,
+    // Bounded startup: the bridge fails its own fiber when the initial
+    // connection + tool sync exceed the bound, so one hanging external server
+    // cannot hold its mount (and the serialized reconcile queue) forever.
+    ...(startupTimeoutMs === undefined ? {} : { startupTimeoutMs }),
     // Observability: a failed initial connection must REJECT the mount so the
     // manager can record a failed status; the bridge's reconnect loop only
     // engages after a first successful connection.

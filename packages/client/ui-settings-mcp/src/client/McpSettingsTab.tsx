@@ -99,6 +99,23 @@ function recordToLines(record: Readonly<Record<string, string>>): string {
     .join('\n')
 }
 
+/**
+ * Canonical JSON: object keys sorted at every depth, so two structurally
+ * equal sections stringify identically regardless of key order. The
+ * landed/save settlement check must compare meaning, not key insertion order
+ * (the Host folds a saved section through the schema, which may reorder).
+ * @param value - any JSON-shaped value.
+ * @returns the order-insensitive JSON form.
+ */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, visited) => {
+    if (visited === null || typeof visited !== 'object' || Array.isArray(visited)) return visited
+    const record = visited as Record<string, unknown>
+    return Object.keys(record).sort().map(key => [key, record[key]] as const)
+      .reduce<Record<string, unknown>>((sorted, [key, item]) => { sorted[key] = item; return sorted }, {})
+  })
+}
+
 /** Entry → staged form. */
 function draftOf(entry: McpServerEntryView): Draft {
   return {
@@ -217,7 +234,7 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
     try {
       await scope.set('servers', next.map(entry => ({ ...entry })))
       const landed = scope.getSnapshot().value?.servers ?? []
-      return JSON.stringify(landed) === JSON.stringify(next)
+      return canonicalJson(landed) === canonicalJson(next)
     } catch {
       return false
     } finally {
@@ -346,10 +363,10 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
               <span>{t('transport')}</span>
               <select
                 value={editing.transport}
-                onChange={(event) => { setEditing({ ...editing, transport: event.currentTarget.value === 'http' ? 'streamable-http' : 'stdio' }) }}
+                onChange={(event) => { setEditing({ ...editing, transport: event.currentTarget.value as Draft['transport'] }) }}
               >
                 <option value="stdio">{t('transportStdio')}</option>
-                <option value="http">{t('transportHttp')}</option>
+                <option value="streamable-http">{t('transportHttp')}</option>
               </select>
             </label>
             {editing.transport === 'stdio' ? (

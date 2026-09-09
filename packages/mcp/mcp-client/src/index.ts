@@ -17,7 +17,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
-import type { ReconnectConfig } from './connection.ts'
+import type { ConnectionOutcome, ReconnectConfig } from './connection.ts'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
 
@@ -32,6 +32,16 @@ export const inject = ['tools']
 
 /** Default timeout for individual MCP tool calls (ms). */
 const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60_000
+
+/**
+ * Default bound for one startup (initial connection + tool synchronization).
+ * Without it a server that accepts the connection but never answers
+ * `initialize` holds its fiber in LOADING indefinitely — the SDK's own request
+ * timeout (60s) is the only backstop and does not cover a cursor chain of
+ * slow `tools/list` pages. Bounded startup keeps activation failures
+ * deterministic and rollbacks prompt.
+ */
+export const DEFAULT_STARTUP_TIMEOUT_MS = 30_000
 
 /** Valid `serverName`, kept below the public tool-name budget. */
 const SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
@@ -66,6 +76,8 @@ export interface StdioConfig {
   cwd: string
   /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number
+  /** Bound for the initial connection + tool synchronization (ms); omission uses the default. */
+  startupTimeoutMs?: number
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -88,6 +100,8 @@ export interface StreamableHttpConfig {
   headers: Record<string, string>
   /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number
+  /** Bound for the initial connection + tool synchronization (ms); omission uses the default. */
+  startupTimeoutMs?: number
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -113,6 +127,7 @@ export const Config = z.union([
     env: z.dict(String).default({}),
     cwd: z.string().default(''),
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
+    startupTimeoutMs: z.number().default(DEFAULT_STARTUP_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     reconnect: Reconnect,
   }),
@@ -122,6 +137,7 @@ export const Config = z.union([
     url: z.string().required(),
     headers: z.dict(String).default({}),
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
+    startupTimeoutMs: z.number().default(DEFAULT_STARTUP_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     reconnect: Reconnect,
   }),
@@ -171,11 +187,31 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
   // Block plugin activation on the initial connection + tool discovery so
   // Cordis consumers observe the tools immediately after the fiber activates.
-  // When failOnStartupError is true, a failed initial attempt rejects the
-  // fiber (Cordis rolls it back); otherwise the error is logged and the
-  // supervisor enters its reconnect loop.
-  const outcome = await connection.ready
-  if (outcome.error !== undefined && config.failOnStartupError) {
-    throw new Error(`mcp-client(${config.serverName}): initial connection or tool synchronization failed`, { cause: outcome.error })
+  // The wait is bounded: a server that connects but never settles startup
+  // (hanging `initialize`, a stalled `tools/list` cursor chain) must not hold
+  // this fiber — and everything serialized behind it — forever. At the
+  // deadline the startup is reported as a failed outcome, so the same
+  // failOnStartupError split as any other startup failure applies: a fatal
+  // one rejects the fiber (Cordis rolls it back and disposal closes the
+  // in-flight generation), otherwise the error is logged and the supervisor
+  // keeps running its (re)connect loop.
+  const label = `mcp-client(${config.serverName})`
+  const startupTimeoutMs = config.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS
+  const outcome = await new Promise<ConnectionOutcome>((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({
+        error: new Error(
+          `${label}: startup did not settle within ${startupTimeoutMs}ms — initial connection or tool synchronization still in flight`,
+        ),
+      })
+    }, startupTimeoutMs)
+    timer.unref()
+    connection.ready.then(resolve)
+  })
+  if (outcome.error !== undefined) {
+    if (config.failOnStartupError) {
+      throw new Error(`mcp-client(${config.serverName}): initial connection or tool synchronization failed`, { cause: outcome.error })
+    }
+    ctx.logger.warn(`${label}: startup failed: ${String(outcome.error)}`)
   }
 }

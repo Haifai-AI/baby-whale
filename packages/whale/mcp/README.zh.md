@@ -1,0 +1,47 @@
+# @deepseek-ai/dsh-whale-mcp
+
+English | [中文](README.md)
+
+Whale MCP 管理器：把 `mcp` 设置命名空间变成活着的 MCP 服务器的宿主面插件，让整个 Model Context Protocol 生态免改 YAML 地接入 Baby Whale。
+
+区段里每个启用的条目挂载一个 [`@deepseek-ai/dsh-mcp-client`](../../mcp/mcp-client/README.zh.md) 桥接 fiber——stdio 子进程或 Streamable HTTP 连接——其工具以带服务器前缀的模型可见名称（`mcp__<name>__<rawTool>`）进入共享的 `ctx.tools` 注册表。在设置里编辑该区段会对挂载集合做协调：未改动的服务器保持运行，改动的重新挂载，停用或删除的卸载。本插件同时是 `mcpStatus` Remote：设置页从它读取每个服务器的实时状态与工具列表，并可强制重连某一台。
+
+## 配置
+
+`mcp` 设置命名空间是一个服务器条目数组：
+
+| 字段 | 传输 | 说明 |
+|---|---|---|
+| `id` | 双方 | 区段稳定标识（自动生成，不会发给服务器）。 |
+| `name` | 双方 | 模型可见命名空间；`[A-Za-z0-9_-]{1,32}`，在启用的服务器间唯一。 |
+| `enabled` | 双方 | 停用条目保留字段但不挂载。 |
+| `transport` | 双方 | `"stdio"` 或 `"streamable-http"`。 |
+| `command` / `args` / `env` / `cwd` | stdio | 子进程启动参数，env 合并在净化后的环境之上。 |
+| `url` / `headers` | streamable-http | MCP 端点与额外请求头。 |
+| `toolCallTimeoutMs` | 双方 | 单次工具调用超时（默认 60000）。 |
+
+桥接以 `failOnStartupError: true` 挂载：初始连接失败会呈现为可见的 `failed` 状态，而不是静默的空工具集；启动成功之后的断线仍由桥接自身的重连循环处理。环境变量与请求头刻意用普通字段而非 secret 角色：设置 RPC 仅走环回，整体保存数组会把读路径从未返回的 secret 值悄悄清空，而且导入来源（Claude Desktop 风格 JSON）本来就是明文存储。
+
+## 行为
+
+- 区段变化时：按 `id` 加桥接消费字段的指纹做差异。新增和变更的启用条目挂载（串行，一次一个协调过程）；停用、删除、变更的条目卸载。协调失败只记录日志——一台坏服务器不会拖累其他服务器。
+- 启用条目间 `name` 重复：桥接自身的占位检查会让较晚的挂载失败，该服务器显示 `failed` 并附可行动的错误信息。
+- `mcpStatus.list()` 把管理器状态（`connecting` / `connected` / `failed` / `disabled`）与调用时从注册表实时读取的工具名合并——桥接重新同步后无需推送信道即可反映。
+- `mcpStatus.restart({ id })` 卸载并重新挂载一台服务器——`failed` 服务器排除原因后的恢复路径。
+- 首次使用审批：`tools/pre-execute` 栅栏在会话首次调用每个 MCP 工具前发问（`运行 MCP 工具 "mcp__x__y"……？`）。会话审计日志即记忆——每工具每会话一次 allowed-once 授权；处于 never-prompt 策略（danger-full-access）的会话不设栅栏，与 whale guardrails 的覆盖写栅栏一致。
+
+## 模型体验
+
+#### 模型看到什么
+
+已连接服务器宣告的每个工具以原生工具出现，名为 `mcp__<name>__<rawTool>`，带服务器提供的描述与 schema，外加每工具每会话一次的审批卡片。移除或停用会立即注销工具。
+
+#### Token 影响
+
+工具注册期间支付 schema 成本；重新同步是替换而非累积（KV-cache 契约见桥接 README）。
+
+## 已知限制与后续工作
+
+- **启动失败不自动重试** — 启动时失败的服务器保持 `failed`，直到用户保存、重新启用或手动重连；成功启动之后的 `tools/list_changed` 再同步是桥接自身的行为。
+- **不桥接 Resources 与 Prompts** — 只桥接工具，与底层桥接一致。
+- **无保存前连接测试** — 保存后的状态快照加重连覆盖校验；对未保存草稿的探测是后续工作。

@@ -149,7 +149,11 @@ function entryOf(draft: Draft): { ok: true; entry: McpServerEntryView } | { ok: 
 
 /** Render the MCP servers management tab. */
 export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps): ReactNode {
-  const snapshot = useSyncExternalStore(scope.subscribe, scope.getSnapshot)
+  // The scope controller's methods are class members: bind through stable
+  // closures so useSyncExternalStore sees fixed identities and `this` lands.
+  const subscribe = useCallback((listener: () => void) => scope.subscribe(listener), [scope])
+  const getSnapshot = useCallback(() => scope.getSnapshot(), [scope])
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot)
   const [statuses, setStatuses] = useState<McpStatusSnapshot | null>(null)
   const [statusError, setStatusError] = useState(false)
   const [statusRequest, setStatusRequest] = useState(0)

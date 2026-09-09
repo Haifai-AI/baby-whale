@@ -13,7 +13,7 @@ describe('parseImport', () => {
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
     expect(parsed.entries).toHaveLength(1)
-    const entry = parsed.entries[0]
+    const entry = parsed.entries[0]!
     expect(entry).toMatchObject({
       name: 'github', transport: 'stdio', command: 'npx',
       args: ['-y', 'server-github'], env: { TOKEN: 't' }, enabled: true,
@@ -30,8 +30,7 @@ describe('parseImport', () => {
     expect(parsed.entries[0]).toMatchObject({
       name: 'remote', transport: 'streamable-http',
       url: 'https://example.com/mcp', headers: { Authorization: 'Bearer x' },
-    })
-  })
+    })  })
 
   it('respects disabled flags and skips entries without a launch target', () => {
     const parsed = parseImport(JSON.stringify({
@@ -62,7 +61,7 @@ describe('parseImport', () => {
     const parsed = parseImport(JSON.stringify({ mcpServers: { a: { command: 'x', args: '-y pkg' } } }), empty)
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
-    expect(parsed.entries[0].args).toEqual(['-y', 'pkg'])
+    expect(parsed.entries[0]!.args).toEqual(['-y', 'pkg'])
   })
 
   it('reports the parse failure reason', () => {

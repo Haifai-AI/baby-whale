@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { settingsNamespace, SettingsProvider } from '@deepseek-ai/dsh-settings'
+import { settingsNamespace, SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { ToolExecution, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import WhaleMcpService, { name as PLUGIN_NAME } from '../src/index.ts'
@@ -223,8 +223,8 @@ describe('WhaleMcpService', () => {
 
       const row = manager.list().servers[0]
       expect(row).toMatchObject({ name: 'whale', transport: 'stdio', state: 'connected', enabled: true })
-      expect(row.toolNames).toEqual(['mcp__whale__echo'])
-      expect(row.target).toContain('echo-server.mjs')
+      expect(row?.toolNames).toEqual(['mcp__whale__echo'])
+      expect(row?.target).toContain('echo-server.mjs')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -301,7 +301,7 @@ describe('WhaleMcpService', () => {
 
 describe('McpSettingsSchema', () => {
   it('resolves an empty section to no servers', () => {
-    const resolved = McpSettingsSchema({}) as McpSettings
+    const resolved = McpSettingsSchema({} as never) as McpSettings
     expect(resolved.servers).toEqual([])
   })
 })

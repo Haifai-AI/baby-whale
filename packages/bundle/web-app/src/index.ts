@@ -311,7 +311,15 @@ export function apply(ctx: Context, config: Config): void {
   if (settledForToken === undefined) publishTokenFile()
   else {
     void settledForToken.then(() => {
-      if (ctx.get('webServer') !== undefined) publishTokenFile()
+      if (ctx.get('webServer') === undefined) return
+      // Nobody awaits this callback: a publication failure must be owned
+      // here, or it surfaces only as an unhandled rejection after boot.
+      try {
+        publishTokenFile()
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        console.error(`web-app: could not publish the API token file because ${reason}; pass the token to browserless automation manually`)
+      }
     }, () => {})
   }
   if (config.printUrl || handoffBrowser) {
@@ -326,6 +334,10 @@ export function apply(ctx: Context, config: Config): void {
       const lanCandidate = runtime.lanAddresses[0]
       const port = ctx.webServer.port
       if (config.printUrl) {
+        // The printed line embeds the instance token (URL fragment and LAN
+        // variant): it is the credential for this instance, so it belongs in
+        // the operator's terminal, not in shared logs or chat channels. The
+        // token file is the equivalent credential for non-browser use.
         console.log(`dsh web: ${webUrl}${lanCandidate === undefined ? '' : ` (LAN: http://${lanCandidate}:${String(port)}${tokenFragment(ctx)})`}`)
       }
       if (handoffBrowser) {

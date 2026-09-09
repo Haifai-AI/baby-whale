@@ -213,6 +213,43 @@ describe('web-app runtime glue', () => {
     await ctx.fiber.dispose()
   })
 
+  it('owns a deferred token-publication failure instead of an unhandled rejection', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    ctx.provide('connection', { apiToken: '0123456789abcdef0123456789abcdef' } as never)
+    const file = apiTokenFile(4567)
+    rmSync(file, { force: true, recursive: true })
+    // A directory at the token path makes the publication's non-recursive
+    // discard throw deterministically after Loader settlement.
+    mkdirSync(file)
+    const rejections: unknown[] = []
+    const onRejection = (reason: unknown): void => { rejections.push(reason) }
+    process.on('unhandledRejection', onRejection)
+    try {
+      let release: () => void
+      const settlement = new Promise<void>((resolve) => { release = resolve })
+      provideLoader(ctx, () => settlement)
+      const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+      apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: false, trustedHosts: [] }))
+      release!()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(diagnostic).toHaveBeenCalledTimes(1)
+      expect(String(diagnostic.mock.calls[0]?.[0])).toContain('web-app: could not publish the API token file because')
+      // The settlement callback runs on a following turn; let any unowned
+      // rejection surface before asserting there was none.
+      await new Promise(resolve => setImmediate(resolve))
+      expect(rejections).toEqual([])
+      await ctx.fiber.dispose()
+    } finally {
+      process.off('unhandledRejection', onRejection)
+      rmSync(file, { recursive: true, force: true })
+    }
+  })
+
   it('skips the surface context when disabled (the one-shot layer): no prompt section, no bash variables', async () => {
     stageDist()
     const ctx = new Context()

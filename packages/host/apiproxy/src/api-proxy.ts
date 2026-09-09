@@ -10,8 +10,11 @@ import { anchorWorkspacePath } from './workspace-jail.ts'
 
 /** Content types the artifacts.raw channel may serve. Media entries here
  * cover downloads too; the native-PLAYER set lives in artifacts-preview.ts
- * (VIDEO/AUDIO_EXTENSIONS) and is narrower (.mov serves, never plays). */
-const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
+ * (VIDEO/AUDIO_EXTENSIONS) and is narrower (.mov serves, never plays).
+ * Exported as the policy surface for the raw-serving invariant test:
+ * `raw-content-policy.spec.ts` fails any active same-origin document type
+ * that appears here without a matching force-download entry. */
+export const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -41,9 +44,10 @@ const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
  * content whose script runs when the raw URL is navigated directly
  * (same-origin with the app). Subresource use (`<img>`) ignores
  * Content-Disposition and keeps rendering, so in-pane previews are
- * unaffected — only navigation/download behavior changes.
+ * unaffected — only navigation/download behavior changes. Exported for
+ * the raw-serving invariant test; see {@link RAW_CONTENT_TYPES}.
  */
-const FORCE_DOWNLOAD_EXTENSIONS: ReadonlySet<string> = new Set(['.svg'])
+export const FORCE_DOWNLOAD_EXTENSIONS: ReadonlySet<string> = new Set(['.svg'])
 
 /**
  * Parse an HTTP `Range: bytes=...` header into byte offsets. Only the

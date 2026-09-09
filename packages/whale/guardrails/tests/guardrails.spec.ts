@@ -295,13 +295,55 @@ describe('whale-guardrails', () => {
       '(( count > 3 )) && echo many',
       'noisy --verbose 2>&1 | head',
       'quiet --yes > /dev/null 2>&1',
+      'run 1>&2',
+      'run 2>&-',
       'cat < input.txt',
+      'cat <input.txt',
+      'run <> rw.txt',
+      'echo a \\> b',
       'run > >(tee copy.txt)',
-      'echo glued >>existing-glued.txt',
+      'echo a & echo b',
     ]) {
       const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
       expect(decision, command).toEqual({ kind: 'allow' })
     }
+  })
+
+  it('asks before an unspaced shell redirect overwrites or appends to an existing file', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    // A redirect operator is a standalone lexer token, so the glued
+    // spellings redirect exactly like the spaced ones and must hit the
+    // same fence.
+    for (const command of [
+      'echo hi>existing.txt',
+      'echo hi>>existing.txt',
+      'echo hi>|existing.txt',
+      'echo hi&>existing.txt',
+      'printf x >>existing.txt',
+      'noisy 2>existing.txt',
+    ]) {
+      const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
+      expect(decision, command).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+    }
+    const pwshDecision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('pwsh', { command: 'write-output hi*>existing.txt' }),
+      allow,
+    )
+    expect(pwshDecision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+  })
+
+  it('allows an unspaced shell redirect to a fresh path', async () => {
+    const { ctx } = await booted()
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo glued >>existing-glued-fresh.txt' }),
+      allow,
+    )
+    expect(decision).toEqual({ kind: 'allow' })
   })
 
   it('denies a shell redirect escaping the workspace, wherever it sits in the command', async () => {
@@ -309,6 +351,13 @@ describe('whale-guardrails', () => {
     expect(recorded(execution('bash', { command: 'echo x > ../outside.txt' }))).toContain('escapes the session workspace')
     expect(recorded(execution('bash', { command: 'echo a > ok.txt && echo b > ../outside.txt' }))).toContain('escapes the session workspace')
     expect(recorded(execution('pwsh', { command: 'echo a > ok.txt' }))).toBeUndefined()
+  })
+
+  it('denies an unspaced shell redirect escaping the workspace', async () => {
+    const { recorded } = await booted()
+    expect(recorded(execution('bash', { command: 'echo hi>../outside.txt' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: 'echo hi>>../outside.txt' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: 'echo hi>ok.txt' }))).toBeUndefined()
   })
 
   it('allows a shell call with a non-string command (malformed args fail downstream)', async () => {

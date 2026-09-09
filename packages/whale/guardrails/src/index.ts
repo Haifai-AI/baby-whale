@@ -60,9 +60,12 @@ function filePathOf(exec: ToolExecution): string | undefined {
 
 /**
  * Every output-redirect target of a shell command: `>`, `>>`, `>|`, `&>`,
- * `&>>`, and the `N>` / `N>>` descriptor forms, including heredoc targets.
- * Input redirects (`<`, `<<`, `<<<`), `<>`, process substitutions, and
- * descriptor duplications (`2>&1`) name no written file. Quoted literals and
+ * `&>>`, and the `N>` / `N>>` descriptor forms — including unspaced
+ * spellings (`hi>out`, `hi>>out`, `hi&>out`), because a redirect operator
+ * is a standalone lexer token in Bash and pwsh whether or not it is glued
+ * to the neighboring word. Input redirects (`<`, `<<`, `<<<`), the
+ * read-write `<>` opening, process substitutions, and descriptor
+ * duplications (`2>&1`, `>&-`) name no written file. Quoted literals and
  * `[[ … ]]` / `(( … ))` spans cannot redirect, so their `>` never counts.
  * @param command - the shell command text about to run.
  * @returns redirect targets in source order, possibly empty.
@@ -74,9 +77,24 @@ function shellRedirectTargets(command: string): string[] {
     .replace(/\[\[.*?\]\]/gs, '')
     .replace(/\(\(.*?\)\)/gs, '')
   const targets: string[] = []
-  const redirect = /(?:^|[\s;|&()`{}>])\d?(?:>>?\|?|&>>?)\s*([^\s;|&()<>]+)/g
+  // Match the operator itself, wherever it sits. `&>` / `&>>` must be
+  // glued: a spaced `&` is the background separator, so `echo a & echo b`
+  // writes nothing while `echo a &> b` writes the file `b`.
+  const redirect = /(&>>|&>|>>|>&|>\||>)\s*([^\s;|&()<>]+)/g
   for (let match = redirect.exec(code); match !== null; match = redirect.exec(code)) {
-    const target = match[1] as string
+    const operator = match[1] as string
+    const target = match[2] as string
+    // An odd run of backslashes quotes the operator (`echo a \> b`).
+    let backslashes = 0
+    for (let index = match.index - 1; index >= 0 && code[index] === '\\'; index -= 1) backslashes += 1
+    if (backslashes % 2 === 1) continue
+    // `<>` opens the word for reading and writing without truncating it,
+    // so it is not an overwrite.
+    if (code[match.index - 1] === '<') continue
+    // `2>&1` / `>&-` copy or close descriptors; only a numeric or `-`
+    // word after `>&` does that, while `>&log.txt` sends both streams
+    // to the file.
+    if (operator === '>&' && /^-?(?:\d+|-)$/.test(target)) continue
     // The bit bucket is a discard, not a write: asking on every
     // `> /dev/null` would train the human to wave overwrites through.
     if (target === '/dev/null') continue

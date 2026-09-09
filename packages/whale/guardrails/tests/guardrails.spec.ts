@@ -291,14 +291,18 @@ describe('whale-guardrails', () => {
     for (const command of [
       'echo "a > b"',
       "echo 'a >> b'",
+      "echo 'x>file'",
       '[[ $status > 1 ]] && echo done',
       '(( count > 3 )) && echo many',
       'noisy --verbose 2>&1 | head',
+      'noisy "2>&1" | head',
+      'run 2>&1 "note > ok"',
       'quiet --yes > /dev/null 2>&1',
       'run 1>&2',
       'run 2>&-',
       'cat < input.txt',
       'cat <input.txt',
+      'cat <<\'EOF\'',
       'run <> rw.txt',
       'echo a \\> b',
       'run > >(tee copy.txt)',
@@ -307,6 +311,45 @@ describe('whale-guardrails', () => {
       const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
       expect(decision, command).toEqual({ kind: 'allow' })
     }
+  })
+
+  it('asks before a quoted or escaped redirect target overwrites an existing file', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    writeFileSync(join(root, 'existing file.txt'), 'x')
+    writeFileSync(join(root, 'space name.txt'), 'x')
+    writeFileSync(join(root, 'errors file.txt'), 'x')
+    mkdirSync(join(root, 'dir name'), { recursive: true })
+    writeFileSync(join(root, 'dir name', 'existing.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    // The operator's word may be quoted, escaped, or concatenated: the
+    // fence sees the decoded path the shell would actually open.
+    for (const [command, target] of [
+      ['echo hi>"existing file.txt"', 'existing file.txt'],
+      ["echo hi > 'existing.txt'", 'existing.txt'],
+      ["echo hi>'existing.txt'", 'existing.txt'],
+      ['echo hi 2>"errors file.txt"', 'errors file.txt'],
+      ['echo hi > space\\ name.txt', 'space name.txt'],
+      ['echo hi>"dir name"/existing.txt', 'dir name/existing.txt'],
+    ] as const) {
+      const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
+      expect(decision, command).toEqual({ kind: 'ask', reason: `overwrite existing file "${target}"?` })
+    }
+    const freshDecision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: "echo hi > 'fresh quoted.txt'" }),
+      allow,
+    )
+    expect(freshDecision).toEqual({ kind: 'allow' })
+  })
+
+  it('denies a quoted or escaped shell redirect escaping the workspace', async () => {
+    const { recorded } = await booted()
+    expect(recorded(execution('bash', { command: "echo hi>'../outside.txt'" }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: 'echo hi>"../outside.txt"' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: 'echo hi>"../outside dir/x.txt"' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: 'echo hi>../outside\\ name.txt' }))).toContain('escapes the session workspace')
+    expect(recorded(execution('bash', { command: "echo hi>'ok.txt'" }))).toBeUndefined()
   })
 
   it('asks before an unspaced shell redirect overwrites or appends to an existing file', async () => {

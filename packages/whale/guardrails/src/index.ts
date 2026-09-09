@@ -58,47 +58,134 @@ function filePathOf(exec: ToolExecution): string | undefined {
   return typeof args?.file_path === 'string' ? args.file_path : undefined
 }
 
+/** The index just past a quoted span (`'…'` literal, `"…"` with escapes). */
+function skipQuotedSpan(code: string, start: number): number {
+  const quote = code[start] as string
+  let index = start + 1
+  while (index < code.length) {
+    // Only double quotes honor backslash escapes inside the span.
+    if (quote === '"' && code[index] === '\\') { index += 2; continue }
+    if (code[index] === quote) return index + 1
+    index += 1
+  }
+  return index
+}
+
+/** The index just past a `[[ … ]]` / `(( … ))` span, where `>` compares instead of redirecting. */
+function skipComparisonSpan(code: string, start: number, closer: string): number {
+  const end = code.indexOf(closer, start + 2)
+  return end === -1 ? code.length : end + closer.length
+}
+
+/**
+ * One shell word after a redirect operator: quoted and unquoted segments
+ * concatenated, with quote delimiters removed and backslash escapes
+ * resolved (`>"my file"/x` → `my file/x`).
+ * @returns the decoded word and the scan position past it, or undefined for an empty word.
+ */
+function parseRedirectWord(code: string, start: number): { decoded: string; end: number } | undefined {
+  let index = start
+  let decoded = ''
+  while (index < code.length) {
+    const ch = code[index] as string
+    if (ch === "'") {
+      const end = code.indexOf("'", index + 1)
+      if (end === -1) { decoded += code.slice(index + 1); index = code.length; break }
+      decoded += code.slice(index + 1, end)
+      index = end + 1
+    } else if (ch === '"') {
+      let cursor = index + 1
+      for (;;) {
+        if (cursor >= code.length) { index = cursor; break }
+        const inner = code[cursor] as string
+        if (inner === '\\') {
+          const next = code[cursor + 1]
+          // Inside double quotes a backslash escapes only these.
+          if (next !== undefined && '"\\$`'.includes(next)) { decoded += next; cursor += 2 }
+          else { decoded += inner; cursor += 1 }
+          continue
+        }
+        if (inner === '"') { cursor += 1; break }
+        decoded += inner
+        cursor += 1
+      }
+      index = cursor
+    } else if (ch === '\\') {
+      const next = code[index + 1]
+      if (next === undefined) { decoded += ch; index += 1 }
+      else if (next === '\n') { index += 2 } // line continuation
+      else { decoded += next; index += 2 }
+    } else if (/\s/.test(ch) || ';|&()<>'.includes(ch)) {
+      break
+    } else {
+      decoded += ch
+      index += 1
+    }
+  }
+  return decoded === '' ? undefined : { decoded, end: index }
+}
+
 /**
  * Every output-redirect target of a shell command: `>`, `>>`, `>|`, `&>`,
  * `&>>`, and the `N>` / `N>>` descriptor forms — including unspaced
- * spellings (`hi>out`, `hi>>out`, `hi&>out`), because a redirect operator
- * is a standalone lexer token in Bash and pwsh whether or not it is glued
- * to the neighboring word. Input redirects (`<`, `<<`, `<<<`), the
- * read-write `<>` opening, process substitutions, and descriptor
- * duplications (`2>&1`, `>&-`) name no written file. Quoted literals and
- * `[[ … ]]` / `(( … ))` spans cannot redirect, so their `>` never counts.
+ * spellings (`hi>out`) and quoted target words (`>"my file.txt"`,
+ * `>'out.txt'`, `>"dir"/file.txt`), because a redirect operator is a
+ * standalone lexer token and its word may be quoted or a concatenation of
+ * quoted and unquoted segments. Each target is the decoded path the shell
+ * would open: quote delimiters removed, backslash escapes resolved.
+ * Operators inside quoted arguments, `[[ … ]]` / `(( … ))` comparisons,
+ * input redirects (`<`, `<<`, `<<<`), the read-write `<>` opening,
+ * process substitutions, and descriptor duplications (`2>&1`, `>&-`) name
+ * no written file.
  * @param command - the shell command text about to run.
  * @returns redirect targets in source order, possibly empty.
  */
 function shellRedirectTargets(command: string): string[] {
-  const code = command
-    .replace(/'(?:[^'\\]|\\.)*'/g, '')
-    .replace(/"(?:[^"\\]|\\.)*"/g, '')
-    .replace(/\[\[.*?\]\]/gs, '')
-    .replace(/\(\(.*?\)\)/gs, '')
   const targets: string[] = []
-  // Match the operator itself, wherever it sits. `&>` / `&>>` must be
-  // glued: a spaced `&` is the background separator, so `echo a & echo b`
-  // writes nothing while `echo a &> b` writes the file `b`.
-  const redirect = /(&>>|&>|>>|>&|>\||>)\s*([^\s;|&()<>]+)/g
-  for (let match = redirect.exec(code); match !== null; match = redirect.exec(code)) {
-    const operator = match[1] as string
-    const target = match[2] as string
-    // An odd run of backslashes quotes the operator (`echo a \> b`).
-    let backslashes = 0
-    for (let index = match.index - 1; index >= 0 && code[index] === '\\'; index -= 1) backslashes += 1
-    if (backslashes % 2 === 1) continue
-    // `<>` opens the word for reading and writing without truncating it,
-    // so it is not an overwrite.
-    if (code[match.index - 1] === '<') continue
+  const length = command.length
+  let index = 0
+  while (index < length) {
+    const ch = command[index] as string
+    // An operator inside a quoted argument is data, not a redirection.
+    if (ch === "'" || ch === '"') { index = skipQuotedSpan(command, index); continue }
+    // An escaped character (`\>`) is literal, not an operator.
+    if (ch === '\\') { index += 2; continue }
+    if (command.startsWith('[[', index)) { index = skipComparisonSpan(command, index, ']]'); continue }
+    if (command.startsWith('((', index)) { index = skipComparisonSpan(command, index, '))'); continue }
+    let operator: string
+    if (ch === '>') {
+      if (command[index + 1] === '&') { operator = '>&'; index += 2 }
+      else if (command[index + 1] === '>') { operator = '>>'; index += 2 }
+      else if (command[index + 1] === '|') { operator = '>|'; index += 2 }
+      else { operator = '>'; index += 1 }
+    } else if (ch === '&') {
+      // `&>` / `&>>` must be glued: a spaced `&` is the background
+      // separator, so `echo a & echo b` writes nothing while
+      // `echo a &> b` writes the file `b`.
+      if (command[index + 1] !== '>') { index += command[index + 1] === '&' ? 2 : 1; continue }
+      operator = command[index + 2] === '>' ? '&>>' : '&>'
+      index += operator.length
+    } else if (ch === '<') {
+      // Input forms, and `<>` which opens read-write without truncating:
+      // none of them overwrites.
+      index += command[index + 1] === '>' ? 2 : 1
+      continue
+    } else { index += 1; continue }
+    let wordStart = index
+    while (wordStart < length && /\s/.test(command[wordStart] as string)) wordStart += 1
+    // A parenthesis after the operator opens a process substitution, not a file.
+    if (command[wordStart] === '(') { index = wordStart; continue }
+    const word = parseRedirectWord(command, wordStart)
+    if (word === undefined) continue
+    index = word.end
     // `2>&1` / `>&-` copy or close descriptors; only a numeric or `-`
     // word after `>&` does that, while `>&log.txt` sends both streams
     // to the file.
-    if (operator === '>&' && /^-?(?:\d+|-)$/.test(target)) continue
+    if (operator === '>&' && /^-?(?:\d+|-)$/.test(word.decoded)) continue
     // The bit bucket is a discard, not a write: asking on every
     // `> /dev/null` would train the human to wave overwrites through.
-    if (target === '/dev/null') continue
-    targets.push(target)
+    if (word.decoded === '/dev/null') continue
+    targets.push(word.decoded)
   }
   return targets
 }

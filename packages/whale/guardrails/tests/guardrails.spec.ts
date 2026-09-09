@@ -352,6 +352,60 @@ describe('whale-guardrails', () => {
     expect(recorded(execution('bash', { command: "echo hi>'ok.txt'" }))).toBeUndefined()
   })
 
+  it('scans redirects inside double-quoted command substitutions, which the shell executes', async () => {
+    const { ctx, recorded } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    // The substitution body runs, so its redirect hits the same fence as a
+    // direct one.
+    const traversal = recorded(execution('bash', { command: 'echo "$(printf x > ../outside.txt)"' }))
+    expect(traversal).toContain('escapes the session workspace')
+    for (const command of [
+      'echo "$(printf x > existing.txt)"',
+      'echo "$(printf x > \'existing.txt\')"',
+      'echo "`printf x > existing.txt`"',
+    ]) {
+      const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
+      expect(decision, command).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+    }
+    // Quoted substitution text that redirects nothing stays unguarded.
+    const allowDecision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo "$(seq 3 > /dev/null) done"' }),
+      allow,
+    )
+    expect(allowDecision).toEqual({ kind: 'allow' })
+  })
+
+  it('treats heredoc bodies as data while still guarding the operator line', async () => {
+    const { ctx, recorded } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    // A `> existing.txt` written inside a heredoc body is text the command
+    // reads — never a redirect — so the fence stays quiet on every common
+    // delimiter form, and an unterminated body ends the scan.
+    for (const command of [
+      'cat <<EOF\na > existing.txt\nb\nEOF',
+      "cat <<'EOF'\na > existing.txt\nEOF",
+      'cat <<"EOF"\na > existing.txt\nEOF',
+      'cat <<-EOF\n\ta > existing.txt\n\tEOF',
+      'cat <<EOF\na\nb > x\nc\nEOF && echo z > w',
+    ]) {
+      const decision = await ctx.waterfall('tools/pre-execute', execution('bash', { command }), allow)
+      expect(decision, command).toEqual({ kind: 'allow' })
+    }
+    // A real redirect beside the heredoc on the operator line still asks.
+    const adjacent = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: "cat <<'EOF' > existing.txt\nbody\nEOF" }),
+      allow,
+    )
+    expect(adjacent).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+    // And a substitution executed from the body-writing command is scanned.
+    const traversal = recorded(execution('bash', { command: 'cat <<EOF > ../outside.txt\nbody\nEOF' }))
+    expect(traversal).toContain('escapes the session workspace')
+  })
+
   it('asks before an unspaced shell redirect overwrites or appends to an existing file', async () => {
     const { ctx } = await booted()
     writeFileSync(join(root, 'existing.txt'), 'x')

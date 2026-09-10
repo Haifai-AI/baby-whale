@@ -5,7 +5,7 @@
  * @module @deepseek-ai/dsh-client-ui-whale-artifact/src/client/whale-preview
  */
 
-import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** One capped spreadsheet preview cell (display value + backing formula). */
 interface PreviewCell {

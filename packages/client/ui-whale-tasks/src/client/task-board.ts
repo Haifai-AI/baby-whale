@@ -9,8 +9,7 @@ import type {} from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-whale-core/types'
 import type {
   ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** Wire view of one task (mirrors `@deepseek-ai/dsh-whale-core`'s WhaleTaskView). */
 export interface WhaleTaskView {
@@ -34,12 +33,6 @@ interface WhaleTaskBoardState {
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ChatNodeDataMap {
     /** One whole-workspace Whale task snapshot. */
-    'whale-task-board': { tasks: readonly WhaleTaskView[] }
-  }
-}
-
-declare module '@deepseek-ai/dsh-client-runtime/client' {
-  interface ConversationStepDataMap {
     'whale-task-board': { tasks: readonly WhaleTaskView[] }
   }
 }

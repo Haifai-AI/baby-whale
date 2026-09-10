@@ -9,8 +9,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { HostDescriptionSource } from '@deepseek-ai/dsh-client-connection/client'
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './ProducedFiles.module.css'
 import { basename } from './turn-deliverables.ts'
@@ -148,22 +146,16 @@ function previewable(kind: Kind): boolean {
 
 /** Registration-side capability facts (mirrors ProducedFilesInjected). */
 export interface DeliveredCardsInjected {
-  /** Whether the browser itself is connected over loopback. */
-  isLoopback: boolean
-  hooks: {
-    /** Current generation's Host description, bound by the slot renderer. */
-    hostDescription: HostDescriptionSource
-    /** The session connection: preview RPC + raw/download channel. */
-    connection: ConnectionHandle
-  }
+  /** The session connection: preview RPC + raw/download channel. */
+  connection: ConnectionHandle
 }
 
 /** Props composed by reference from the contract + the injected face. */
-export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'openFilePreview' | 'sessionId'> & {
+export type DeliveredCardsProps = {
   matched: readonly string[]
-  isLoopback: boolean
-  useHostDescription: (selector: (value: { canOpenPath?: boolean } | undefined) => boolean) => boolean
-  connection: ConnectionHandle
+  /** Owning session id: scopes raw-channel downloads and preview fetches. */
+  sessionId: string
+  openFile: (path: string) => void
   t: TranslateNS<'deliverables'>
 }
 
@@ -192,10 +184,8 @@ function artifactPath(path: string): string {
 
 /** The delivered row: label + one card per claimed file. */
 export function DeliveredCards({
-  matched, openFile, openFilePreview, sessionId, isLoopback, useHostDescription, t,
+  matched, openFile, sessionId, t,
 }: DeliveredCardsProps) {
-  const hostCanOpenPath = useHostDescription(description => description?.canOpenPath === true)
-  const canOpenPath = isLoopback && hostCanOpenPath
   const [showAll, setShowAll] = useState(false)
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -224,8 +214,10 @@ export function DeliveredCards({
       <div className={css.cardRow}>
         {visible.map((path) => {
           const kind = kindOf(path)
+          // Preview routes through the chat file opener: the right panel is
+          // the one preview surface in the relocated chat architecture.
           const mainAction = previewable(kind) || isImage(path)
-            ? (): void => { openFilePreview(artifactPath(path)) }
+            ? (): void => { openFile(artifactPath(path)) }
             : (): void => { openFile(path) }
           const mainLabel = previewable(kind) || isImage(path) ? t('delivered.preview') : t('delivered.open')
           return (
@@ -285,14 +277,12 @@ export function DeliveredCards({
                     >
                       {t('delivered.download')}
                     </button>
-                    {canOpenPath && (
-                      <button
-                        type="button" role="menuitem" className={css.menuItem}
-                        onClick={() => { setMenuOpenFor(null); openFile(path) }}
-                      >
-                        {t('delivered.open')}
-                      </button>
-                    )}
+                    <button
+                      type="button" role="menuitem" className={css.menuItem}
+                      onClick={() => { setMenuOpenFor(null); openFile(path) }}
+                    >
+                      {t('delivered.open')}
+                    </button>
                   </div>
                 )}
               </div>

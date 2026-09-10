@@ -1,24 +1,14 @@
 /**
- * Right-side artifact studio: the keyed `conversation.details.toolview` entries
- * for the office tools. The xlsx entry renders Excel-style chrome — sheet-tab
- * strip, formula bar, column letters, row gutter, frozen navy header, and
- * gridlines — the pptx entry a slide gallery, and the docx entry a document
- * page. All rendered from the persisted preview meta, so the studio replays
- * identically and needs no file bytes.
+ * Office artifact studios. The bodies render from the persisted preview meta
+ * (xlsx: Excel-style chrome — sheet tabs, formula bar, column letters, frozen
+ * navy header, gridlines; pptx: slide gallery; docx: document page), so the
+ * studio replays identically and needs no file bytes.
  * @module @deepseek-ai/dsh-client-ui-whale-artifact/src/client/DetailsArtifact
  */
 
 import { useState } from 'react'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { OfficePreviewData } from './whale-preview.ts'
-import { filePathOf, formatBytes, previewOf } from './whale-preview.ts'
-import type { NS } from './locales.ts'
 import css from './DetailsArtifact.module.css'
-
-type DetailsArtifactProps =
-  PropsRuntime<'conversation.details.toolview'>
-  & PropsLocale<typeof NS>
 
 /** Column letter for a 0-based index (A..Z, AA..). */
 function columnLetter(index: number): string {
@@ -32,37 +22,7 @@ function columnLetter(index: number): string {
   return letter
 }
 
-/** The studio: header chrome plus the artifact kind's body. */
-export function DetailsArtifactView({ block, cwd, t }: DetailsArtifactProps) {
-  const preview = previewOf(block)
-  const path = filePathOf(block)
-  const toolName = 'kind' in block ? block.call?.name ?? '' : block.name
-  const meta = 'kind' in block ? block.meta as { size?: number } | undefined : undefined
-  if (preview === undefined) {
-    return <div className={css.card}>{t('artifact.failed')}</div>
-  }
-  return (
-    <div className={css.card} data-whale-artifact-details={preview.kind}>
-      <div className={css.header}>
-        <span className={`${css.icon} ${css[`icon${preview.kind}`]}`}>{preview.kind.toUpperCase()}</span>
-        <div className={css.headText}>
-          <span className={css.name} title={path ?? preview.file_name}>{preview.file_name}</span>
-          <span className={css.meta}>
-            {t('artifact.createdBy')}{meta?.size !== undefined ? ` · ${formatBytes(meta.size)}` : ''}
-            {cwd !== undefined && path !== undefined ? ` · ${path}` : ''}
-          </span>
-        </div>
-      </div>
-      {preview.kind === 'xlsx' && <ExcelStudio preview={preview} />}
-      {preview.kind === 'pptx' && <SlideGallery preview={preview} />}
-      {preview.kind === 'docx' && <DocPage preview={preview} />}
-      {preview.truncated && <div className={css.truncated}>{t('artifact.truncated')}</div>}
-      <div className={css.footer}>{toolName}</div>
-    </div>
-  )
-}
-
-/** Studio body for any parsed office preview (shared with the Artifacts tab). */
+/** The studio body for any parsed office preview (shared with the Artifacts tab). */
 export function ArtifactStudioBody({ preview }: { preview: OfficePreviewData }) {
   if (preview.kind === 'xlsx') return <ExcelStudio preview={preview} />
   if (preview.kind === 'pptx') return <SlideGallery preview={preview} />

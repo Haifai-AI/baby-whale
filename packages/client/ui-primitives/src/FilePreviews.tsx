@@ -6,8 +6,20 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { MarkdownText } from './markdown/MarkdownText.tsx'
-import { ReadBlock, type ReadBlockLine } from './ReadBlock.tsx'
+import { ReadBlock, type ReadBlockLabels, type ReadBlockLine } from './ReadBlock.tsx'
 import css from './FilePreviews.module.css'
+
+/** Neutral English chrome for the file-preview surfaces (symbols stay
+ * caller-owned; only ReadBlock's copy actions need words). */
+const CODE_LABELS: ReadBlockLabels = {
+  window: (shown, total) => `${shown} / ${total}`,
+  copy: 'Copy',
+  copied: 'Copied',
+  collapseAria: 'Collapse',
+  expandAria: hidden => `${hidden} more lines`,
+  collapse: 'Collapse',
+  expand: hidden => `Expand (${hidden} hidden)`,
+}
 
 /** Lines rendered before ReadBlock's middle-collapse kicks in. */
 const CODE_MAX_LINES = 400
@@ -34,7 +46,7 @@ export function CodeFilePreview({ text, language }: {
   }, [text])
   return (
     <div className={css.codeFile}>
-      <ReadBlock lines={lines} totalLines={lines.length} lang={language} maxLines={CODE_MAX_LINES} />
+      <ReadBlock lines={lines} totalLines={lines.length} lang={language} maxLines={CODE_MAX_LINES} labels={CODE_LABELS} />
     </div>
   )
 }
@@ -43,7 +55,7 @@ export function CodeFilePreview({ text, language }: {
 export function MarkdownFilePreview({ text }: { text: string }) {
   return (
     <div className={css.markdownFile}>
-      <MarkdownText text={text} />
+      <MarkdownText text={text} labels={{ code: { copyLabel: 'Copy', copiedLabel: 'Copied' }, footnotes: 'Footnotes' }} />
     </div>
   )
 }

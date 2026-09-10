@@ -1,0 +1,154 @@
+/**
+ * The `deliver` model-facing tool: claim finished workspace files as
+ * user-facing deliverables. Pure claim semantics — the file must already
+ * exist; deliver never writes, moves, or mutates anything. Surfacing rides
+ * the render-intent pipeline: the call presents an edit-shaped card with
+ * `locations`, which the conversation turn-tail aggregates into end-of-turn
+ * deliverable chips exactly like every other mutation tool.
+ *
+ * Everything-is-plugin: this is an ordinary tool registration; removing its
+ * bundle row removes the capability and nothing else changes.
+ * @module @deepseek-ai/dsh-tool-deliver/src/index
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { GenericCallView, ToolResult } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-fs'
+import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { PostToolDecision } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+
+/** Cordis plugin name used by loader diagnostics. */
+export const name = 'tool-deliver'
+
+/** Services required by the deliver tool. */
+export const inject = ['tools', 'fs', 'systemPrompt']
+
+import type {} from '@deepseek-ai/dsh-fs'
+
+/** One claimed file echoed back to the model. */
+export interface DeliverEntry {
+  /** Workspace-relative path as given. */
+  readonly path: string
+  /** Byte size confirmed on disk. */
+  readonly size: number
+}
+
+/** The `deliver` validated arguments. */
+export interface DeliverArgs {
+  /** Finished files (workspace-relative), 1–10 per call. */
+  paths: string[]
+}
+
+/** The `deliver` successful result value. */
+export interface DeliverValue {
+  delivered: DeliverEntry[]
+}
+
+/**
+ * Register the `deliver` tool and its system-prompt guidance.
+ * @param ctx - the plugin context; registrations are effects scoped to it.
+ */
+export function apply(ctx: Context): void {
+  ctx.systemPrompt.section({
+    name: 'tool:deliver',
+    order: 107,
+    text: 'After finishing any user-facing file (spreadsheet, deck, document, PDF, code export…) under deliverables/, call deliver with its path so it appears as a received deliverable card. Deliver each finished file exactly once.',
+  })
+
+  // Post-execute nudge: when a bash script writes into deliverables/ but the
+  // turn ends without a deliver call, the files would be invisible. One short
+  // reminder per turn, only until the first successful deliver.
+  let remindedThisTurn = false
+  let deliveredThisTurn = false
+  ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
+    if (exec.name === 'deliver' && !result.isError) deliveredThisTurn = true
+    if (
+      exec.name === 'bash'
+      && !deliveredThisTurn
+      && !remindedThisTurn
+      && !result.isError
+      && result.content.some(block => block.type === 'text' && /deliverables\//.test(block.text))
+    ) {
+      remindedThisTurn = true
+      const downstream = await next()
+      if (downstream.kind !== 'accept') return downstream
+      return {
+        kind: 'accept',
+        ...(downstream.content !== undefined ? { content: downstream.content } : {}),
+        additionalContexts: [createUserMessage({
+          content: [{ type: 'text', text: '<system-reminder>Files were written under deliverables/. When they are final, call the deliver tool with their paths so the user receives them.</system-reminder>' }],
+          // Non-user source: the transcript renders this as a collapsed
+          // context row, not a bubble impersonating the human.
+          source: { kind: 'plugin', plugin: 'tool-deliver' },
+        })],
+      }
+    }
+    return next()
+  })
+
+  ctx.tools.register(defineTool({
+    name: 'deliver',
+    description: 'Surface finished workspace files as deliverable cards for the user. Call once per finished file, after verifying it exists.',
+    parameters: {
+      paths: {
+        type: 'array',
+        required: true,
+        items: { type: 'string' },
+        description: 'Workspace-relative paths of finished files (e.g. "deliverables/q2-revenue.xlsx"). One to ten entries.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          delivered: { type: 'json' },
+        },
+      },
+      render: (_args, value) => {
+        const entries = (value as { delivered?: unknown }).delivered as DeliverEntry[]
+        return [{
+          type: 'text',
+          text: `<delivered>
+${entries.map(entry => `<file path="${entry.path}" bytes="${entry.size}"/>`).join('\n')}
+</delivered>`,
+        }]
+      },
+    },
+    async execute(args: DeliverArgs, exec): Promise<{ delivered?: JsonValue }> {
+      if (args.paths.length === 0 || args.paths.length > 10) {
+        throw new Error('deliver requires between 1 and 10 paths')
+      }
+      const delivered: DeliverEntry[] = []
+      const cwd = exec.agent?.session.header.cwd
+      for (const path of args.paths) {
+        // Existence + byte size through the sandboxed fs seam: a claimed-but-
+        // missing path fails loudly instead of producing a ghost chip. Paths
+        // resolve against the calling session's workspace, never the process cwd.
+        const target = await ctx.fs.resolve(path, cwd === undefined ? { signal: exec.signal } : { cwd, signal: exec.signal })
+        const info = await ctx.fs.stat(target, exec.signal)
+        if (info === undefined || info.type !== 'file') {
+          throw new Error(`deliver: "${path}" does not exist in the workspace`)
+        }
+        delivered.push({ path, size: info.size ?? 0 })
+      }
+      // JSON-safe by construction; the wide boundary keeps schema simple.
+      return { delivered: delivered as unknown as JsonValue }
+    },
+    presentCall(args): GenericCallView {
+      return {
+        card: 'generic',
+        title: args.paths.length === 1 ? `Delivered ${args.paths[0]}` : `Delivered ${args.paths.length} files`,
+        kind: 'edit',
+        locations: args.paths.map(path => ({ path })),
+      }
+    },
+    presentResult(_args, result: ToolResult) {
+      if (result.isError) return undefined
+      return { card: 'generic', title: 'Delivered' }
+    },
+  }))
+}

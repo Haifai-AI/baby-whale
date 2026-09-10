@@ -15,9 +15,6 @@
       "path": "../locale"
     },
     {
-      "path": "../runtime"
-    },
-    {
       "path": "../ui-conversation"
     },
     {
@@ -25,9 +22,6 @@
     },
     {
       "path": "../ui-tool"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

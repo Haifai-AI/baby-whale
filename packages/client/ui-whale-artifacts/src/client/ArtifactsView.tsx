@@ -8,16 +8,25 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { ArtifactEntry } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { resolveWorkspacePath } from '@deepseek-ai/dsh-client-runtime/client'
+import { resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'
 // Cross-package render reuse (client bundle face): the studio is public API.
 import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
 import type { NS } from './locales.ts'
 import type { WorkbookChart } from './WorkbookCharts.tsx'
 import { WorkbookPreview, type WorkbookPreviewData } from './WorkbookPreview.tsx'
 import css from './ArtifactsView.module.css'
+
+/** One artifact row of the gallery (wire shape of /api/artifacts.list). */
+interface ArtifactEntry {
+  readonly path: string
+  readonly name: string
+  readonly kind: 'xlsx' | 'docx' | 'pptx' | 'csv' | 'pdf' | 'image' | 'markdown' | 'text' | 'video' | 'audio' | 'other'
+  readonly size: number
+  readonly modifiedAt: number
+  readonly origin: 'deliverable' | 'upload'
+}
 
 type ArtifactsViewProps =
   PropsRuntime<'conversation.view'>
@@ -83,9 +92,11 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
 
   const load = useCallback(async () => {
     try {
-      const response = await connection.api.artifacts.list({ sessionId })
-      if (response.result.ok) {
-        setArtifacts(response.result.value.artifacts)
+      const query = new URLSearchParams({ session: sessionId })
+      const response = await fetch(`/api/artifacts.list?${query.toString()}`)
+      if (response.ok) {
+        const value = await response.json() as { artifacts: readonly ArtifactEntry[] }
+        setArtifacts(value.artifacts)
         setFailed(false)
       } else {
         setFailed(true)
@@ -114,9 +125,10 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
     setPreview({ status: 'loading' })
     void (async () => {
       try {
-        const response = await connection.api.artifacts.preview({ sessionId, path: selected.path })
-        const value = response.result.ok ? response.result.value : undefined
-        const parsed = value?.preview as ParsedPreview | undefined
+        const query = new URLSearchParams({ session: sessionId, path: selected.path })
+        const response = await fetch(`/api/artifacts.preview?${query.toString()}`)
+        const value = response.ok ? await response.json() as { preview?: ParsedPreview } : undefined
+        const parsed = value?.preview
         if (!cancelledRef.current && parsed !== undefined && typeof parsed.kind === 'string') {
           setPreview({ status: 'ready', data: parsed })
         } else if (!cancelledRef.current) {
@@ -130,7 +142,11 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
   }, [connection, selected, sessionId])
 
   const open = (entry: ArtifactEntry): void => {
-    void connection.api.host.openPath({ path: resolveWorkspacePath(cwd, entry.path) })
+    // The relocated chat owns OS opens via present-open for presented files;
+    // until that surface takes arbitrary artifact paths, open the raw bytes
+    // in a new tab (the browser renders what it can, downloads the rest).
+    const query = new URLSearchParams({ session: sessionId, path: entry.path })
+    window.open(`/api/artifacts.raw?${query.toString()}`, '_blank', 'noopener')
   }
 
   return (

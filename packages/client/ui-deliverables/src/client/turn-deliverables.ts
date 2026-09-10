@@ -1,14 +1,20 @@
 /**
  * Turn-scoped produced-file Definition and readers. Client-only and
- * model-free: the vocabulary is the mutation tools' own follow-along
- * `locations`, never the closing prose.
+ * model-free: the vocabulary comes from successful first-party mutation
+ * calls, never presentation data or the closing prose.
  */
-import type {
-  ConversationNodeDefinition, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
+import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { PresentedFile } from '@deepseek-ai/dsh-tool-present/types'
+import { basename, isPresentedData, isPresentedFile } from '../presented.ts'
+
+/** A declared file with its authorized open coordinates. */
+export interface PresentedPath extends PresentedFile {
+  readonly seq: number
+  readonly index: number
+}
 
 export interface ProducedPath {
   readonly seq: number
@@ -20,9 +26,10 @@ export interface ProducedPath {
 /** Immutable produced-file facts published against one Turn. */
 export interface DeliverablesTurnData {
   readonly produced: readonly ProducedPath[]
+  readonly presented?: readonly PresentedPath[]
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     /** Successful mutation paths accumulated in this Turn. */
     deliverables: DeliverablesTurnData
@@ -34,21 +41,19 @@ interface DeliverablesState extends DeliverablesTurnData {
   readonly calls: ReadonlyMap<string, CallRecord>
 }
 
-/** What one tool call contributes: its render view plus its durable identity. */
+/** What one tool call contributes: its durable identity, read back on settle. */
 interface CallRecord {
-  readonly view: ToolResultNode['callView']
   readonly tool: string
   /** Parsed raw arguments; undefined when absent or unparseable. */
   readonly args: unknown
 }
 
 /**
- * Produced paths straight from durable call arguments, for calls whose wire
- * view never arrived. Views are recomputed per history page and explicitly
- * soft-fall to nothing (unregistered tool, presenter throw, cross-page
- * pairing) — without this fallback one viewless rebuild silently drops an
+ * Produced paths straight from durable call arguments. Extraction is
+ * intentionally conservative (unregistered tool, malformed arguments) —
+ * without a produced-paths fallback one viewless rebuild silently drops an
  * old turn's entire tail, leaving only the closing prose behind. Only the
- * fence's own mutation names qualify; anything else still needs its view.
+ * fence's own mutation names qualify.
  */
 function argsPaths(tool: string, args: unknown): readonly string[] {
   if (typeof args !== 'object' || args === null) return []
@@ -75,34 +80,14 @@ function parseArgs(raw: unknown): unknown {
 }
 
 /**
- * Paths a call view reports having created or changed, by render intent rather
- * than tool name: a diff card, or a generic card whose kind is `edit` (the
- * shape `str_replace_editor`'s insert presents). Every other card produces
- * nothing to open — a read looked, a delete removed, a terminal ran. Only
- * root call views enter this Turn accumulator; nested Code Mode dispatches
- * preserve the pre-assembly behavior and do not contribute independently.
- */
-function producedPaths(view: ToolResultNode['callView']): readonly string[] {
-  if (view === null) return []
-  if (view.card === 'diff') return (view.locations ?? []).map(location => location.path)
-  if (view.card === 'generic' && view.kind === 'edit') {
-    return (view.locations ?? []).map(location => location.path)
-  }
-  return []
-}
-
-/**
  * Files produced by one Turn data value.
  *
- * The source is the mutation tools' own follow-along `locations`, not the
- * closing prose: a produced file must be listed whether or not the model
- * remembered to name it. A mutation is recognized by render intent, not by
- * tool name — a diff card, or a generic card whose `kind` is `edit` (the shape
- * `str_replace_editor`'s insert presents) — so a new mutation tool joins by
- * declaring what it does. Reads contribute nothing (looking at a file does not
- * produce it), and neither do deletes (there is nothing left to open) or
- * failed calls. Paths keep first-seen order and appear once, so a file written
- * and then edited in the same turn is one entry.
+ * The source is the arguments of successful `write`, `edit`, and mutating
+ * `str_replace_editor` calls, not the closing prose: a produced file must be
+ * listed whether or not the model remembered to name it. Reads, unsupported
+ * tools, malformed calls, and failed results contribute nothing. Paths keep
+ * first-seen order and appear once, so a file written and then edited in the
+ * same turn is one entry.
  *
  * The Conversation Location index owns turn membership before this function
  * runs, so paths cannot spill across turns and this derivation does not infer
@@ -165,6 +150,7 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
   match: (event) => {
     if (event.type === 'turn/start') return { id: String(event.data.turn), role: 'start' }
     if (event.type === 'tool/call') return { id: String(event.data.turn), role: 'update' }
+    if (event.type === 'deliverables/presented') return isPresentedData(event.data) ? { id: String(event.data.turn), role: 'update' } : null
     if (event.type === 'tool/result' && isAppendSurfaceEvent(event)) {
       return { id: String(event.data.turn), role: 'update' }
     }
@@ -175,13 +161,23 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
     return { turn: match.event.data.turn, calls: new Map(), produced: [] }
   },
   update: (context, match) => {
+    if (match.event.type === 'deliverables/presented') {
+      const { files } = match.event.data
+      const seq = match.event.seq
+      const presented: PresentedPath[] = []
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index]
+        if (isPresentedFile(file)) presented.push({ ...file, seq, index })
+      }
+      if (presented.length === 0) return context.state
+      return { ...context.state, presented: [...context.state.presented ?? [], ...presented] }
+    }
     if (match.event.type === 'tool/call') {
       const calls = new Map(context.state.calls)
       const data = match.event.data as { callId?: unknown; name?: unknown; arguments?: unknown }
       calls.set(
         String(data.callId),
         {
-          view: match.view?.for === 'call' ? match.view.view : null,
           tool: typeof data.name === 'string' ? data.name : '',
           args: parseArgs(data.arguments),
         },
@@ -194,36 +190,43 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
     const callId = String(match.event.data.message.source.callId)
     const call = context.state.calls.get(callId) ?? null
     if (call === null) return context.state
-    // A present-but-empty view is a declaration ("produces nothing") and
-    // wins; only a MISSING view falls back to the durable arguments.
-    const paths = call.view === null
-      ? argsPaths(call.tool, call.args)
-      : producedPaths(call.view)
+    const paths = argsPaths(call.tool, call.args)
     const additions = paths
       .map(path => ({ seq: match.event.seq, path, tool: call.tool }))
     return additions.length === 0
       ? context.state
       : { ...context.state, produced: [...context.state.produced, ...additions] }
   },
-  buildLocationData: (context, scope) => scope !== 'turn' || context.state === undefined
-    ? null
-    : {
+  buildLocationData: (context, scope, previous) => {
+    if (scope !== 'turn' || context.state === undefined) return null
+    if (previous?.kind === 'turn'
+      && previous.turn === context.state.turn
+      && previous.key === 'deliverables'
+      && previous.value.produced === context.state.produced
+      && previous.value.presented === context.state.presented) return previous
+    return {
       kind: 'turn',
       turn: context.state.turn,
       key: 'deliverables',
-      value: { produced: context.state.produced },
-    },
+      value: { produced: context.state.produced, ...context.state.presented === undefined ? {} : { presented: context.state.presented } },
+    }
+  },
 }
 
 /**
- * Trailing path segment, the part that identifies the file at a glance.
- * @param path - Slash- or backslash-separated path.
- * @returns The final segment, or the whole string when separator-free.
+ * Select the latest declaration of each path before the closing reply.
+ * @param owner - closing turn and sequence.
+ * @returns replayable deliveries in first-seen path order.
  */
-export function basename(path: string): string {
-  const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
-  return at === -1 ? path : path.slice(at + 1)
+export function presentedForClosing(owner: TurnTailOwnerProps): PresentedPath[] {
+  const files = new Map<string, PresentedPath>()
+  for (const file of owner.turn.data.get('deliverables')?.presented ?? []) {
+    if (file.seq < owner.seq) files.set(file.path, file)
+  }
+  return [...files.values()]
 }
+
+export { basename } from '../presented.ts'
 
 /**
  * File-mention vocabulary over one turn's produced paths, for the closing

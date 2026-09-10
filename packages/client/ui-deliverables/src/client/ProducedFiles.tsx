@@ -1,13 +1,11 @@
 // ProducedFiles: the produced-file row a finished turn ends with. The paths
 // come pre-matched by the turn-tail chain from the mutation tools'
 // follow-along locations, never from the closing prose. Clicking one goes
-// through the same openFile the tool rows use — the Host's own opener, on the
-// Host machine.
+// through the same openFile the tool rows use — the chat's file opener.
 
 import { useLayoutEffect, useRef, useState } from 'react'
-import type { ConnectionHandle, HostDescriptionSource } from '@deepseek-ai/dsh-client-connection/client'
-import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { DeliveredCards } from './DeliveredCards.tsx'
 import { partitionProduced } from './turn-deliverables.ts'
 import type { ProducedPath } from './turn-deliverables.ts'
@@ -49,22 +47,12 @@ export function fitProducedFiles(
   return largestFit
 }
 
-/** Registration-side Host capability facts. */
-export interface ProducedFilesInjected {
-  /** Whether the browser itself is connected over loopback. */
-  isLoopback: boolean
-  /** The session connection: preview RPC + raw/download channel. */
-  connection: ConnectionHandle
-  hooks: {
-    /** Current generation's Host description, bound by the slot renderer. */
-    hostDescription: HostDescriptionSource
-  }
-}
-
-/** Tail entries plus the opener, locale, and injected Host capability. */
-export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile' | 'openFilePreview' | 'sessionId'> & {
+/** Tail entries plus the opener and the locale seat. */
+export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
   matched: readonly ProducedPath[]
-} & PropsLocale<typeof NS> & InjectFace<ProducedFilesInjected>
+  /** Owning session id: scopes raw-channel downloads and preview fetches. */
+  sessionId: string
+} & PropsLocale<typeof NS>
 
 function moreLabel(t: ProducedFilesProps['t'], count: number): string {
   return count === 1 ? t('produced.moreOne') : t('produced.more', { count: String(count) })
@@ -76,11 +64,9 @@ function moreLabel(t: ProducedFilesProps['t'], count: number): string {
  * @returns The produced-files row.
  */
 export function ProducedFiles({
-  matched: entries, openFile, openFilePreview, sessionId, isLoopback, connection, useHostDescription, t,
+  matched: entries, openFile, sessionId, t,
 }: ProducedFilesProps) {
   const { delivered, written: paths } = partitionProduced(entries)
-  const hostCanOpenPath = useHostDescription(description => description?.canOpenPath === true)
-  const canOpenPath = isLoopback && hostCanOpenPath
   const limit = Math.min(paths.length, SHOWN_LIMIT)
   const [shownCount, setShownCount] = useState(limit)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -123,12 +109,8 @@ export function ProducedFiles({
       {delivered.length > 0 && (
         <DeliveredCards
           matched={delivered}
-          openFile={openFile}
-          openFilePreview={openFilePreview}
           sessionId={sessionId}
-          isLoopback={isLoopback}
-          useHostDescription={useHostDescription}
-          connection={connection}
+          openFile={openFile}
           t={t}
         />
       )}
@@ -151,11 +133,6 @@ export function ProducedFiles({
           ))}
           {hidden > 0 && <span className={css.more}>{moreLabel(t, hidden)}</span>}
         </div>
-        {hidden > 0 && canOpenPath && (
-          <button type="button" className={css.showFolder} onClick={() => { openFile('.') }}>
-            {t('produced.showInFolder')}
-          </button>
-        )}
         <div className={css.measure} aria-hidden="true">
           {paths.slice(0, limit).map((path, index) => (
             <button
@@ -172,6 +149,5 @@ export function ProducedFiles({
         </div>
       </div>
     </>
-
   )
 }

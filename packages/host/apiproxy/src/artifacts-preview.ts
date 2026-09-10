@@ -9,7 +9,6 @@
 import ExcelJS from 'exceljs'
 import { unzipSync, zipSync } from 'fflate'
 import { execFileSync } from 'node:child_process'
-import { managedSofficePath } from './soffice-runtime.ts'
 
 export interface PreviewCell {
   /** Display value (formula cells carry their cached computed result). */
@@ -826,14 +825,6 @@ let sofficeBin: string | undefined | false
  * @returns absolute binary path, or undefined when LibreOffice is absent.
  */
 export function findSoffice(): string | undefined {
-  // The managed runtime wins: it is our pinned, known-good build, and one
-  // stat per call is negligible — it also lets a just-finished download
-  // upgrade the preview pipeline without a process restart.
-  const managed = managedSofficePath()
-  if (managed !== undefined) {
-    sofficeBin = managed
-    return managed
-  }
   if (sofficeBin !== undefined) return sofficeBin || undefined
   for (const candidate of SOFFICE_CANDIDATES) {
     try {
@@ -849,8 +840,8 @@ export function findSoffice(): string | undefined {
 }
 
 /**
- * Drop the cached soffice lookup — after a managed install completes, or
- * when the user installs LibreOffice while the app is already running.
+ * Drop the cached soffice lookup — e.g. when the user installs LibreOffice
+ * while the app is already running.
  */
 export function resetSofficeLookup(): void {
   sofficeBin = undefined

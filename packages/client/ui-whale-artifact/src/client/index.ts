@@ -3,11 +3,11 @@
  * for the three office tools (each rendering the bounded preview carried in
  * the tool result's `presentationMeta`) plus their details-panel studios.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { OfficeArtifactCard } from './OfficeArtifactCard.tsx'
-import { DetailsArtifactView } from './DetailsArtifact.tsx'
 import { en, NS, zh, type WhaleArtifactKey } from './locales.ts'
 import { OFFICE_TOOLS } from './whale-preview.ts'
 export { ArtifactStudioBody } from './DetailsArtifact.tsx'
@@ -33,11 +33,6 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('tool.call.toolview', function* () {
     for (const tool of OFFICE_TOOLS) {
       yield ctx.slots.register({ name: 'tool.call.toolview', key: tool, locale: NS }, OfficeArtifactCard)
-    }
-  })
-  ctx.slots.inject('conversation.details.toolview', function* () {
-    for (const tool of OFFICE_TOOLS) {
-      yield ctx.slots.register({ name: 'conversation.details.toolview', key: tool, locale: NS }, DetailsArtifactView)
     }
   })
 }

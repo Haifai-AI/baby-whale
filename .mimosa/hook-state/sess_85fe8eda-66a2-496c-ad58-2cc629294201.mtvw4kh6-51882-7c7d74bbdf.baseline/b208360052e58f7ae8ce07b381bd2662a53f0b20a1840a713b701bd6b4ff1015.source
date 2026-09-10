@@ -1,0 +1,34 @@
+/**
+ * Whale task board plugin, browser half: registers the task-board event
+ * definition and its keyed chat-node renderer.
+ */
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+import { TaskBoardNode } from './TaskBoardNode.tsx'
+import { whaleTaskBoardDefinition } from './task-board.ts'
+import { en, NS, zh, type WhaleTaskKey } from './locales.ts'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** Whale task board copy. */
+    'whale-tasks': WhaleTaskKey
+  }
+}
+
+/** Required services for the event definition, dictionaries, and keyed renderer. */
+export const inject = ['slots', 'locale', 'conversationEvents']
+
+/**
+ * Client plugin body: register the dictionaries, the definition, and the
+ * keyed chat-node renderer.
+ * @param ctx - client root context.
+ */
+export function apply(ctx: ClientContext): void {
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-whale-tasks: dictionaries')
+  ctx.conversationEvents.register(whaleTaskBoardDefinition)
+  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+    name: 'conversation.chat.node',
+    key: 'whale-task-board',
+    locale: NS,
+  }, TaskBoardNode))
+}

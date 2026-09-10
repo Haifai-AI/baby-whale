@@ -163,11 +163,11 @@ function heredocHeader(code: string, index: number): { delimiter: string; dashFo
 
 /**
  * The index past one heredoc's body: the first line after `lineStart` equal
- * to the delimiter (leading tabs stripped for `<<-`), or end of text. The
- * body is data — a `>` inside it is never executed — so it is skipped
- * rather than scanned. A quoted delimiter's body is literal data; an
- * unquoted one may execute expansions, which this parser deliberately does
- * not inspect: like the other unparsed shell-mediated writes, that stays
+ * to the delimiter (leading tabs stripped for `<<-`), or end of text.
+ * Redirect-looking body text is treated as data and skipped rather than
+ * scanned: a quoted delimiter's body is literal, while an unquoted one may
+ * execute nested command expansions that this parser deliberately does not
+ * inspect — like the other unparsed shell-mediated writes, that stays
  * sandbox-confined.
  */
 function skipHeredocBody(code: string, lineStart: number, heredoc: PendingHeredoc): number {

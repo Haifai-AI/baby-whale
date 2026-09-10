@@ -1,0 +1,214 @@
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+/**
+ * Native chart cards for the workbook preview's Charts tab: the charts that
+ * live inside the xlsx (`xl/charts/chartN.xml`) re-rendered as crisp themed
+ * SVG — grouped columns, horizontal bars, lines, areas, pies, doughnuts and
+ * scatters — mirroring the shapes the host's chart extractor emits.
+ * @module @deepseek-ai/dsh-client-ui-whale-artifacts/src/client/WorkbookCharts
+ */
+import { useState } from 'react';
+import css from './ArtifactsView.module.css';
+const PALETTE = ['#4e7fe8', '#43a878', '#e0a23c', '#9a68d5', '#d96a6a', '#3fa7bd', '#c971a8', '#83b546'];
+const W = 640;
+const H = 380;
+const MARGIN = { top: 14, right: 14, bottom: 40, left: 56 };
+const PLOT_W = W - MARGIN.left - MARGIN.right;
+const PLOT_H = H - MARGIN.top - MARGIN.bottom;
+const AXIS_TEXT = { fill: 'var(--dsw-alias-label-secondary)', fontSize: 11 };
+/** Axis numbers: thousands-grouped (25,000), M-suffix past a million. No
+ * Intl — ICU builds differ between runtimes. */
+function compact(value) {
+    const abs = Math.abs(value);
+    if (abs >= 1_000_000)
+        return `${Math.round((value / 1_000_000) * 10) / 10}M`;
+    const rounded = Math.round(value * 100) / 100;
+    if (Number.isInteger(rounded) && abs >= 1_000) {
+        return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0$/, '');
+}
+const truncate = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
+/** Union of category labels across series (series may label slightly differently). */
+function unionCategories(series) {
+    const best = series.find(candidate => candidate.categories.length > 0) ?? series[0];
+    const count = best?.values.length ?? 0;
+    return Array.from({ length: count }, (_, index) => best?.categories[index] ?? String(index + 1));
+}
+/** Round an axis maximum up to a 1/2/2.5/5×10ᵏ multiple with 4 ticks. */
+function niceMax(max) {
+    if (!(max > 0))
+        return 1;
+    const rough = max / 4;
+    const power = Math.pow(10, Math.floor(Math.log10(rough)));
+    let step = power * 10;
+    for (const multiple of [1, 2, 2.5, 5, 10]) {
+        if (multiple * power >= rough) {
+            step = multiple * power;
+            break;
+        }
+    }
+    return step * Math.ceil(max / step);
+}
+function ValueGrid({ max }) {
+    return [0, 1, 2, 3, 4].map((index) => {
+        const y = MARGIN.top + PLOT_H - (PLOT_H * index) / 4;
+        return (_jsxs("g", { children: [_jsx("line", { x1: MARGIN.left, x2: W - MARGIN.right, y1: y, y2: y, stroke: "var(--dsw-alias-border-l2)", strokeWidth: 1, strokeOpacity: 0.7 }), _jsx("text", { x: MARGIN.left - 8, y: y + 4, textAnchor: "end", style: AXIS_TEXT, children: compact((max / 4) * index) })] }, index));
+    });
+}
+function CategoryLabels({ categories, horizontal }) {
+    if (horizontal) {
+        const band = PLOT_H / Math.max(categories.length, 1);
+        return categories.map((category, index) => (_jsx("text", { x: MARGIN.left - 8, y: MARGIN.top + band * index + band / 2 + 4, textAnchor: "end", style: AXIS_TEXT, children: truncate(category, 16) }, index)));
+    }
+    const band = PLOT_W / Math.max(categories.length, 1);
+    return categories.map((category, index) => (_jsx("text", { x: MARGIN.left + band * index + band / 2, y: MARGIN.top + PLOT_H + 18, textAnchor: "middle", style: AXIS_TEXT, children: truncate(category, 12) }, index)));
+}
+function ColumnChart({ chart }) {
+    const { series } = chart;
+    const categories = unionCategories(series);
+    const max = niceMax(Math.max(...series.flatMap(item => [...item.values]), 0));
+    const band = PLOT_W / Math.max(categories.length, 1);
+    const barWidth = Math.min((band * 0.72) / series.length, 34);
+    return (_jsxs(_Fragment, { children: [_jsx(ValueGrid, { max: max }), categories.map((_, index) => (series.map((candidate, seriesIndex) => {
+                const value = candidate.values[index] ?? 0;
+                const height = Math.max((value / max) * PLOT_H, 0);
+                const groupX = MARGIN.left + band * index + (band - barWidth * series.length) / 2;
+                return (_jsx("rect", { x: groupX + seriesIndex * barWidth, y: MARGIN.top + PLOT_H - height, width: barWidth - 2, height: height, rx: 2, fill: PALETTE[seriesIndex % PALETTE.length] }, `${index}-${seriesIndex}`));
+            }))), _jsx(CategoryLabels, { categories: categories, horizontal: false })] }));
+}
+function BarChart({ chart }) {
+    const { series } = chart;
+    const categories = unionCategories(series);
+    const max = niceMax(Math.max(...series.flatMap(item => [...item.values]), 0));
+    // Horizontal bars read their category labels on the left: give the gutter
+    // real room instead of truncating to the default axis margin.
+    const left = 128;
+    const plotW = W - left - MARGIN.right;
+    const band = PLOT_H / Math.max(categories.length, 1);
+    const barHeight = Math.min((band * 0.72) / series.length, 26);
+    return (_jsxs(_Fragment, { children: [[0, 1, 2, 3, 4].map((index) => {
+                const x = left + (plotW * index) / 4;
+                return (_jsxs("g", { children: [_jsx("line", { x1: x, x2: x, y1: MARGIN.top, y2: MARGIN.top + PLOT_H, stroke: "var(--dsw-alias-border-l2)", strokeWidth: 1 }), _jsx("text", { x: x, y: MARGIN.top + PLOT_H + 16, textAnchor: "middle", style: AXIS_TEXT, children: compact((max / 4) * index) })] }, index));
+            }), categories.map((_, index) => (series.map((candidate, seriesIndex) => {
+                const value = candidate.values[index] ?? 0;
+                const width = Math.max((value / max) * plotW, 0);
+                const groupY = MARGIN.top + band * index + (band - barHeight * series.length) / 2;
+                return (_jsx("rect", { x: left + 1, y: groupY + seriesIndex * barHeight, width: width, height: Math.max(barHeight - 2, 0), rx: 2, fill: PALETTE[seriesIndex % PALETTE.length] }, `${index}-${seriesIndex}`));
+            }))), categories.map((category, index) => {
+                const bandY = PLOT_H / Math.max(categories.length, 1);
+                return (_jsx("text", { x: left - 8, y: MARGIN.top + bandY * index + bandY / 2 + 4, textAnchor: "end", style: AXIS_TEXT, children: truncate(category, 18) }, index));
+            })] }));
+}
+function LineAreaChart({ chart, filled }) {
+    const { series } = chart;
+    const max = niceMax(Math.max(...series.flatMap(item => [...item.values]), 0));
+    const baseline = MARGIN.top + PLOT_H;
+    return (_jsxs(_Fragment, { children: [_jsx(ValueGrid, { max: max }), series.map((candidate, seriesIndex) => {
+                const count = candidate.values.length;
+                if (count === 0)
+                    return null;
+                const points = candidate.values.map((value, index) => {
+                    const x = MARGIN.left + (count === 1 ? PLOT_W / 2 : (PLOT_W * index) / (count - 1));
+                    const y = baseline - (value / max) * PLOT_H;
+                    return `${x},${y}`;
+                });
+                const color = PALETTE[seriesIndex % PALETTE.length];
+                return (_jsxs("g", { children: [filled && (_jsx("polygon", { points: `${MARGIN.left},${baseline} ${points.join(' ')} ${MARGIN.left + (count === 1 ? PLOT_W / 2 : PLOT_W)},${baseline}`, fill: color, opacity: 0.16 })), _jsx("polyline", { points: points.join(' '), fill: "none", stroke: color, strokeWidth: 2, strokeLinejoin: "round" }), candidate.values.map((value, index) => {
+                            const x = MARGIN.left + (count === 1 ? PLOT_W / 2 : (PLOT_W * index) / (count - 1));
+                            const y = baseline - (value / max) * PLOT_H;
+                            return _jsx("circle", { cx: x, cy: y, r: 2.6, fill: color }, index);
+                        })] }, seriesIndex));
+            }), _jsx(CategoryLabels, { categories: unionCategories(series), horizontal: false })] }));
+}
+function ScatterChart({ chart }) {
+    const { series } = chart;
+    const maxY = niceMax(Math.max(...series.flatMap(item => [...item.values]), 0));
+    const allX = series.flatMap(item => [...item.categories]);
+    const maxX = niceMax(Math.max(...allX.map(value => Number.parseFloat(value)).filter(Number.isFinite), 1));
+    const baseline = MARGIN.top + PLOT_H;
+    const xOf = (raw) => {
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value)
+            ? MARGIN.left + (value / maxX) * PLOT_W
+            : MARGIN.left + PLOT_W / 2;
+    };
+    return (_jsxs(_Fragment, { children: [_jsx(ValueGrid, { max: maxY }), series.map((candidate, seriesIndex) => (candidate.values.map((value, index) => (_jsx("circle", { cx: xOf(candidate.categories[index] ?? ''), cy: baseline - (value / maxY) * PLOT_H, r: 3.2, fill: PALETTE[seriesIndex % PALETTE.length], opacity: 0.85 }, `${seriesIndex}-${index}`)))))] }));
+}
+function arcPath(cx, cy, rOuter, rInner, start, end) {
+    const close = rInner <= 0;
+    const largeArc = end - start > Math.PI ? 1 : 0;
+    const x = (radius, angle) => cx + radius * Math.cos(angle);
+    const y = (radius, angle) => cy + radius * Math.sin(angle);
+    if (close) {
+        return [
+            `M ${cx} ${cy}`,
+            `L ${x(rOuter, start)} ${y(rOuter, start)}`,
+            `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x(rOuter, end)} ${y(rOuter, end)}`,
+            'Z',
+        ].join(' ');
+    }
+    return [
+        `M ${x(rOuter, start)} ${y(rOuter, start)}`,
+        `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x(rOuter, end)} ${y(rOuter, end)}`,
+        `L ${x(rInner, end)} ${y(rInner, end)}`,
+        `A ${rInner} ${rInner} 0 ${largeArc} 0 ${x(rInner, start)} ${y(rInner, start)}`,
+        'Z',
+    ].join(' ');
+}
+function PieChart({ chart, doughnut }) {
+    const first = chart.series[0];
+    if (first === undefined)
+        return null;
+    const total = first.values.reduce((sum, value) => sum + value, 0) || 1;
+    const cx = W / 2;
+    const cy = MARGIN.top + PLOT_H / 2;
+    const radius = Math.min(PLOT_W, PLOT_H) / 2 - 8;
+    const inner = doughnut ? radius * 0.58 : 0;
+    let cursor = -Math.PI / 2;
+    return first.values.map((value, index) => {
+        const sweep = (value / total) * Math.PI * 2;
+        const path = arcPath(cx, cy, radius, inner, cursor, cursor + sweep);
+        cursor += sweep;
+        return _jsx("path", { d: path, fill: PALETTE[index % PALETTE.length], stroke: "var(--dsw-alias-bg-layer-1)", strokeWidth: 2 }, index);
+    });
+}
+/** Chart-specific legend items (series, or category shares for pies). */
+function Legend({ chart }) {
+    if (chart.type === 'pie' || chart.type === 'doughnut') {
+        const first = chart.series[0];
+        if (first === undefined)
+            return null;
+        const total = first.values.reduce((sum, value) => sum + value, 0) || 1;
+        return (_jsx("div", { className: css.chartLegend, children: first.values.map((value, index) => (_jsxs("span", { className: css.legendItem, children: [_jsx("span", { className: css.legendSwatch, style: { background: PALETTE[index % PALETTE.length] } }), truncate(first.categories[index] ?? `Series ${index + 1}`, 18), " \u00B7 ", Math.round((value / total) * 100), "%"] }, index))) }));
+    }
+    if (chart.series.length < 2)
+        return null;
+    return (_jsx("div", { className: css.chartLegend, children: chart.series.map((candidate, index) => (_jsxs("span", { className: css.legendItem, children: [_jsx("span", { className: css.legendSwatch, style: { background: PALETTE[index % PALETTE.length] } }), truncate(candidate.name ?? `Series ${index + 1}`, 20)] }, index))) }));
+}
+function ChartBody({ chart }) {
+    switch (chart.type) {
+        case 'column': return _jsx(ColumnChart, { chart: chart });
+        case 'bar': return _jsx(BarChart, { chart: chart });
+        case 'line': return _jsx(LineAreaChart, { chart: chart, filled: false });
+        case 'area': return _jsx(LineAreaChart, { chart: chart, filled: true });
+        case 'pie': return _jsx(PieChart, { chart: chart, doughnut: false });
+        case 'doughnut': return _jsx(PieChart, { chart: chart, doughnut: true });
+        case 'scatter': return _jsx(ScatterChart, { chart: chart });
+    }
+}
+function ChartCard({ chart }) {
+    return (_jsxs("div", { className: css.chartCard, children: [_jsxs("div", { className: css.chartHead, children: [_jsx("span", { className: css.chartTitle, children: chart.title ?? 'Chart' }), chart.sheet !== undefined && _jsx("span", { className: css.chartSheet, children: chart.sheet })] }), _jsx(Legend, { chart: chart }), _jsx("svg", { viewBox: `0 0 ${W} ${H}`, className: css.chartSvg, role: "img", "aria-label": chart.title ?? 'Chart', children: _jsx(ChartBody, { chart: chart }) })] }));
+}
+/** The Charts tab body: a selector row over the workbook's charts — pick one
+ * to study it large, or open the wall of all of them. */
+export function WorkbookCharts({ charts, allLabel }) {
+    const [selected, setSelected] = useState(charts.length > 0 ? 0 : 'all');
+    if (charts.length === 0)
+        return null;
+    const current = selected === 'all' ? undefined : charts[Math.min(selected, charts.length - 1)];
+    const pill = (key, chart) => (_jsxs("button", { type: "button", className: `${css.chartTab} ${(key === 'all' && selected === 'all') || key === selected ? css.chartTabActive : ''}`, onClick: () => { setSelected(key); }, children: [_jsx("span", { className: css.chartTabTitle, children: chart === undefined ? allLabel : chart.title ?? `Chart ${Number(key) + 1}` }), chart?.sheet !== undefined && _jsx("span", { className: css.chartTabSheet, children: chart.sheet })] }, String(key)));
+    return (_jsxs("div", { className: css.chartsWrap, children: [_jsxs("div", { className: css.chartTabs, children: [charts.map((chart, index) => pill(index, chart)), charts.length > 1 && pill('all')] }), current !== undefined
+                ? _jsx(ChartCard, { chart: current })
+                : (_jsx("div", { className: css.chartsGrid, children: charts.map((chart, index) => _jsx(ChartCard, { chart: chart }, index)) }))] }));
+}
+//# sourceMappingURL=WorkbookCharts.js.map

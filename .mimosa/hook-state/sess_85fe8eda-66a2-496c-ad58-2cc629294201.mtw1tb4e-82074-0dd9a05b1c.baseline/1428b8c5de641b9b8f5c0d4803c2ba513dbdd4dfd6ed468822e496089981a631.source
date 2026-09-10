@@ -1,0 +1,35 @@
+/**
+ * Shared plumbing for the office read tools: resolve a workspace-relative
+ * path through the same sandboxed seam as artifact writes, bounded byte
+ * reads, and JSON-safe cell shaping shared by xlsx/csv extraction.
+ * @module @deepseek-ai/dsh-tool-office/src/read-shared
+ */
+import type { Context } from '@deepseek-ai/cordis';
+import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+/** Inclusive cap on one read tool's input payload (25 MB covers real workbooks). */
+export declare const MAX_READ_BYTES: number;
+/**
+ * Resolve and read a workspace file as bytes through the sandboxed seam.
+ * @param ctx - the plugin context providing the fs seam.
+ * @param exec - the tool-execution context (session cwd + cancellation).
+ * @param filePath - model-supplied workspace-relative path.
+ * @returns the file content.
+ */
+export declare function readWorkspaceBytes(ctx: Context, exec: ToolExecution, filePath: string): Promise<Uint8Array>;
+/** A JSON-safe table cell produced by the extraction layer. */
+export type ReadCell = string | number | {
+    formula: string;
+};
+/**
+ * Shape an exceljs cell value into a JSON-safe cell.
+ * @param value - the raw exceljs cell value union.
+ * @returns strings/numbers pass through; formulas keep their text with cached results when numeric.
+ */
+export declare function shapeCellValue(value: unknown): ReadCell;
+/**
+ * Infer a compact column-type hint from sampled cells.
+ * @param cells - shaped sample values for one column.
+ * @returns one of number, formula, text.
+ */
+export declare function inferColumnType(cells: ReadCell[]): 'number' | 'formula' | 'text';
+//# sourceMappingURL=read-shared.d.ts.map

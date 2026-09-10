@@ -75,9 +75,9 @@ it('opens the right sidebar from either the card or its primary button', () => {
 
 it('localizes reveal failures and accurately reports a directory-only action', () => {
   const p = props()
-  const view = render(<PresentedFileCard {...p} phase="revealError" t={makeTranslate(zh)} />)
+  const view = render(<PresentedFileCard {...{ ...p, phase: 'revealError' as const, t: makeTranslate(zh) }} />)
   expect(view.getByText(zh['presented.revealError'])).toBeTruthy()
-  view.rerender(<PresentedFileCard {...p} phase="revealed" host={{ ...p.host, fileManager: 'directory' }} />)
+  view.rerender(<PresentedFileCard {...{ ...p, phase: 'revealed' as const, host: { ...p.host, fileManager: 'directory' } }} />)
   expect(view.getByText(en['presented.directoryOpened'])).toBeTruthy()
   view.rerender(<PresentedFileCard {...p} phase="revealed" />)
   expect(view.getByText(en['presented.revealed'])).toBeTruthy()

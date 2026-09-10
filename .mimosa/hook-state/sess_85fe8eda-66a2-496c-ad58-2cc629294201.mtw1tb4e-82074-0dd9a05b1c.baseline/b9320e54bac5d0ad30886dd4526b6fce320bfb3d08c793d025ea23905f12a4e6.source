@@ -1,0 +1,8 @@
+/**
+ * Whale task board chat node: a compact scheduled-task list rendered from the
+ * immutable `whale/task-board` snapshot.
+ * @module @deepseek-ai/dsh-client-ui-whale-tasks/src/client/TaskBoardNode
+ */
+/** The board row: a titled card with the workspace's scheduled tasks. */
+export declare const TaskBoardNode: import("react").NamedExoticComponent<never>;
+//# sourceMappingURL=TaskBoardNode.d.ts.map

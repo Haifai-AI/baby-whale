@@ -25,6 +25,7 @@ import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/ds
 import type {
   SidebarPanelMetadata, SidebarRootComponentProps, SidebarRootInjected, SidebarSectionOwnerProps,
 } from './contract/slots.ts'
+import { RuntimeSetupCard } from './RuntimeSetupCard.tsx'
 import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
@@ -268,6 +269,7 @@ export function SidebarRoot({
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>
+        <RuntimeSetupCard wide={wide} t={t} />
         <div className={css.footerActions}>
           {renderSlot('sidebar.footer.action', { wide })}
         </div>

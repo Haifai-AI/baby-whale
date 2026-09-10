@@ -1,0 +1,13 @@
+/**
+ * The office read tools (`xlsx_read`, `csv_read`, `docx_text`): bounded,
+ * sandboxed extraction over uploaded workspace files so analysis can start
+ * from real user data instead of only generating new artifacts.
+ * @module @deepseek-ai/dsh-tool-office/src/read-tools
+ */
+import type { Context } from '@deepseek-ai/cordis';
+/**
+ * Register all office read tools with their system-prompt guidance.
+ * @param ctx - the plugin context; registrations are effects scoped to it.
+ */
+export declare function applyReadTools(ctx: Context): void;
+//# sourceMappingURL=read-tools.d.ts.map

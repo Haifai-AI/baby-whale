@@ -1,0 +1,31 @@
+/**
+ * `whale-artifacts` namespace dictionaries: the Artifacts tab copy.
+ */
+/** Dictionary namespace owned by this plugin. */
+export declare const NS = "whale-artifacts";
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export declare const zh: {
+    'view.artifacts': string;
+    'gallery.empty': string;
+    'gallery.loading': string;
+    'gallery.count': string;
+    'gallery.unknownDate': string;
+    'open.app': string;
+    preview: string;
+    'preview.close': string;
+    'preview.unsupported': string;
+    'preview.truncated': string;
+    'preview.sofficeMissing': string;
+    'tab.data': string;
+    'tab.charts': string;
+    'charts.all': string;
+    'tab.original': string;
+    refresh: string;
+    'from.deliverable': string;
+    'from.upload': string;
+};
+/** English dictionary (same key set). */
+export declare const en: Record<WhaleArtifactsKey, string>;
+/** Union of this namespace's dictionary keys. */
+export type WhaleArtifactsKey = keyof typeof zh;
+//# sourceMappingURL=locales.d.ts.map

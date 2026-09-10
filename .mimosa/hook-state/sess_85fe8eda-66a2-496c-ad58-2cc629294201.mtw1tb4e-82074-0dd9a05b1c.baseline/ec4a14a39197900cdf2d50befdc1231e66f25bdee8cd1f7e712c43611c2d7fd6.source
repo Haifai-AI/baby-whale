@@ -1,0 +1,28 @@
+/**
+ * Native chart cards for the workbook preview's Charts tab: the charts that
+ * live inside the xlsx (`xl/charts/chartN.xml`) re-rendered as crisp themed
+ * SVG — grouped columns, horizontal bars, lines, areas, pies, doughnuts and
+ * scatters — mirroring the shapes the host's chart extractor emits.
+ * @module @deepseek-ai/dsh-client-ui-whale-artifacts/src/client/WorkbookCharts
+ */
+import type { JSX } from 'react';
+/** One cached series of a workbook chart. */
+export interface WorkbookChartSeries {
+    readonly name?: string;
+    readonly categories: readonly string[];
+    readonly values: readonly number[];
+}
+/** One chart extracted from the workbook package. */
+export interface WorkbookChart {
+    readonly type: 'column' | 'bar' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter';
+    readonly title?: string;
+    readonly sheet?: string;
+    readonly series: readonly WorkbookChartSeries[];
+}
+/** The Charts tab body: a selector row over the workbook's charts — pick one
+ * to study it large, or open the wall of all of them. */
+export declare function WorkbookCharts({ charts, allLabel }: {
+    charts: readonly WorkbookChart[];
+    allLabel: string;
+}): JSX.Element | null;
+//# sourceMappingURL=WorkbookCharts.d.ts.map

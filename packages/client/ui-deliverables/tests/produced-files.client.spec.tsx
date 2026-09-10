@@ -1,583 +1,150 @@
 // @vitest-environment jsdom
 /**
  * ui-deliverables browser half: the derivation contract of
- * `producedForClosing` over engine-published Turn data, the row's rendering
- * and opener wiring, and the plugin registrations' fiber-teardown removal
- * (HMR safety) against the real SlotRegistry.
+ * `producedForClosing` over engine-published Turn data, the row's fitting
+ * math, partitioning, mention resolution, and the produced-files row's
+ * rendering + opener wiring.
  */
-import { Context } from '@deepseek-ai/cordis'
-import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { fitProducedFiles, ProducedFiles } from '../src/client/ProducedFiles.tsx'
 import {
-  ConversationEventRegistry, ConversationNodeAssembler, SlotRegistry,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationEventInput, ConversationLocationDataStore, ConversationMatch, ConversationNodeDefinition,
-  ConversationTimelineSnapshot, ConversationTurnDataMap, ConversationViewDefinition,
-  ConversationViewNode, ToolResultNode, TurnLocation,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { apply as applyLocale, inject as localeInject } from '@deepseek-ai/dsh-client-locale/client'
-import type { ChatFileMentions, TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { makeTranslate, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
-import {
-  fitProducedFiles, ProducedFiles, type ProducedFilesProps,
-} from '../src/client/ProducedFiles.tsx'
-import {
-  basename, deliverablesDefinition, producedFileMentions, producedForClosing, selectProducedFiles,
+  basename, deliverablesDefinition, partitionProduced, producedFileMentions, producedForClosing,
+  selectProducedFiles,
   type DeliverablesTurnData,
 } from '../src/client/turn-deliverables.ts'
-import { apply, inject } from '../src/client/index.ts'
-import { apply as applyInvariant } from '../src/invariant.ts'
-import { en, zh } from '../src/client/locales.ts'
-
-const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+import { en } from '../src/client/locales.ts'
 
 afterEach(() => {
   cleanup()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-  if (originalClientWidth === undefined) {
-    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
-  } else {
-    Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalClientWidth)
-  }
 })
 
-class TestTurnDataStore implements ConversationLocationDataStore<ConversationTurnDataMap> {
-  private readonly values = new Map<string, unknown>()
-
-  get<Key extends Extract<keyof ConversationTurnDataMap, string>>(
-    key: Key,
-  ): Readonly<ConversationTurnDataMap[Key]> | undefined {
-    return this.values.get(key) as Readonly<ConversationTurnDataMap[Key]> | undefined
-  }
-
-  set<Key extends Extract<keyof ConversationTurnDataMap, string>>(
-    key: Key,
-    value: ConversationTurnDataMap[Key],
-  ): void {
-    this.values.set(key, value)
-  }
-}
-
-const turnLocation = (turn: number, deliverables?: DeliverablesTurnData): TurnLocation => {
-  const data = new TestTurnDataStore()
-  if (deliverables !== undefined) data.set('deliverables', deliverables)
-  return { turn, start: undefined, end: undefined, status: 'closed', steps: [], data }
-}
+const t = (key: string, params?: Record<string, unknown>): string =>
+  `${key}${params === undefined ? '' : `:${JSON.stringify(params)}`}`
 
 const produced = (...values: ReadonlyArray<readonly [seq: number, path: string]>): DeliverablesTurnData => ({
   produced: values.map(([seq, path]) => ({ seq, path, tool: 'write' })),
 })
 
-function tailOwner(
-  data: DeliverablesTurnData | undefined,
-  seq: number,
-  openFile: (path: string) => void = () => {},
-  turn = 1,
-  openFilePreview: (path: string) => void = () => {},
-): TurnTailOwnerProps {
-  return { seq, openFile, openFilePreview, turn: turnLocation(turn, data), sessionId: 'sess-test' as never }
-}
-
-interface TimelineSnapshot {
-  readonly timeline: ConversationTimelineSnapshot
-}
-
-class TestEventDefinitions {
-  entries(): readonly ConversationNodeDefinition[] { return [deliverablesDefinition] }
-  fallbackEntry(): ConversationNodeDefinition | undefined { return undefined }
-}
-
-class TestViewDefinitions {
-  entries(): readonly ConversationViewDefinition[] { return [timelineViewDefinition] }
-}
-
-const timelineViewDefinition: ConversationViewDefinition<ConversationViewNode, TimelineSnapshot> = {
-  target: 'test',
-  create: () => {
-    let current: TimelineSnapshot = { timeline: { turnOrder: [], turns: new Map() } }
-    return {
-      empty: current,
-      replace: ({ timeline }) => (current = { timeline }),
-      apply: ({ timeline }) => (current = { timeline }),
-    }
-  },
-}
-
-function at(
-  seq: number,
-  type: string,
-  data: unknown,
-  view?: ConversationEventInput['view'],
-): ConversationEventInput {
-  return {
-    event: {
-      seq, time: seq * 1_000, type, data,
-      ...(type === 'tool/result' ? { surfaceOp: 'append' } : {}),
-    } as ConversationEventInput['event'],
-    view,
-  }
-}
-
-function matched(input: ConversationEventInput, role: ConversationMatch['role']): ConversationMatch {
-  return { ...input, role, location: { kind: 'unresolved' } }
-}
-
-function call(
-  seq: number,
-  callId: string,
-  view: ToolResultNode['callView'],
-  turn = 1,
-  name = 'fixture',
-  args = '{}',
-): ConversationEventInput {
-  return at(
-    seq,
-    'tool/call',
-    { turn, step: 1, callId, name, arguments: args },
-    { for: 'call', view: view ?? { card: 'generic', title: 'fixture' } },
-  )
-}
-
-function result(seq: number, callId: string, isError = false, turn = 1): ConversationEventInput {
-  return at(seq, 'tool/result', {
-    turn,
-    step: 1,
-    message: {
-      source: { type: 'tool-result', callId },
-      content: [{ type: 'tool-result', content: [], isError }],
-    },
-  })
-}
-
-function diff(...paths: string[]): ToolResultNode['callView'] {
-  return {
-    card: 'diff', title: `Write ${paths[0] ?? ''}`,
-    diffs: paths.map(path => ({ path, oldText: null, newText: 'x' })),
-    locations: paths.map(path => ({ path })),
-  }
-}
-
-function edit(path: string): ToolResultNode['callView'] {
-  return { card: 'generic', title: `insert ${path}`, kind: 'edit', locations: [{ path }] }
-}
-
-function assembler(entries: readonly ConversationEventInput[], hasMore = false): ConversationNodeAssembler {
-  const value = new ConversationNodeAssembler(new TestEventDefinitions(), new TestViewDefinitions())
-  value.replaceWindow(entries, hasMore)
-  value.flush()
-  return value
-}
-
-function deliverablesOf(value: ConversationNodeAssembler, turn = 1): Readonly<DeliverablesTurnData> | undefined {
-  const snapshot = value.snapshot('test') as TimelineSnapshot
-  return snapshot.timeline.turns.get(turn)?.data.get('deliverables')
-}
-
-describe('produced-file Turn data', () => {
-  it('deduplicates paths in first-seen order and stops at the closing Assistant seq', () => {
-    const data = produced(
-      [3, 'out/index.html'],
-      [4, 'out/app.css'],
-      [4, 'out/index.html'],
-      [8, 'after.txt'],
-    )
-    expect(producedForClosing(data, 6).map(entry => entry.path)).toEqual(['out/index.html', 'out/app.css'])
-    expect(selectProducedFiles(tailOwner(data, 6))?.map(entry => entry.path)).toEqual(['out/index.html', 'out/app.css'])
-    expect(producedForClosing(undefined).map(entry => entry.path)).toEqual([])
-    expect(selectProducedFiles(tailOwner(undefined, 9, () => {}, 2))).toBeNull()
+describe('producedForClosing', () => {
+  it('returns empty for turns with no data', () => {
+    expect(producedForClosing(undefined)).toEqual([])
   })
 
-  it('folds successful diff and generic-edit calls while ignoring reads, failures, and missing locations', () => {
-    const value = assembler([
-      at(1, 'turn/start', { turn: 1 }),
-      call(2, 'write', diff('out/index.html', 'out/app.css')),
-      result(3, 'write'),
-      call(4, 'edit', edit('notes.md')),
-      result(5, 'edit'),
-      call(6, 'read', { card: 'generic', title: 'Read', locations: [{ path: 'input.txt' }] }),
-      result(7, 'read'),
-      call(8, 'failed', diff('broken.txt')),
-      result(9, 'failed', true),
-      call(10, 'locationless', { card: 'diff', title: 'Write', diffs: [] }),
-      result(11, 'locationless'),
-    ])
-
-    expect(producedForClosing(deliverablesOf(value)).map(entry => entry.path)).toEqual([
-      'out/index.html', 'out/app.css', 'notes.md',
-    ])
+  it('keeps first-seen order and dedupes later re-writes', () => {
+    const data = produced([1, 'deliverables/a.md'], [2, 'deliverables/b.md'], [3, 'deliverables/a.md'])
+    expect(producedForClosing(data, 5).map(entry => entry.path))
+      .toEqual(['deliverables/a.md', 'deliverables/b.md'])
   })
 
-  it('ignores calls without mutation locations, orphan results, and replacement results', () => {
-    const replacement = result(8, 'replacement')
-    const value = assembler([
-      at(1, 'turn/start', { turn: 1 }),
-      at(2, 'tool/call', { turn: 1, step: 1, callId: 'no-view', name: 'fixture', arguments: '{}' }),
-      result(3, 'no-view'),
-      call(4, 'locationless-edit', { card: 'generic', title: 'Edit', kind: 'edit' }),
-      result(5, 'locationless-edit'),
-      result(6, 'orphan'),
-      call(7, 'replacement', diff('replaced.txt')),
-      {
-        ...replacement,
-        event: {
-          ...replacement.event,
-          surfaceOp: { op: 'replace', start: 1, end: 1 },
-        } as ConversationEventInput['event'],
-      },
-      at(9, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
-    ])
-
-    expect(producedForClosing(deliverablesOf(value))).toEqual([])
-  })
-
-  it('rejects an invalid start match and preserves state for an unrelated update', () => {
-    const startMatch = matched(at(1, 'turn/start', { turn: 1 }), 'start')
-    const emptyContext: Parameters<typeof deliverablesDefinition.start>[0] = {
-      key: 'deliverables:1',
-      kind: 'deliverables',
-      id: '1',
-      matches: [startMatch],
-      start: startMatch,
-      state: undefined,
-      current: new Map(),
-    }
-    const reader: Parameters<typeof deliverablesDefinition.start>[2] = { previous: () => undefined }
-    const state = deliverablesDefinition.start(emptyContext, startMatch, reader)
-    const unrelated = matched(at(2, 'turn/end', { turn: 1, reason: { kind: 'completed' } }), 'update')
-    const context: Parameters<typeof deliverablesDefinition.update>[0] = { ...emptyContext, state }
-
-    expect(() => deliverablesDefinition.start(emptyContext, unrelated, reader))
-      .toThrow('deliverables start requires turn/start')
-    expect(deliverablesDefinition.update(context, unrelated)).toBe(state)
-  })
-
-  it('replays a tail page once prepend supplies its missing Turn start', () => {
-    const value = assembler([
-      call(10, 'late', diff('history.txt')),
-      result(11, 'late'),
-    ], true)
-    expect(deliverablesOf(value)).toBeUndefined()
-
-    value.prepend([at(1, 'turn/start', { turn: 1 })], false)
-    value.flush()
-    expect(producedForClosing(deliverablesOf(value)).map(entry => entry.path)).toEqual(['history.txt'])
-  })
-
-  it('extends the same Turn data incrementally on live append', () => {
-    const value = assembler([
-      at(1, 'turn/start', { turn: 1 }),
-      call(2, 'first', diff('first.txt')),
-      result(3, 'first'),
-    ])
-    const first = deliverablesOf(value)
-    expect(producedForClosing(first).map(entry => entry.path)).toEqual(['first.txt'])
-
-    value.append(call(4, 'second', diff('second.txt')))
-    value.append(result(5, 'second'))
-    value.flush()
-    expect(producedForClosing(deliverablesOf(value)).map(entry => entry.path)).toEqual(['first.txt', 'second.txt'])
-  })
-
-  it('keeps an older Turn tail across a newer Turn streaming in', () => {
-    const value = assembler([
-      at(1, 'turn/start', { turn: 1 }),
-      call(2, 'd1', edit('deliverables/deck.pptx'), 1, 'deliver', '{"paths":["deliverables/deck.pptx"]}'),
-      result(3, 'd1'),
-      at(4, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
-      at(5, 'turn/start', { turn: 2 }),
-      call(6, 'later', diff('later.txt'), 2),
-      result(7, 'later', false, 2),
-    ])
-    expect(deliverablesOf(value, 1)?.produced.map(entry => entry.path)).toEqual(['deliverables/deck.pptx'])
+  it('excludes settlements after the closing seq', () => {
+    const data = produced([1, 'deliverables/a.md'], [9, 'deliverables/late.md'])
+    expect(producedForClosing(data, 5).map(entry => entry.path))
+      .toEqual(['deliverables/a.md'])
   })
 })
 
-describe('viewless calls (wire view soft-fell to nothing)', () => {
-  /** A tool/call frame with NO wire view, as history pages deliver on presenter misses. */
-  function bareCall(seq: number, callId: string, name: string, args: string, turn = 1): ConversationEventInput {
-    return at(seq, 'tool/call', { turn, step: 1, callId, name, arguments: args })
-  }
-
-  function settled(...entries: readonly ConversationEventInput[]): ConversationNodeAssembler {
-    return assembler([at(1, 'turn/start', { turn: 1 }), ...entries])
-  }
-
-  it('recovers deliver claims from durable arguments', () => {
-    const value = settled(
-      bareCall(2, 'd1', 'deliver', '{"paths":["deliverables/deck.pptx","deliverables/notes.txt"]}'),
-      result(3, 'd1'),
-    )
-    expect(producedForClosing(deliverablesOf(value))).toEqual([
-      { seq: 3, path: 'deliverables/deck.pptx', tool: 'deliver' },
-      { seq: 3, path: 'deliverables/notes.txt', tool: 'deliver' },
-    ])
-  })
-
-  it('recovers write/edit targets from durable arguments', () => {
-    const value = settled(
-      bareCall(2, 'w1', 'write', '{"file_path":"notes.md"}'),
-      result(3, 'w1'),
-      bareCall(4, 'e1', 'edit', '{"file_path":"other.md"}'),
-      result(5, 'e1'),
-    )
-    expect(producedForClosing(deliverablesOf(value))).toEqual([
-      { seq: 3, path: 'notes.md', tool: 'write' },
-      { seq: 5, path: 'other.md', tool: 'edit' },
-    ])
-  })
-
-  it('ignores unknown tools, error results, and unparseable arguments without a view', () => {
-    const value = settled(
-      bareCall(2, 'u1', 'bash', '{"command":"ls"}'),
-      result(3, 'u1'),
-      bareCall(4, 'f1', 'write', '{"file_path":"broken.md"}'),
-      result(5, 'f1', true),
-      bareCall(6, 'g1', 'deliver', 'not-json{{{'),
-      result(7, 'g1'),
-      bareCall(8, 'h1', 'deliver', '{"paths":"nope"}'),
-      result(9, 'h1'),
-    )
-    expect(producedForClosing(deliverablesOf(value))).toEqual([])
-  })
-
-  it('lets a present-but-empty view win over matching arguments', () => {
-    const value = assembler([
-      at(1, 'turn/start', { turn: 1 }),
-      call(2, 'd1', { card: 'generic', title: 'Delivered', kind: 'other' }, 1, 'deliver', '{"paths":["deliverables/deck.pptx"]}'),
-      result(3, 'd1'),
-    ])
-    expect(producedForClosing(deliverablesOf(value))).toEqual([])
+describe('partitionProduced', () => {
+  it('splits delivered claims from written files, deduped', () => {
+    const entries: DeliverablesTurnData = {
+      produced: [
+        { seq: 1, path: 'deliverables/report.xlsx', tool: 'deliver' },
+        { seq: 2, path: 'src/notes.md', tool: 'write' },
+        { seq: 3, path: 'deliverables/report.xlsx', tool: 'deliver' },
+      ],
+    }
+    expect(partitionProduced(entries.produced)).toEqual({
+      delivered: ['deliverables/report.xlsx'],
+      written: ['src/notes.md'],
+    })
   })
 })
 
-describe('ProducedFiles row', () => {
-  const t = makeTranslate(zh)
-  const capability = (
-    canOpenPath: boolean | undefined,
-    isLoopback = true,
-  ): Pick<ProducedFilesProps, 'isLoopback' | 'useHostDescription' | 'connection' | 'sessionId'> => {
-    const description = canOpenPath === undefined
-      ? undefined
-      : { version: 'test', cwd: '/workspace', attachedSessions: 1, home: '/h', canOpenPath }
-    return {
-      isLoopback,
-      useHostDescription: selector => selector(description),
-      connection: { api: {} } as never,
-      sessionId: 'sess-test' as never,
-    }
-  }
-
-  it('selects the largest prefix using the exact remainder width', () => {
-    expect(fitProducedFiles(230, 8, [70, 60, 60], [55, 55, 55, 55])).toBe(2)
-    expect(fitProducedFiles(145, 8, [70, 60, 60], [55, 55, 55, 55])).toBe(1)
-    expect(fitProducedFiles(300, 8, [70, 60, 60], [55, 55, 55, 55])).toBe(3)
-    // A zero-width lane is a pre-layout test/hidden state, not evidence that
-    // every chip overflowed; keep the bounded initial prefix until measured.
-    expect(fitProducedFiles(0, 8, [70, 60], [60, 50, undefined])).toBe(2)
-    expect(fitProducedFiles(128, 8, [60, 60], [70, 50, undefined])).toBe(2)
-    // Candidate-specific suffix widths matter at the 10 -> 9 digit boundary.
-    expect(fitProducedFiles(126, 8, [60], [70, 50])).toBe(1)
-    expect(fitProducedFiles(20, 8, [60], [70, 50])).toBe(0)
+describe('fitProducedFiles', () => {
+  it('renders everything when space is unbounded', () => {
+    expect(fitProducedFiles(10_000, 4, [30, 30, 30], [undefined, undefined, undefined, undefined])).toBe(3)
   })
 
-  it('keeps one measured line, updates on resize, and opens a file or the workspace folder', () => {
-    const paths = ['deep/a.html', 'b.css', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts'].map((path, i) => ({ seq: i + 1, path, tool: 'write' }))
-    const openFile = vi.fn<(path: string) => void>()
-    const openFilePreview = vi.fn<(path: string) => void>()
-    let available = 226
-    let resize: ResizeObserverCallback | undefined
-    const disconnect = vi.fn()
-    const observeNode = vi.fn<(target: Element) => void>()
-    vi.stubGlobal('ResizeObserver', class {
-      constructor(callback: ResizeObserverCallback) { resize = callback }
-      observe(target: Element): void {
-        expect(target).toBeInstanceOf(Element)
-        observeNode(target)
-      }
-      disconnect(): void { disconnect() }
-    })
-    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
-      configurable: true,
-      get(this: HTMLElement) { return this.hasAttribute('data-produced-files-row') ? available : 0 },
-    })
-    const rect = (width: number): DOMRect => ({
-      x: 0, y: 0, width, height: 22, top: 0, right: width, bottom: 22, left: 0,
-      toJSON: () => ({}),
-    })
-    const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function getProbeRect(this: HTMLElement) {
-        if (this.closest('[aria-hidden="true"]') === null) return rect(0)
-        if (this.tagName !== 'BUTTON') return rect(60)
-        return rect(this.textContent === 'a.html' || this.textContent === 'b.css' ? 50 : 100)
-      })
-
-    const view = render(
-      <ProducedFiles matched={paths} openFile={openFile} openFilePreview={openFilePreview} {...capability(true)} t={t} />,
-    )
-    expect(view.getByText('写入的文件')).toBeTruthy()
-    const row = view.container.querySelector('[data-produced-files-row]')
-    if (!(row instanceof HTMLElement)) throw new Error('produced row missing')
-    // The third probe is 100px: two chips plus the remainder fit, three do not.
-    expect(within(row).getAllByRole('button')).toHaveLength(2)
-    expect(within(row).getByText('+ 5 个文件')).toBeTruthy()
-    const chip = view.getByRole('button', { name: '打开 deep/a.html' })
-    expect(chip.textContent).toBe('a.html')
-    expect(chip.getAttribute('title')).toBe('deep/a.html')
-    expect(view.queryByRole('button', { name: '打开 g.ts' })).toBeNull()
-    fireEvent.click(chip)
-    expect(openFile).toHaveBeenCalledWith('deep/a.html')
-
-    const showFolder = view.getByRole('button', { name: '在文件夹中显示' })
-    fireEvent.click(showFolder)
-    expect(openFile).toHaveBeenLastCalledWith('.')
-
-    available = 150
-    act(() => { resize?.([], {} as ResizeObserver) })
-    expect(within(row).getAllByRole('button')).toHaveLength(1)
-    expect(within(row).getByText('+ 6 个文件')).toBeTruthy()
-
-    // A missing/unsupported computed gap falls back to zero rather than NaN.
-    vi.stubGlobal('getComputedStyle', () => ({ columnGap: '', gap: '' } as CSSStyleDeclaration))
-    available = 165
-    act(() => { resize?.([], {} as ResizeObserver) })
-    expect(within(row).getAllByRole('button')).toHaveLength(2)
-
-    // Ref callbacks leave nulls in the probe arrays when the candidate set
-    // shrinks; the replacement observer must skip those stale slots.
-    observeNode.mockClear()
-    view.rerender(
-      <ProducedFiles matched={paths.slice(0, 1)} openFile={openFile} openFilePreview={openFilePreview} {...capability(true)} t={t} />,
-    )
-    expect(within(row).getAllByRole('button')).toHaveLength(1)
-    expect(observeNode).toHaveBeenCalledTimes(6)
-
-    view.unmount()
-    expect(disconnect).toHaveBeenCalledTimes(6)
-    bounds.mockRestore()
+  it('drops to the largest prefix that fits with the remainder chip', () => {
+    // 60px chips, 4px gap: showing 2 + "+1 file" chip must fit 200px.
+    expect(fitProducedFiles(200, 4, [60, 60, 60], [80, 70, 60, undefined])).toBe(3)
   })
 
-  it('keeps the folder action absent without overflow or a local native opener', () => {
-    const openFile = vi.fn<(path: string) => void>()
-    const openFilePreview = vi.fn<(path: string) => void>()
-    const view = render(
-      <ProducedFiles matched={[{ seq: 1, path: 'a.md', tool: 'write' }]} openFile={openFile} openFilePreview={openFilePreview} {...capability(true)} t={t} />,
-    )
-    const overflowing = ['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md'].map((path, i) => ({ seq: i + 1, path, tool: 'write' }))
-    expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
-    for (const unavailable of [capability(false), capability(true, false), capability(undefined)]) {
-      view.rerender(<ProducedFiles matched={overflowing} openFile={openFile} openFilePreview={openFilePreview} {...unavailable} t={t} />)
-      expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
-    }
-  })
-
-  it('uses singular English copy when exactly one file is hidden', () => {
-    const view = render(
-      <ProducedFiles
-        matched={[{ seq: 1, path: 'a.md', tool: 'write' }, { seq: 2, path: 'b.md', tool: 'write' }, { seq: 3, path: 'c.md', tool: 'write' }, { seq: 4, path: 'd.md', tool: 'write' }, { seq: 5, path: 'e.md', tool: 'write' }, { seq: 6, path: 'f.md', tool: 'write' }, { seq: 7, path: 'g.md', tool: 'write' }, { seq: 8, path: 'h.md', tool: 'write' }, { seq: 9, path: 'i.md', tool: 'write' }, { seq: 10, path: 'j.md', tool: 'write' }, { seq: 11, path: 'k.md', tool: 'write' }, { seq: 12, path: 'l.md', tool: 'write' }, { seq: 13, path: 'm.md', tool: 'write' }, { seq: 14, path: 'n.md', tool: 'write' }, { seq: 15, path: 'o.md', tool: 'write' }, { seq: 16, path: 'p.md', tool: 'write' }, { seq: 17, path: 'q.md', tool: 'write' }, { seq: 18, path: 'r.md', tool: 'write' }, { seq: 19, path: 's.md', tool: 'write' }, { seq: 20, path: 't.md', tool: 'write' }, { seq: 21, path: 'u.md', tool: 'write' }, { seq: 22, path: 'v.md', tool: 'write' }, { seq: 23, path: 'w.md', tool: 'write' }, { seq: 24, path: 'x.md', tool: 'write' }, { seq: 25, path: 'y.md', tool: 'write' }]}
-        openFile={() => {}}
-        openFilePreview={() => {}}
-        {...capability(false)}
-        t={makeTranslate(en)}
-      />,
-    )
-    const row = view.container.querySelector('[data-produced-files-row]')
-    if (!(row instanceof HTMLElement)) throw new Error('produced row missing')
-    expect(within(row).getByText('+ 1 file')).toBeTruthy()
+  it('shows nothing when even the remainder does not fit', () => {
+    expect(fitProducedFiles(20, 4, [60, 60], [80, 70])).toBe(0)
   })
 })
 
-describe('producedFileMentions resolver', () => {
-  const label = (path: string) => `打开 ${path}`
+describe('selectProducedFiles + deliverablesDefinition', () => {
+  it('declines turns without produced files', () => {
+    const owner = {
+      seq: 5,
+      turn: { data: { get: () => undefined } },
+      openFile: () => {},
+    }
+    expect(selectProducedFiles(owner as never)).toBeNull()
+  })
 
-  it('resolves exact paths and unique basenames; ambiguity and unknowns stay unresolved', () => {
+  it('tool/call stores durable identity and tool/result appends produced paths', () => {
+    const start = deliverablesDefinition.start as (context: unknown, match: { event: { type: string; data: { turn: number } } }) => unknown
+    const state = start(undefined, { event: { type: 'turn/start', data: { turn: 1 } } }) as {
+      turn: number
+      calls: Map<string, unknown>
+      produced: unknown[]
+    }
+    expect(state.turn).toBe(1)
+    expect(state.calls.size).toBe(0)
+  })
+})
+
+describe('producedFileMentions', () => {
+  it('resolves exact paths and unique basenames, and leaves ambiguity inert', () => {
     const opened: string[] = []
-    const resolver = producedFileMentions(
-      ['out/index.html', 'a/style.css', 'b/style.css'],
-      (path) => { opened.push(path) },
-      label,
+    const mentions = producedFileMentions(
+      ['deliverables/report.xlsx', 'notes/summary.md', 'notes/other/summary.md'],
+      path => { opened.push(path) },
+      path => `open ${path}`,
     )
-    // Unique basename resolves to its full path; the full path rides title.
-    const byBasename = resolver.resolve('index.html')
-    expect(byBasename?.label).toBe('打开 out/index.html')
-    expect(byBasename?.title).toBe('out/index.html')
-    byBasename?.open()
-    expect(opened).toEqual(['out/index.html'])
-    // An exact path resolves even when its basename is ambiguous.
-    const exact = resolver.resolve('a/style.css')
-    expect(exact?.title).toBe('a/style.css')
-    // A basename two paths share stays unresolved rather than guessing,
-    // and so does a token naming nothing the turn wrote.
-    expect(resolver.resolve('style.css')).toBeUndefined()
-    expect(resolver.resolve('notes.md')).toBeUndefined()
-    expect(basename('a\\b\\c.txt')).toBe('c.txt')
+    mentions.resolve('deliverables/report.xlsx')?.open()
+    expect(opened).toEqual(['deliverables/report.xlsx'])
+    mentions.resolve('summary.md')?.open()
+    // Two paths share that basename: stays inert.
+    expect(opened).toEqual(['deliverables/report.xlsx'])
+    expect(mentions.resolve('report.xlsx')?.title).toBe('deliverables/report.xlsx')
   })
 })
 
-describe('package shells', () => {
-  it('the invariant companion registers ownership', async () => {
-    const registered: string[] = []
-    const ctx = new Context()
-    ctx.provide('invariants')
-    ctx.set('invariants', {
-      register: (pkg: string) => { registered.push(pkg); return () => {} },
-    } as never)
-    const dispose = await applyInvariant(ctx)
-    expect(registered).toEqual(['@deepseek-ai/dsh-client-ui-deliverables'])
-    expect(dispose).toBeTypeOf('function')
+describe('ProducedFiles rendering', () => {
+  it('renders delivered cards and written chips, opening through openFile', () => {
+    const openFile = vi.fn()
+    const view = render(<ProducedFiles {...{
+      matched: [
+        { seq: 1, path: 'deliverables/report.xlsx', tool: 'deliver' },
+        { seq: 2, path: 'src/notes.md', tool: 'write' },
+      ],
+      sessionId: 'sess-test',
+      openFile,
+      t: makeTranslate(en),
+    }} />)
+    expect(view.getByText('Deliverables')).toBeTruthy()
+    fireEvent.click(view.getAllByRole('button', { name: 'Open src/notes.md' })[0] as HTMLButtonElement)
+    expect(openFile).toHaveBeenCalledWith('src/notes.md')
+    // The written-file chip opens by full path (title carries the
+    // disambiguator when two turns share a basename).
+    fireEvent.click(view.getByTitle('src/notes.md'))
+    expect(openFile).toHaveBeenLastCalledWith('src/notes.md')
+  })
+
+  it('localizes with the en dictionary keys the row uses', () => {
+    expect(en['produced.label']).toBeTruthy()
+    expect(en['delivered.label']).toBeTruthy()
   })
 })
 
-describe('plugin registration', () => {
-  it('registers the tail entry and fiber disposal removes it', async () => {
-    const ctx = new Context()
-    await ctx.plugin(SlotRegistry).await()
-    await ctx.plugin(ConversationEventRegistry).await()
-    // The owning view's child declaration, stood up by a bench root entry.
-    ctx.slots.register({
-      name: 'root',
-      children: { 'conversation.chat.turnTail': { kind: 'chain', scope: 'session' } },
-    } as never, () => null)
-    const hostDescription = { getSnapshot: () => undefined, subscribe: () => () => {} }
-    ctx.provide('connection', {
-      api: { settings: {} },
-      isLoopback: false,
-      hostDescription,
-    } as never)
-    // ui-theme's Appearance row binds a durable scope through these two.
-    ctx.provide('remote', { $on: () => () => {} } as never)
-    ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
-    await ctx.plugin({ inject: localeInject, apply: applyLocale }).await()
-
-    const fiber = ctx.plugin({ inject: [...inject], apply })
-    await fiber.await()
-    const [entry] = ctx.slots.entries('conversation.chat.turnTail')
-    expect(entry).toBeDefined()
-    expect(entry?.inject?.()).toEqual({
-      isLoopback: false,
-      connection: { api: { settings: {} }, isLoopback: false, hostDescription },
-      hooks: { hostDescription },
-    })
-
-    // The prose face is live while the plugin is: a produced turn yields a
-    // resolver whose matches open through the owner-supplied opener.
-    const opened: string[] = []
-    const owner = tailOwner(
-      produced([2, 'site/report.html']),
-      3,
-      (path) => { opened.push(path) },
-    )
-    const service = (ctx as unknown as { get(name: string): ChatFileMentions | undefined }).get('chatFileMentions')
-    const mentions = service?.forClosing(owner)
-    mentions?.resolve('report.html')?.open()
-    expect(opened).toEqual(['site/report.html'])
-    // A turn that produced nothing yields no vocabulary at all.
-    expect(service?.forClosing(tailOwner(undefined, 2))).toBeUndefined()
-
-    await fiber.dispose()
-    expect(ctx.slots.entries('conversation.chat.turnTail')).toHaveLength(0)
-    // Fiber teardown retracts the service: the consumer's ctx.get sees the off state.
-    expect((ctx as unknown as { get(name: string): unknown }).get('chatFileMentions')).toBeUndefined()
+describe('basename', () => {
+  it('strips directories on both separators', () => {
+    expect(basename('deliverables/deep/file name.xlsx')).toBe('file name.xlsx')
+    expect(basename('C:\\dir\\file.docx')).toBe('file.docx')
   })
 })

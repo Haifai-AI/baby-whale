@@ -3,8 +3,7 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  IconAlarmClockOutline16, IconApiOutline14, IconArchiveOutline20, IconFolderClose16,
-  IconGoalOutline16, IconSendOutline16,
+  IconApiOutline14, IconArchiveOutline20, IconFolderClose16, IconGoalOutline16, IconSendOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 
 afterEach(cleanup)
@@ -17,7 +16,7 @@ const icons = Object.fromEntries(
 const iconNames = Object.keys(icons)
 
 describe('ic_ds_ icon set', () => {
-  it('exports the full icon set (46 deepsuite + 21 figma extracts + eight product glyphs outside those sets)', () => {
+  it('exports the full icon set (upstream v0.1.5 grew the deepsuite/figma sets; plus four whale product glyphs)', () => {
     expect(iconNames.length).toBe(75)
   })
 
@@ -46,8 +45,6 @@ describe('ic_ds_ icon set', () => {
     expect(folder.container.querySelector('svg')!.getAttribute('width')).toBe('16')
     const archive = render(<IconArchiveOutline20 />)
     expect(archive.container.querySelector('svg')!.getAttribute('width')).toBe('20')
-    const alarm = render(<IconAlarmClockOutline16 />)
-    expect(alarm.container.querySelector('svg')!.getAttribute('width')).toBe('16')
   })
 
   it('renders reusable goal glyphs without document-global ids', () => {

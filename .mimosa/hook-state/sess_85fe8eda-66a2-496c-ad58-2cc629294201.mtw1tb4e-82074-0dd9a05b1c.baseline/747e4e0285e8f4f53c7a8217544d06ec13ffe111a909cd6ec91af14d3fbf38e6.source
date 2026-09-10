@@ -1,0 +1,1641 @@
+import { Service } from "@deepseek-ai/cordis";
+import { SessionId } from "@deepseek-ai/dsh-session";
+import { z } from "zod";
+import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { defineTool } from "@deepseek-ai/dsh-tools";
+//#region ../../../vendor/cosmokit/src/misc.ts
+/** Return true when a value is `null` or `undefined`. */
+function isNullable(value) {
+	return value === null || value === void 0;
+}
+/** Return true for non-array object values. */
+function isPlainObject(data) {
+	return data && typeof data === "object" && !Array.isArray(data);
+}
+/** Filter object entries and return a new object. */
+function filterKeys(object, filter) {
+	return Object.fromEntries(Object.entries(object).filter(([key, value]) => filter(key, value)));
+}
+/** Map object values while preserving the original key set. */
+function mapValues(object, transform) {
+	return Object.fromEntries(Object.entries(object).map(([key, value]) => [key, transform(value, key)]));
+}
+/** Pick selected keys from an object, optionally including `undefined` values. */
+function pick(source, keys, forced) {
+	if (!keys) return { ...source };
+	const result = {};
+	for (const key of keys) if (forced || source[key] !== void 0) result[key] = source[key];
+	return result;
+}
+//#endregion
+//#region ../../../vendor/cosmokit/src/types.ts
+/** Test values using `instanceof` with a `toStringTag` fallback. */
+function is(type, value) {
+	if (arguments.length === 1) return (value) => is(type, value);
+	return type in globalThis && value instanceof globalThis[type] || Object.prototype.toString.call(value).slice(8, -1) === type;
+}
+function isArrayBufferLike(value) {
+	return is("ArrayBuffer", value) || is("SharedArrayBuffer", value);
+}
+function isArrayBufferSource(value) {
+	return isArrayBufferLike(value) || ArrayBuffer.isView(value);
+}
+let Binary;
+(function(_Binary) {
+	_Binary.is = isArrayBufferLike;
+	_Binary.isSource = isArrayBufferSource;
+	function fromSource(source) {
+		if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+		else return source;
+	}
+	_Binary.fromSource = fromSource;
+	function toBase64(source) {
+		source = fromSource(source);
+		if (typeof Buffer !== "undefined") return Buffer.from(source).toString("base64");
+		let binary = "";
+		const bytes = new Uint8Array(source);
+		for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+		return btoa(binary);
+	}
+	_Binary.toBase64 = toBase64;
+	function fromBase64(source) {
+		if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "base64"));
+		return Uint8Array.from(atob(source), (c) => c.charCodeAt(0));
+	}
+	_Binary.fromBase64 = fromBase64;
+	function toHex(source) {
+		source = fromSource(source);
+		if (typeof Buffer !== "undefined") return Buffer.from(source).toString("hex");
+		return Array.from(new Uint8Array(source), (byte) => byte.toString(16).padStart(2, "0")).join("");
+	}
+	_Binary.toHex = toHex;
+	function fromHex(source) {
+		if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "hex"));
+		const hex = source.length % 2 === 0 ? source : source.slice(0, source.length - 1);
+		const buffer = [];
+		for (let i = 0; i < hex.length; i += 2) buffer.push(parseInt(`${hex[i]}${hex[i + 1]}`, 16));
+		return Uint8Array.from(buffer).buffer;
+	}
+	_Binary.fromHex = fromHex;
+})(Binary || (Binary = {}));
+Binary.fromBase64;
+Binary.toBase64;
+Binary.fromHex;
+Binary.toHex;
+/** Deep-clone common JavaScript values while preserving prototypes and cycles. */
+function clone(source, refs = /* @__PURE__ */ new Map()) {
+	if (!source || typeof source !== "object") return source;
+	if (is("Date", source)) return new Date(source.valueOf());
+	if (is("RegExp", source)) return new RegExp(source.source, source.flags);
+	if (isArrayBufferLike(source)) return source.slice(0);
+	if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+	const cached = refs.get(source);
+	if (cached) return cached;
+	if (Array.isArray(source)) {
+		const result = [];
+		refs.set(source, result);
+		source.forEach((value, index) => {
+			result[index] = Reflect.apply(clone, null, [value, refs]);
+		});
+		return result;
+	}
+	const result = Object.create(Object.getPrototypeOf(source));
+	refs.set(source, result);
+	for (const key of Reflect.ownKeys(source)) {
+		const descriptor = { ...Reflect.getOwnPropertyDescriptor(source, key) };
+		if ("value" in descriptor) descriptor.value = Reflect.apply(clone, null, [descriptor.value, refs]);
+		Reflect.defineProperty(result, key, descriptor);
+	}
+	return result;
+}
+/** Deeply compare arrays, dates, regexps, buffers, and plain object fields. */
+function deepEqual(a, b, strict) {
+	if (a === b) return true;
+	if (!strict && isNullable(a) && isNullable(b)) return true;
+	if (typeof a !== typeof b) return false;
+	if (typeof a !== "object") return false;
+	if (!a || !b) return false;
+	function check(test, then) {
+		return test(a) ? test(b) ? then(a, b) : false : test(b) ? false : void 0;
+	}
+	return check(Array.isArray, (a, b) => a.length === b.length && a.every((item, index) => deepEqual(item, b[index]))) ?? check(is("Date"), (a, b) => a.valueOf() === b.valueOf()) ?? check(is("RegExp"), (a, b) => a.source === b.source && a.flags === b.flags) ?? check(isArrayBufferLike, (a, b) => {
+		if (a.byteLength !== b.byteLength) return false;
+		const viewA = new Uint8Array(a);
+		const viewB = new Uint8Array(b);
+		for (let i = 0; i < viewA.length; i++) if (viewA[i] !== viewB[i]) return false;
+		return true;
+	}) ?? Object.keys({
+		...a,
+		...b
+	}).every((key) => deepEqual(a[key], b[key], strict));
+}
+//#endregion
+//#region ../../../vendor/cosmokit/src/time.ts
+let Time;
+(function(_Time) {
+	_Time.millisecond = 1;
+	const second = _Time.second = 1e3;
+	const minute = _Time.minute = second * 60;
+	const hour = _Time.hour = minute * 60;
+	const day = _Time.day = hour * 24;
+	const week = _Time.week = day * 7;
+	let timezoneOffset = (/* @__PURE__ */ new Date()).getTimezoneOffset();
+	function setTimezoneOffset(offset) {
+		timezoneOffset = offset;
+	}
+	_Time.setTimezoneOffset = setTimezoneOffset;
+	function getTimezoneOffset() {
+		return timezoneOffset;
+	}
+	_Time.getTimezoneOffset = getTimezoneOffset;
+	function getDateNumber(date = /* @__PURE__ */ new Date(), offset) {
+		if (typeof date === "number") date = new Date(date);
+		if (offset === void 0) offset = timezoneOffset;
+		return Math.floor((date.valueOf() / minute - offset) / 1440);
+	}
+	_Time.getDateNumber = getDateNumber;
+	function fromDateNumber(value, offset) {
+		const date = new Date(value * day);
+		if (offset === void 0) offset = timezoneOffset;
+		return new Date(+date + offset * minute);
+	}
+	_Time.fromDateNumber = fromDateNumber;
+	const numeric = /\d+(?:\.\d+)?/.source;
+	const timeRegExp = new RegExp(`^${[
+		"w(?:eek(?:s)?)?",
+		"d(?:ay(?:s)?)?",
+		"h(?:our(?:s)?)?",
+		"m(?:in(?:ute)?(?:s)?)?",
+		"s(?:ec(?:ond)?(?:s)?)?"
+	].map((unit) => `(${numeric}${unit})?`).join("")}$`);
+	function parseTime(source) {
+		const capture = timeRegExp.exec(source);
+		if (!capture) return 0;
+		return (parseFloat(capture[1]) * week || 0) + (parseFloat(capture[2]) * day || 0) + (parseFloat(capture[3]) * hour || 0) + (parseFloat(capture[4]) * minute || 0) + (parseFloat(capture[5]) * second || 0);
+	}
+	_Time.parseTime = parseTime;
+	function parseDate(date) {
+		const parsed = parseTime(date);
+		if (parsed) date = Date.now() + parsed;
+		else if (/^\d{1,2}(:\d{1,2}){1,2}$/.test(date)) date = `${(/* @__PURE__ */ new Date()).toLocaleDateString()}-${date}`;
+		else if (/^\d{1,2}-\d{1,2}-\d{1,2}(:\d{1,2}){1,2}$/.test(date)) date = `${(/* @__PURE__ */ new Date()).getFullYear()}-${date}`;
+		return date ? new Date(date) : /* @__PURE__ */ new Date();
+	}
+	_Time.parseDate = parseDate;
+	function format(ms) {
+		const abs = Math.abs(ms);
+		if (abs >= day - hour / 2) return Math.round(ms / day) + "d";
+		else if (abs >= hour - minute / 2) return Math.round(ms / hour) + "h";
+		else if (abs >= minute - second / 2) return Math.round(ms / minute) + "m";
+		else if (abs >= second) return Math.round(ms / second) + "s";
+		return ms + "ms";
+	}
+	_Time.format = format;
+	function toDigits(source, length = 2) {
+		return source.toString().padStart(length, "0");
+	}
+	_Time.toDigits = toDigits;
+	function template(template, time = /* @__PURE__ */ new Date()) {
+		return template.replace("yyyy", time.getFullYear().toString()).replace("yy", time.getFullYear().toString().slice(2)).replace("MM", toDigits(time.getMonth() + 1)).replace("dd", toDigits(time.getDate())).replace("hh", toDigits(time.getHours())).replace("mm", toDigits(time.getMinutes())).replace("ss", toDigits(time.getSeconds())).replace("SSS", toDigits(time.getMilliseconds(), 3));
+	}
+	_Time.template = template;
+})(Time || (Time = {}));
+//#endregion
+//#region ../../../vendor/schemastery/src/index.ts
+const kSchema = Symbol.for("schemastery");
+const kValidationError = Symbol.for("ValidationError");
+globalThis.__schemastery_index__ ??= 0;
+globalThis.__schemastery_refs__ = void 0;
+var ValidationError = class extends TypeError {
+	options;
+	name = "ValidationError";
+	constructor(message, options) {
+		let prefix = "$";
+		for (const segment of options.path || []) if (typeof segment === "string") prefix += "." + segment;
+		else if (typeof segment === "number") prefix += "[" + segment + "]";
+		else if (typeof segment === "symbol") prefix += `[Symbol(${segment.toString()})]`;
+		if (prefix.startsWith(".")) prefix = prefix.slice(1);
+		super((prefix === "$" ? "" : `${prefix} `) + message);
+		this.options = options;
+	}
+	static is(error) {
+		return !!error?.[kValidationError];
+	}
+};
+Object.defineProperty(ValidationError.prototype, kValidationError, { value: true });
+const Schema = function(options) {
+	const schema = function(data, options = {}) {
+		return Schema.resolve(data, schema, options)[0];
+	};
+	if (options.refs) {
+		const refs = mapValues(options.refs, (options) => new Schema(options));
+		const getRef = (uid) => refs[uid];
+		for (const key in refs) {
+			const options = refs[key];
+			options.sKey = getRef(options.sKey);
+			options.inner = getRef(options.inner);
+			options.list = options.list && options.list.map(getRef);
+			options.dict = options.dict && mapValues(options.dict, getRef);
+		}
+		return refs[options.uid];
+	}
+	Object.assign(schema, options);
+	if (typeof schema.callback === "string") try {
+		schema.callback = new Function("return " + schema.callback)();
+	} catch {}
+	Object.defineProperty(schema, "uid", { value: globalThis.__schemastery_index__++ });
+	Object.setPrototypeOf(schema, Schema.prototype);
+	schema.meta ||= {};
+	schema.toString = schema.toString.bind(schema);
+	return schema;
+};
+Schema.prototype = Object.create(Function.prototype);
+Schema.prototype[kSchema] = true;
+Object.defineProperty(Schema.prototype, "~standard", { get() {
+	return {
+		version: 1,
+		vendor: "schemastery",
+		validate: (value) => {
+			try {
+				return { value: Schema.resolve(value, this, {})[0] };
+			} catch (error) {
+				if (ValidationError.is(error)) return { issues: [{
+					message: error.message,
+					path: error.options.path
+				}] };
+				throw error;
+			}
+		}
+	};
+} });
+Schema.ValidationError = ValidationError;
+Schema.prototype.toJSON = function toJSON() {
+	if (globalThis.__schemastery_refs__) {
+		globalThis.__schemastery_refs__[this.uid] ??= JSON.parse(JSON.stringify({ ...this }));
+		return this.uid;
+	}
+	globalThis.__schemastery_refs__ = { [this.uid]: { ...this } };
+	globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
+	const result = {
+		uid: this.uid,
+		refs: globalThis.__schemastery_refs__
+	};
+	globalThis.__schemastery_refs__ = void 0;
+	return result;
+};
+Schema.prototype.set = function set(key, value) {
+	this.dict[key] = value;
+	return this;
+};
+Schema.prototype.push = function push(value) {
+	this.list.push(value);
+	return this;
+};
+function mergeDesc(original, messages) {
+	const result = typeof original === "string" ? { "": original } : { ...original };
+	for (const locale in messages) {
+		const value = messages[locale];
+		if (value?.$description || value?.$desc) result[locale] = value.$description || value.$desc;
+		else if (typeof value === "string") result[locale] = value;
+	}
+	return result;
+}
+function getInner(value) {
+	return value?.$value ?? value?.$inner;
+}
+function extractKeys(data) {
+	return filterKeys(data ?? {}, (key) => !key.startsWith("$"));
+}
+Schema.prototype.i18n = function i18n(messages) {
+	const schema = Schema(this);
+	const desc = mergeDesc(schema.meta.description, messages);
+	if (Object.keys(desc).length) schema.meta.description = desc;
+	if (schema.dict) schema.dict = mapValues(schema.dict, (inner, key) => {
+		return inner.i18n(mapValues(messages, (data) => getInner(data)?.[key] ?? data?.[key]));
+	});
+	if (schema.list) schema.list = schema.list.map((inner, index) => {
+		return inner.i18n(mapValues(messages, (data = {}) => {
+			if (Array.isArray(getInner(data))) return getInner(data)[index];
+			if (Array.isArray(data)) return data[index];
+			return extractKeys(data);
+		}));
+	});
+	if (schema.inner) schema.inner = schema.inner.i18n(mapValues(messages, (data) => {
+		if (getInner(data)) return getInner(data);
+		return extractKeys(data);
+	}));
+	if (schema.sKey) schema.sKey = schema.sKey.i18n(mapValues(messages, (data) => data?.$key));
+	return schema;
+};
+Schema.prototype.extra = function extra(key, value) {
+	const schema = Schema(this);
+	schema.meta = {
+		...schema.meta,
+		[key]: value
+	};
+	return schema;
+};
+for (const key of [
+	"required",
+	"disabled",
+	"collapse",
+	"hidden",
+	"loose"
+]) Object.assign(Schema.prototype, { [key](value = true) {
+	const schema = Schema(this);
+	schema.meta = {
+		...schema.meta,
+		[key]: value
+	};
+	return schema;
+} });
+Schema.prototype.deprecated = function deprecated() {
+	const schema = Schema(this);
+	schema.meta.badges ||= [];
+	schema.meta.badges.push({
+		text: "deprecated",
+		type: "danger"
+	});
+	return schema;
+};
+Schema.prototype.experimental = function experimental() {
+	const schema = Schema(this);
+	schema.meta.badges ||= [];
+	schema.meta.badges.push({
+		text: "experimental",
+		type: "warning"
+	});
+	return schema;
+};
+Schema.prototype.pattern = function pattern(regexp) {
+	const schema = Schema(this);
+	const pattern = pick(regexp, ["source", "flags"]);
+	schema.meta = {
+		...schema.meta,
+		pattern
+	};
+	return schema;
+};
+Schema.prototype.simplify = function simplify(value) {
+	if (deepEqual(value, this.meta.default, this.type === "dict")) return null;
+	if (isNullable(value)) return value;
+	if (this.type === "object" || this.type === "dict") {
+		const result = {};
+		for (const key in value) {
+			const item = (this.type === "object" ? this.dict[key] : this.inner)?.simplify(value[key]);
+			if (this.type === "dict" || !isNullable(item)) result[key] = item;
+		}
+		if (deepEqual(result, this.meta.default, this.type === "dict")) return null;
+		return result;
+	} else if (this.type === "array" || this.type === "tuple") {
+		const result = [];
+		value.forEach((value, index) => {
+			const schema = this.type === "array" ? this.inner : this.list[index];
+			const item = schema ? schema.simplify(value) : value;
+			result.push(item);
+		});
+		return result;
+	} else if (this.type === "intersect") {
+		const result = {};
+		for (const item of this.list) Object.assign(result, item.simplify(value));
+		return result;
+	} else if (this.type === "union") for (const schema of this.list) try {
+		Schema.resolve(value, schema, {});
+		return schema.simplify(value);
+	} catch {}
+	return value;
+};
+Schema.prototype.toString = function toString(inline) {
+	return formatters[this.type]?.(this, inline) ?? `Schema<${this.type}>`;
+};
+Schema.prototype.role = function role(role, extra) {
+	const schema = Schema(this);
+	schema.meta = {
+		...schema.meta,
+		role,
+		extra
+	};
+	return schema;
+};
+for (const key of [
+	"default",
+	"link",
+	"comment",
+	"description",
+	"max",
+	"min",
+	"step"
+]) Object.assign(Schema.prototype, { [key](value) {
+	const schema = Schema(this);
+	schema.meta = {
+		...schema.meta,
+		[key]: value
+	};
+	return schema;
+} });
+const resolvers = {};
+Schema.extend = function extend(type, resolve) {
+	resolvers[type] = resolve;
+};
+Schema.resolve = function resolve(data, schema, options = {}, strict = false) {
+	if (!schema) return [data];
+	if (options.ignore?.(data, schema)) return [data];
+	if (isNullable(data) && schema.type !== "lazy") {
+		if (schema.meta.required) throw new ValidationError(`missing required value`, options);
+		let current = schema;
+		let fallback = schema.meta.default;
+		while (current?.type === "intersect" && isNullable(fallback)) {
+			current = current.list[0];
+			fallback = current?.meta.default;
+		}
+		if (isNullable(fallback)) return [data];
+		data = clone(fallback);
+	}
+	const callback = resolvers[schema.type];
+	if (!callback) throw new ValidationError(`unsupported type "${schema.type}"`, options);
+	try {
+		return callback(data, schema, options, strict);
+	} catch (error) {
+		if (!schema.meta.loose) throw error;
+		return [schema.meta.default];
+	}
+};
+Schema.from = function from(source) {
+	if (isNullable(source)) return Schema.any();
+	else if ([
+		"string",
+		"number",
+		"boolean"
+	].includes(typeof source)) return Schema.const(source).required();
+	else if (source[kSchema]) return source;
+	else if (typeof source === "function") switch (source) {
+		case String: return Schema.string().required();
+		case Number: return Schema.number().required();
+		case Boolean: return Schema.boolean().required();
+		case Function: return Schema.function().required();
+		default: return Schema.is(source).required();
+	}
+	else throw new TypeError(`cannot infer schema from ${source}`);
+};
+Schema.lazy = function lazy(builder) {
+	const toJSON = () => {
+		if (!schema.inner[kSchema]) {
+			schema.inner = schema.builder();
+			schema.inner.meta = {
+				...schema.meta,
+				...schema.inner.meta
+			};
+		}
+		return schema.inner.toJSON();
+	};
+	const schema = new Schema({
+		type: "lazy",
+		builder,
+		inner: { toJSON }
+	});
+	return schema;
+};
+Schema.natural = function natural() {
+	return Schema.number().step(1).min(0);
+};
+Schema.percent = function percent() {
+	return Schema.number().step(.01).min(0).max(1).role("slider");
+};
+Schema.date = function date() {
+	return Schema.union([Schema.is(Date), Schema.transform(Schema.string().role("datetime"), (value, options) => {
+		const date = new Date(value);
+		if (isNaN(+date)) throw new ValidationError(`invalid date "${value}"`, options);
+		return date;
+	}, true)]);
+};
+Schema.regExp = function regExp(flag = "") {
+	return Schema.union([Schema.is(RegExp), Schema.transform(Schema.string().role("regexp", { flag }), (value, options) => {
+		try {
+			return new RegExp(value, flag);
+		} catch (e) {
+			throw new ValidationError(e.message, options);
+		}
+	}, true)]);
+};
+Schema.arrayBuffer = function arrayBuffer(encoding) {
+	return Schema.union([
+		Schema.is(ArrayBuffer),
+		Schema.is(SharedArrayBuffer),
+		Schema.transform(Schema.any(), (value, options) => {
+			if (Binary.isSource(value)) return Binary.fromSource(value);
+			throw new ValidationError(`expected ArrayBufferSource but got ${value}`, options);
+		}, true),
+		...encoding ? [Schema.transform(Schema.string(), (value, options) => {
+			try {
+				return encoding === "base64" ? Binary.fromBase64(value) : Binary.fromHex(value);
+			} catch (e) {
+				throw new ValidationError(e.message, options);
+			}
+		}, true)] : []
+	]);
+};
+Schema.extend("lazy", (data, schema, options, strict) => {
+	if (!schema.inner[kSchema]) {
+		schema.inner = schema.builder();
+		schema.inner.meta = {
+			...schema.meta,
+			...schema.inner.meta
+		};
+	}
+	return Schema.resolve(data, schema.inner, options, strict);
+});
+Schema.extend("any", (data) => {
+	return [data];
+});
+Schema.extend("never", (data, _, options) => {
+	throw new ValidationError(`expected nullable but got ${data}`, options);
+});
+Schema.extend("const", (data, { value }, options) => {
+	if (deepEqual(data, value)) return [value];
+	throw new ValidationError(`expected ${value} but got ${data}`, options);
+});
+function checkWithinRange(data, meta, description, options, skipMin = false) {
+	const { max = Infinity, min = -Infinity } = meta;
+	if (data > max) throw new ValidationError(`expected ${description} <= ${max} but got ${data}`, options);
+	if (data < min && !skipMin) throw new ValidationError(`expected ${description} >= ${min} but got ${data}`, options);
+}
+Schema.extend("string", (data, { meta }, options) => {
+	if (typeof data !== "string") throw new ValidationError(`expected string but got ${data}`, options);
+	if (meta.pattern) {
+		const regexp = new RegExp(meta.pattern.source, meta.pattern.flags);
+		if (!regexp.test(data)) throw new ValidationError(`expect string to match regexp ${regexp}`, options);
+	}
+	checkWithinRange(data.length, meta, "string length", options);
+	return [data];
+});
+function decimalShift(data, digits) {
+	const str = data.toString();
+	if (str.includes("e")) return data * Math.pow(10, digits);
+	const index = str.indexOf(".");
+	if (index === -1) return data * Math.pow(10, digits);
+	const frac = str.slice(index + 1);
+	const integer = str.slice(0, index);
+	if (frac.length <= digits) return +(integer + frac.padEnd(digits, "0"));
+	return +(integer + frac.slice(0, digits) + "." + frac.slice(digits));
+}
+function isMultipleOf(data, min, step) {
+	step = Math.abs(step);
+	if (!/^\d+\.\d+$/.test(step.toString())) return (data - min) % step === 0;
+	const index = step.toString().indexOf(".");
+	const digits = step.toString().slice(index + 1).length;
+	return Math.abs(decimalShift(data, digits) - decimalShift(min, digits)) % decimalShift(step, digits) === 0;
+}
+Schema.extend("number", (data, { meta }, options) => {
+	if (typeof data !== "number") throw new ValidationError(`expected number but got ${data}`, options);
+	checkWithinRange(data, meta, "number", options);
+	const { step } = meta;
+	if (step && !isMultipleOf(data, meta.min ?? 0, step)) throw new ValidationError(`expected number multiple of ${step} but got ${data}`, options);
+	return [data];
+});
+Schema.extend("boolean", (data, _, options) => {
+	if (typeof data === "boolean") return [data];
+	throw new ValidationError(`expected boolean but got ${data}`, options);
+});
+Schema.extend("bitset", (data, { bits, meta }, options) => {
+	let value = 0, keys = [];
+	if (typeof data === "number") {
+		value = data;
+		for (const key in bits) if (data & bits[key]) keys.push(key);
+	} else if (Array.isArray(data)) {
+		keys = data;
+		for (const key of keys) {
+			if (typeof key !== "string") throw new ValidationError(`expected string but got ${key}`, options);
+			if (key in bits) value |= bits[key];
+		}
+	} else throw new ValidationError(`expected number or array but got ${data}`, options);
+	if (value === meta.default) return [value];
+	return [value, keys];
+});
+Schema.extend("function", (data, _, options) => {
+	if (typeof data === "function") return [data];
+	throw new ValidationError(`expected function but got ${data}`, options);
+});
+Schema.extend("is", (data, { constructor }, options) => {
+	if (typeof constructor === "function") {
+		if (data instanceof constructor) return [data];
+		throw new ValidationError(`expected ${constructor.name} but got ${data}`, options);
+	} else {
+		if (isNullable(data)) throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+		let prototype = Object.getPrototypeOf(data);
+		while (prototype) {
+			if (prototype.constructor?.name === constructor) return [data];
+			prototype = Object.getPrototypeOf(prototype);
+		}
+		throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+	}
+});
+function property(data, key, schema, options) {
+	try {
+		const [value, adapted] = Schema.resolve(data[key], schema, {
+			...options,
+			path: [...options.path || [], key]
+		});
+		if (adapted !== void 0) data[key] = adapted;
+		return value;
+	} catch (e) {
+		if (!options?.autofix) throw e;
+		delete data[key];
+		return schema.meta.default;
+	}
+}
+Schema.extend("array", (data, { inner, meta }, options) => {
+	if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+	checkWithinRange(data.length, meta, "array length", options, !isNullable(inner.meta.default));
+	return [data.map((_, index) => property(data, index, inner, options))];
+});
+Schema.extend("dict", (data, { inner, sKey }, options, strict) => {
+	if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+	const result = {};
+	for (const key in data) {
+		let rKey;
+		try {
+			rKey = Schema.resolve(key, sKey, options)[0];
+		} catch (error) {
+			if (strict) continue;
+			throw error;
+		}
+		result[rKey] = property(data, key, inner, options);
+		data[rKey] = data[key];
+		if (key !== rKey) delete data[key];
+	}
+	return [result];
+});
+Schema.extend("tuple", (data, { list }, options, strict) => {
+	if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+	const result = list.map((inner, index) => property(data, index, inner, options));
+	if (strict) return [result];
+	result.push(...data.slice(list.length));
+	return [result];
+});
+function merge(result, data) {
+	for (const key in data) {
+		if (key in result) continue;
+		result[key] = data[key];
+	}
+}
+Schema.extend("object", (data, { dict }, options, strict) => {
+	if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+	const result = {};
+	for (const key in dict) {
+		const value = property(data, key, dict[key], options);
+		if (!isNullable(value) || key in data) result[key] = value;
+	}
+	if (!strict) merge(result, data);
+	return [result];
+});
+Schema.extend("union", (data, { list, toString }, options, strict) => {
+	const messages = [];
+	for (const inner of list) try {
+		return Schema.resolve(data, inner, options, strict);
+	} catch (error) {
+		messages.push(error);
+	}
+	throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
+});
+Schema.extend("intersect", (data, { list, toString }, options, strict) => {
+	if (!list.length) return [data];
+	let result;
+	for (const inner of list) {
+		const value = Schema.resolve(data, inner, options, true)[0];
+		if (isNullable(value)) continue;
+		if (isNullable(result)) result = value;
+		else if (typeof result !== typeof value) throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
+		else if (typeof value === "object") merge(result ??= {}, value);
+		else if (result !== value) throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
+	}
+	if (!strict && isPlainObject(data)) merge(result, data);
+	return [result];
+});
+Schema.extend("transform", (data, { inner, callback, preserve }, options) => {
+	const [result, adapted = data] = Schema.resolve(data, inner, options, true);
+	if (preserve) return [callback(result)];
+	else return [callback(result), callback(adapted)];
+});
+const formatters = {};
+function defineMethod(name, keys, format) {
+	formatters[name] = format;
+	Object.assign(Schema, { [name](...args) {
+		const schema = new Schema({ type: name });
+		keys.forEach((key, index) => {
+			switch (key) {
+				case "sKey":
+					schema.sKey = args[index] ?? Schema.string();
+					break;
+				case "inner":
+					schema.inner = Schema.from(args[index]);
+					break;
+				case "list":
+					schema.list = args[index].map(Schema.from);
+					break;
+				case "dict":
+					schema.dict = mapValues(args[index], Schema.from);
+					break;
+				case "bits":
+					schema.bits = {};
+					for (const key in args[index]) {
+						if (typeof args[index][key] !== "number") continue;
+						schema.bits[key] = args[index][key];
+					}
+					break;
+				case "callback": {
+					const callback = schema.callback = args[index];
+					callback["toJSON"] ||= () => callback.toString();
+					break;
+				}
+				case "constructor": {
+					const constructor = schema.constructor = args[index];
+					if (typeof constructor === "function") constructor["toJSON"] ||= () => constructor["name"];
+					break;
+				}
+				default: schema[key] = args[index];
+			}
+		});
+		if (name === "object" || name === "dict") schema.meta.default = {};
+		else if (name === "array" || name === "tuple") schema.meta.default = [];
+		else if (name === "bitset") schema.meta.default = 0;
+		return schema;
+	} });
+}
+defineMethod("is", ["constructor"], ({ constructor }) => {
+	if (typeof constructor === "function") return constructor.name;
+	else return constructor;
+});
+defineMethod("any", [], () => "any");
+defineMethod("never", [], () => "never");
+defineMethod("const", ["value"], ({ value }) => typeof value === "string" ? JSON.stringify(value) : value);
+defineMethod("string", [], () => "string");
+defineMethod("number", [], () => "number");
+defineMethod("boolean", [], () => "boolean");
+defineMethod("bitset", ["bits"], () => "bitset");
+defineMethod("function", [], () => "function");
+defineMethod("array", ["inner"], ({ inner }) => `${inner.toString(true)}[]`);
+defineMethod("dict", ["inner", "sKey"], ({ inner, sKey }) => `{ [key: ${sKey.toString()}]: ${inner.toString()} }`);
+defineMethod("tuple", ["list"], ({ list }) => `[${list.map((inner) => inner.toString()).join(", ")}]`);
+defineMethod("object", ["dict"], ({ dict }) => {
+	if (Object.keys(dict).length === 0) return "{}";
+	return `{ ${Object.entries(dict).map(([key, inner]) => {
+		return `${key}${inner.meta.required ? "" : "?"}: ${inner.toString()}`;
+	}).join(", ")} }`;
+});
+defineMethod("union", ["list"], ({ list }, inline) => {
+	const result = list.map(({ toString: format }) => format()).join(" | ");
+	return inline ? `(${result})` : result;
+});
+defineMethod("intersect", ["list"], ({ list }) => {
+	return `${list.map((inner) => inner.toString(true)).join(" & ")}`;
+});
+defineMethod("transform", [
+	"inner",
+	"callback",
+	"preserve"
+], ({ inner }, isInner) => inner.toString(isInner));
+//#endregion
+//#region lib/types/cron.js
+/**
+* Minimal cron support for Whale task schedules: a five-field expression
+* parser (minute hour day-of-month month day-of-week) and a timezone-aware
+* next-arrival computation. Only the semantics the ship needs are
+* implemented; the grammar accepts `*`, lists, ranges, steps, and named
+* month/day-of-week names are not supported (numbers only).
+* @module @deepseek-ai/dsh-whale-core/src/cron
+*/
+const FIELD_RANGES = {
+	minute: {
+		min: 0,
+		max: 59
+	},
+	hour: {
+		min: 0,
+		max: 23
+	},
+	dom: {
+		min: 1,
+		max: 31
+	},
+	month: {
+		min: 1,
+		max: 12
+	},
+	dow: {
+		min: 0,
+		max: 7
+	}
+};
+/** Parse one field token: wildcard, single value, range, step, or comma list. */
+function parseField(name, token) {
+	const { min, max } = FIELD_RANGES[name];
+	const values = /* @__PURE__ */ new Set();
+	for (const part of token.split(",")) {
+		const stepMatch = /^(.*)\/(\d+)$/.exec(part);
+		const step = stepMatch === null ? 1 : Number(stepMatch[2]);
+		const range = stepMatch === null ? part : stepMatch[1] ?? "";
+		if (!Number.isInteger(step) || step < 1) throw new Error(`cron: invalid step in "${token}"`);
+		const expand = (from, to) => {
+			if (from < min || to > max) throw new Error(`cron: range ${from}-${to} outside ${min}-${max} for ${name}`);
+			for (let value = from; value <= to; value += step) values.add(value);
+		};
+		if (range === "*") expand(min, max);
+		else if (range.includes("-")) {
+			const [fromRaw, toRaw] = range.split("-");
+			if (fromRaw === void 0 || toRaw === void 0) throw new Error(`cron: invalid range "${range}"`);
+			const from = Number(fromRaw);
+			const to = Number(toRaw);
+			if (!Number.isInteger(from) || !Number.isInteger(to)) throw new Error(`cron: invalid range "${range}"`);
+			expand(from, to);
+		} else {
+			const value = Number(range);
+			if (!Number.isInteger(value) || value < min || value > max) throw new Error(`cron: value ${range} outside ${min}-${max} for ${name}`);
+			values.add(value);
+		}
+	}
+	return [...values].map((value) => name === "dow" && value === 7 ? 0 : value).sort((a, b) => a - b);
+}
+/**
+* Parse a five-field cron expression.
+* @param expr - whitespace-separated minutes hours dom month dow.
+* @returns the normalized expression.
+*/
+function parseCron(expr) {
+	const parts = expr.trim().split(/\s+/);
+	if (parts.length !== 5) throw new Error(`cron: expected 5 fields, got ${parts.length}`);
+	return {
+		minute: parseField("minute", parts[0] ?? ""),
+		hour: parseField("hour", parts[1] ?? ""),
+		dom: parseField("dom", parts[2] ?? ""),
+		month: parseField("month", parts[3] ?? ""),
+		dow: parseField("dow", parts[4] ?? "")
+	};
+}
+/** Validate a cron expression, throwing on malformed input. */
+function isValidCron(expr) {
+	try {
+		parseCron(expr);
+		return true;
+	} catch {
+		return false;
+	}
+}
+function localParts(timeZone, date) {
+	const parts = new Intl.DateTimeFormat("en-US", {
+		timeZone,
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+		weekday: "short"
+	}).formatToParts(date);
+	const get = (type) => {
+		const part = parts.find((item) => item.type === type);
+		if (part === void 0) throw new Error(`cron: Intl returned no ${type} part`);
+		return Number(part.value);
+	};
+	const weekday = parts.find((item) => item.type === "weekday")?.value ?? "";
+	const weekdayIndex = [
+		"Sun",
+		"Mon",
+		"Tue",
+		"Wed",
+		"Thu",
+		"Fri",
+		"Sat"
+	].indexOf(weekday);
+	return {
+		year: get("year"),
+		month: get("month"),
+		day: get("day"),
+		hour: get("hour"),
+		minute: get("minute"),
+		weekday: weekdayIndex
+	};
+}
+/** The UTC instant of one local wall-clock time, converging across DST offsets. */
+function zonedTimeToUtc(timeZone, year, month, day, hour, minute) {
+	const naive = Date.UTC(year, month - 1, day, hour, minute);
+	const target = {
+		year,
+		month,
+		day,
+		hour,
+		minute,
+		weekday: 0
+	};
+	let guess = naive;
+	for (let pass = 0; pass < 3; pass += 1) {
+		const date = new Date(guess);
+		const local = localParts(timeZone, date);
+		if (local.year === target.year && local.month === target.month && local.day === target.day && local.hour === target.hour && local.minute === target.minute) return date;
+		guess = naive + (naive - Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute));
+	}
+	return new Date(guess);
+}
+/** Validate an IANA timezone, throwing on an unknown zone. */
+function isValidTimeZone(timeZone) {
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone });
+		return true;
+	} catch {
+		return false;
+	}
+}
+/**
+* Compute the next arrival of a cron expression strictly after `from`, in one
+* IANA timezone. Day-stepping wins over minute-stepping: it stays bounded
+* (370 days) and unambiguous across DST transitions.
+* @param expr - normalized cron expression.
+* @param timeZone - IANA zone, e.g. 'Asia/Shanghai'.
+* @param from - exclusive lower bound.
+* @returns the next matching instant, or undefined when no match exists within the horizon.
+*/
+function nextRun(expr, timeZone, from) {
+	if (!isValidTimeZone(timeZone)) throw new Error(`cron: unknown timezone "${timeZone}"`);
+	const startParts = localParts(timeZone, from);
+	let cursor = zonedTimeToUtc(timeZone, startParts.year, startParts.month, startParts.day, 0, 0);
+	for (let day = 0; day < 370; day += 1) {
+		const parts = localParts(timeZone, cursor);
+		if (expr.month.includes(parts.month) && expr.dow.includes(parts.weekday) && expr.dom.includes(parts.day)) for (const hour of expr.hour) for (const minute of expr.minute) {
+			const candidate = zonedTimeToUtc(timeZone, parts.year, parts.month, parts.day, hour, minute);
+			if (candidate.getTime() > from.getTime()) return candidate;
+		}
+		cursor = new Date(cursor.getTime() + 1440 * 60 * 1e3);
+	}
+}
+//#endregion
+//#region lib/types/spec.js
+/**
+* Durable Whale task records: the zod schema at the storage-domain boundary,
+* the domain spec the registry opens, and the wire view shapes the tools and
+* the task board render from.
+* @module @deepseek-ai/dsh-whale-core/src/spec
+*/
+/** One task's schedule: a one-shot instant or a cron expression in one IANA zone. */
+const whaleSchedule = z.discriminatedUnion("kind", [
+	z.object({
+		kind: z.literal("once"),
+		at: z.string()
+	}),
+	z.object({
+		kind: z.literal("cron"),
+		expr: z.string()
+	}),
+	z.object({ kind: z.literal("manual") })
+]);
+/** The durable domain: one `tasks` table keyed by task id. */
+const whaleTaskDomainSpec = defineDomain({
+	name: "whale_tasks",
+	version: 1,
+	tables: { tasks: domainTable(z.object({
+		id: z.string(),
+		/** Workspace the task runs in (the session cwd that owns it). */
+		workspaceCwd: z.string(),
+		/** The HQ session that owns and executes this task. */
+		sessionId: z.string(),
+		name: z.string(),
+		/** The prompt injected into the HQ agent when the task comes due. */
+		prompt: z.string(),
+		schedule: whaleSchedule,
+		status: z.enum([
+			"active",
+			"paused",
+			"done"
+		]),
+		/** Timezone for schedule computations; ISO-8601 in the record, IANA name on the wire. */
+		tz: z.string(),
+		nextRunAt: z.string(),
+		lastRunAt: z.string().optional(),
+		createdAt: z.string(),
+		updatedAt: z.string()
+	})) }
+});
+/** Project a stored record to the wire view. */
+function taskView(record) {
+	const summary = record.schedule.kind === "once" ? `once at ${record.schedule.at}` : record.schedule.kind === "cron" ? `cron "${record.schedule.expr}" in ${record.tz}` : "manual (run with whale_task_run)";
+	return {
+		id: record.id,
+		name: record.name,
+		status: record.status,
+		scheduleKind: record.schedule.kind,
+		scheduleSummary: summary,
+		tz: record.tz,
+		nextRunAt: record.status === "active" ? record.nextRunAt : null,
+		lastRunAt: record.lastRunAt ?? null,
+		workspaceCwd: record.workspaceCwd
+	};
+}
+//#endregion
+//#region lib/types/store.js
+/**
+* The durable Whale task store: one storage-domain table (`whale-tasks`)
+* holding every scheduled task, with lifecycle operations, cron/IANA
+* scheduling, due detection, and board snapshot publication to the owning
+* HQ session.
+* @module @deepseek-ai/dsh-whale-core/src/store
+*/
+/**
+* The machine's own IANA zone (UTC when it cannot be determined), used when a
+* task is created without an explicit timezone. A hardcoded home zone would
+* silently shift every schedule for users elsewhere.
+*/
+function defaultTimeZone() {
+	try {
+		const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (typeof zone === "string" && zone !== "") return zone;
+	} catch {}
+	return "UTC";
+}
+/** Compute the first arrival of a schedule strictly after `now`. */
+function firstRunAt(schedule, tz, now) {
+	switch (schedule.kind) {
+		case "once": return schedule.at;
+		case "cron": {
+			const next = nextRun(parseCron(schedule.expr), tz, now);
+			if (next === void 0) throw new Error(`whale task: cron "${schedule.expr}" has no occurrence within the next year`);
+			return next.toISOString();
+		}
+		case "manual": return "";
+	}
+}
+/**
+* The Whale task store service (`ctx.whaleTasks`). Owns the durable table and
+* the scheduling vocabulary; delivery lives in the scheduler plugin.
+*/
+var WhaleTaskStore = class extends Service {
+	static inject = ["storageDomain", "sessions"];
+	table;
+	constructor(ctx) {
+		super(ctx, "whaleTasks");
+	}
+	/**
+	* Open the durable domain and hold the table. Called explicitly by the
+	* mounting plugin before the scheduler starts: a service constructed in
+	* `apply` never runs `Service.init`, so relying on it would leave the store
+	* permanently unopened and the first scheduler tick would crash.
+	*/
+	async openDomain() {
+		const domain = await this.ctx.storageDomain.open(whaleTaskDomainSpec);
+		this.ctx.effect(() => () => domain.close(), "whaleTasks.domainClose");
+		this.table = domain.table("tasks");
+	}
+	requireTable() {
+		if (this.table === void 0) throw new Error("whaleTasks: domain not open yet");
+		return this.table;
+	}
+	/** All tasks of one workspace, next-run-first. */
+	list(workspaceCwd) {
+		const records = [...this.requireTable().entries()].map(([, record]) => record);
+		return (workspaceCwd === void 0 ? records : records.filter((record) => record.workspaceCwd === workspaceCwd)).sort((left, right) => left.nextRunAt.localeCompare(right.nextRunAt));
+	}
+	/** One task by id. */
+	get(id) {
+		return this.requireTable().get(id);
+	}
+	/** Wire views of one workspace, for tools and the board. */
+	viewsOf(workspaceCwd) {
+		return this.list(workspaceCwd).map(taskView);
+	}
+	/** Create a task, validating its schedule and computing the first arrival. */
+	async create(input) {
+		this.validateSchedule(input.schedule, input.tz);
+		const tz = input.tz ?? defaultTimeZone();
+		const now = /* @__PURE__ */ new Date();
+		const record = {
+			id: crypto.randomUUID(),
+			workspaceCwd: input.workspaceCwd,
+			sessionId: String(input.sessionId),
+			name: input.name,
+			prompt: input.prompt,
+			schedule: input.schedule,
+			tz,
+			status: "active",
+			nextRunAt: firstRunAt(input.schedule, tz, now),
+			createdAt: now.toISOString(),
+			updatedAt: now.toISOString()
+		};
+		await this.requireTable().put(record.id, record);
+		this.publishBoard(record.workspaceCwd, record.sessionId);
+		return record;
+	}
+	/** Set status (`pause`/`resume`/`done`), recomputing the next run on resume. */
+	async setStatus(id, status) {
+		const record = this.requireTable().get(id);
+		if (record === void 0) return void 0;
+		if (record.status === status) return record;
+		const now = /* @__PURE__ */ new Date();
+		const updated = {
+			...record,
+			status,
+			nextRunAt: status === "active" ? firstRunAt(record.schedule, record.tz, now) : record.nextRunAt,
+			updatedAt: now.toISOString()
+		};
+		await this.requireTable().put(id, updated);
+		this.publishBoard(record.workspaceCwd, record.sessionId);
+		return updated;
+	}
+	/** Remove a task. */
+	async remove(id) {
+		const record = this.requireTable().get(id);
+		if (record === void 0) return false;
+		await this.requireTable().delete(id);
+		this.publishBoard(record.workspaceCwd, record.sessionId);
+		return true;
+	}
+	/** Tasks due at `now` (scheduled, active, non-manual, nextRunAt reached). */
+	dueTasks(now) {
+		return this.list().filter((record) => record.status === "active" && record.schedule.kind !== "manual" && new Date(record.nextRunAt).getTime() <= now.getTime());
+	}
+	/**
+	* Record a delivery: one-shot tasks move to `done`, cron tasks advance to
+	* the next arrival, and the board snapshot republishes to the owning session.
+	*/
+	async markDue(id, now) {
+		const record = this.requireTable().get(id);
+		if (record === void 0) return void 0;
+		let updated;
+		if (record.schedule.kind === "once") updated = {
+			...record,
+			status: "done",
+			lastRunAt: now.toISOString(),
+			nextRunAt: "",
+			updatedAt: now.toISOString()
+		};
+		else if (record.schedule.kind === "manual") updated = {
+			...record,
+			lastRunAt: now.toISOString(),
+			updatedAt: now.toISOString()
+		};
+		else {
+			const next = nextRun(parseCron(record.schedule.expr), record.tz, now);
+			if (next === void 0) updated = {
+				...record,
+				status: "done",
+				lastRunAt: now.toISOString(),
+				nextRunAt: "",
+				updatedAt: now.toISOString()
+			};
+			else updated = {
+				...record,
+				lastRunAt: now.toISOString(),
+				nextRunAt: next.toISOString(),
+				updatedAt: now.toISOString()
+			};
+		}
+		await this.requireTable().put(updated.id, updated);
+		this.publishBoard(updated.workspaceCwd, updated.sessionId);
+		return updated;
+	}
+	validateSchedule(schedule, tz) {
+		switch (schedule.kind) {
+			case "cron":
+				if (!isValidCron(schedule.expr)) throw new Error(`whale task: invalid cron expression "${schedule.expr}"`);
+				break;
+			case "once":
+				if (Number.isNaN(Date.parse(schedule.at))) throw new Error(`whale task: invalid one-shot time "${schedule.at}"`);
+				break;
+			case "manual": break;
+		}
+		if (schedule.kind !== "manual" && tz !== void 0 && !isValidTimeZone(tz)) throw new Error(`whale task: unknown timezone "${tz}"`);
+	}
+	/**
+	* Publish the whole-workspace board snapshot to the owning HQ session when
+	* it is live. A cold session has no board until the next mutation while it
+	* is open — the snapshot is log-only UI state.
+	*/
+	publishBoard(workspaceCwd, sessionId) {
+		const session = this.ctx.sessions.get(SessionId(sessionId));
+		if (session === void 0) return;
+		session.append("whale/task-board", { tasks: this.viewsOf(workspaceCwd) });
+	}
+};
+//#endregion
+//#region lib/types/runtime.js
+/**
+* The Whale HQ scheduler: a periodic tick that delivers due tasks into their
+* owning session's live agent through `Agent.followup` — the queued message
+* wakes an idle agent, and markDue advances the record. Sessions with no live
+* agent keep their due tasks until the next tick after the agent returns.
+* @module @deepseek-ai/dsh-whale-core/src/runtime
+*/
+/** Default scheduler tick; deployments may set `intervalMs` in whale-core config. */
+const DEFAULT_TICK_MS = 6e4;
+/**
+* Deliver one due task into its owning agent.
+* @param ctx - the plugin context (agents registry).
+* @param task - the due task record.
+* @returns whether a live agent received the task.
+*/
+function deliverTask(ctx, task) {
+	const agent = ctx.agents.get(SessionId(task.sessionId));
+	if (agent === void 0) return false;
+	agent.followup(createUserMessage({
+		content: [{
+			type: "text",
+			text: `[whale task] ${task.name}\n\n${task.prompt}`
+		}],
+		source: {
+			kind: "plugin",
+			plugin: "whale-tasks"
+		}
+	}));
+	return true;
+}
+/**
+* The HQ scheduler: owns the periodic tick over the Whale task store and
+* delivers due tasks to their live owning agents.
+*/
+var WhaleTaskScheduler = class {
+	ctx;
+	store;
+	intervalMs;
+	timer;
+	ticking = false;
+	constructor(ctx, store, intervalMs) {
+		this.ctx = ctx;
+		this.store = store;
+		this.intervalMs = intervalMs;
+	}
+	/** Start the tick loop (dispose stops it). */
+	start() {
+		const timer = setInterval(() => {
+			this.tick();
+		}, this.intervalMs);
+		if (typeof timer.unref === "function") timer.unref();
+		this.timer = timer;
+	}
+	/** Stop the tick loop. */
+	dispose() {
+		if (this.timer !== void 0) clearInterval(this.timer);
+		this.timer = void 0;
+	}
+	/**
+	* Deliver every currently due task, advancing each delivered record. Ticks
+	* never overlap (a slow store cannot double-deliver), and one task's
+	* failure never skips its siblings — the failed task simply stays due for
+	* the next tick.
+	*/
+	async tick() {
+		if (this.ticking) return;
+		this.ticking = true;
+		try {
+			for (const task of this.store.dueTasks(/* @__PURE__ */ new Date())) try {
+				if (deliverTask(this.ctx, task)) await this.store.markDue(task.id, /* @__PURE__ */ new Date());
+			} catch {}
+		} finally {
+			this.ticking = false;
+		}
+	}
+};
+//#endregion
+//#region lib/types/tools.js
+/**
+* Model-facing Whale task tools: whale_task_create / whale_task_list /
+* whale_task_pause / whale_task_resume / whale_task_remove / whale_task_run
+* over `ctx.whaleTasks` plus the HQ scheduler's delivery.
+* @module @deepseek-ai/dsh-whale-core/src/tools
+*/
+/** The store, resolved lazily so a composition without whale-core degrades the tool row off. */
+function storeOf(ctx) {
+	return ctx.get("whaleTasks");
+}
+/** The calling session (required for every whale task tool). */
+function sessionOf(exec) {
+	if (exec.agent === void 0) throw new Error("whale task tools require a calling agent session");
+	return exec.agent.session.id;
+}
+const VIEW_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	properties: {
+		id: {
+			type: "string",
+			required: true
+		},
+		name: {
+			type: "string",
+			required: true
+		},
+		status: {
+			type: "string",
+			required: true,
+			enum: [
+				"active",
+				"paused",
+				"done"
+			]
+		},
+		scheduleKind: {
+			type: "string",
+			required: true,
+			enum: [
+				"once",
+				"cron",
+				"manual"
+			]
+		},
+		scheduleSummary: {
+			type: "string",
+			required: true
+		},
+		tz: {
+			type: "string",
+			required: true
+		},
+		nextRunAt: {
+			required: true,
+			oneOf: [{ type: "string" }, { type: "null" }]
+		},
+		lastRunAt: {
+			required: true,
+			oneOf: [{ type: "string" }, { type: "null" }]
+		},
+		workspaceCwd: {
+			type: "string",
+			required: true
+		}
+	}
+};
+const okSchema = {
+	type: "object",
+	additionalProperties: false,
+	properties: { ok: {
+		type: "boolean",
+		required: true
+	} }
+};
+function presentCall(title, rawInput) {
+	return {
+		card: "generic",
+		title,
+		kind: "other",
+		...rawInput !== void 0 ? { rawInput } : {}
+	};
+}
+/**
+* Register the whale task tools and their guidance.
+* @param ctx - the plugin context; registrations are effects scoped to it.
+*/
+function applyWhaleTaskTools(ctx) {
+	ctx.systemPrompt.section({
+		name: "whale:tasks",
+		order: 108,
+		text: "Schedule recurring work with whale_task_create (cron expressions, IANA timezones, or one-shot times). List with whale_task_list, and manage with whale_task_pause/resume/remove. Scheduled tasks run in the owning session when it is open."
+	});
+	ctx.tools.register(defineTool({
+		name: "whale_task_create",
+		description: "Schedule a recurring or one-shot whale task for this session.",
+		parameters: {
+			name: {
+				type: "string",
+				required: true,
+				description: "Short task name."
+			},
+			prompt: {
+				type: "string",
+				required: true,
+				description: "The instructions the agent runs when the task is due."
+			},
+			schedule: {
+				type: "object",
+				required: true,
+				additionalProperties: false,
+				properties: {
+					kind: {
+						type: "string",
+						required: true,
+						enum: [
+							"once",
+							"cron",
+							"manual"
+						],
+						description: "one-shot at an ISO time, recurring cron, or manual."
+					},
+					at: {
+						type: "string",
+						description: "ISO-8601 one-shot time (kind=once)."
+					},
+					expr: {
+						type: "string",
+						description: "Five-field cron expression, e.g. \"0 9 * * 1-5\" (kind=cron)."
+					},
+					tz: {
+						type: "string",
+						description: "IANA timezone, e.g. \"Asia/Shanghai\" (defaults to the machine timezone)."
+					}
+				}
+			}
+		},
+		output: {
+			schema: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					ok: {
+						type: "boolean",
+						required: true
+					},
+					task: {
+						type: "object",
+						additionalProperties: false,
+						properties: {
+							...VIEW_SCHEMA.properties,
+							id: {
+								type: "string",
+								required: true
+							}
+						},
+						required: true
+					}
+				}
+			},
+			render: (_args, value) => [{
+				type: "text",
+				text: `Task "${value.task.name}" scheduled (${value.task.scheduleSummary}).`
+			}],
+			presentationMeta: (_args, value) => ({ task: value.task })
+		},
+		async execute(args, exec) {
+			const store = storeOf(ctx);
+			if (store === void 0) throw new Error("whale tasks are unavailable in this composition");
+			const cwd = exec.agent?.session.header.cwd;
+			if (cwd === void 0) throw new Error("whale tasks require a session workspace");
+			const schedule = normalizeSchedule(args.schedule);
+			return {
+				ok: true,
+				task: taskView(await store.create({
+					name: args.name,
+					prompt: args.prompt,
+					schedule,
+					...schedule.kind === "cron" && schedule.tz !== void 0 ? { tz: schedule.tz } : {},
+					sessionId: sessionOf(exec),
+					workspaceCwd: cwd
+				}))
+			};
+		},
+		presentCall(args) {
+			return presentCall(`Schedule whale task "${args.name}"`, args.schedule);
+		},
+		presentResult(args, result) {
+			if (result.isError) return void 0;
+			return {
+				card: "generic",
+				title: `Scheduled "${args.name}"`
+			};
+		}
+	}));
+	ctx.tools.register(defineTool({
+		name: "whale_task_list",
+		description: "List the whale tasks of the current workspace.",
+		parameters: { include_done: {
+			type: "boolean",
+			description: "Include finished one-shot tasks (default false)."
+		} },
+		output: {
+			schema: {
+				type: "array",
+				items: VIEW_SCHEMA
+			},
+			render: (_args, value) => [{
+				type: "text",
+				text: value.length === 0 ? "No whale tasks." : value.map((task) => `- ${task.name} [${task.status}] ${task.scheduleSummary}`).join("\n")
+			}],
+			presentationMeta: (_args, value) => ({ tasks: value })
+		},
+		execute(args, exec) {
+			const store = storeOf(ctx);
+			if (store === void 0) return Promise.reject(/* @__PURE__ */ new Error("whale tasks are unavailable in this composition"));
+			const cwd = exec.agent?.session.header.cwd;
+			if (cwd === void 0) return Promise.reject(/* @__PURE__ */ new Error("whale tasks require a session workspace"));
+			return Promise.resolve(store.viewsOf(cwd).filter((view) => args.include_done === true || view.status !== "done"));
+		},
+		presentCall(args) {
+			return presentCall("List whale tasks", args.include_done);
+		},
+		presentResult(_args) {}
+	}));
+	for (const [name, description, action] of [
+		[
+			"whale_task_pause",
+			"Pause a whale task so it stops firing (resume restores it).",
+			"pause"
+		],
+		[
+			"whale_task_resume",
+			"Resume a paused whale task.",
+			"resume"
+		],
+		[
+			"whale_task_remove",
+			"Delete a whale task permanently.",
+			"remove"
+		],
+		[
+			"whale_task_run",
+			"Run a whale task now (deliver it into the owning session).",
+			"run"
+		]
+	]) ctx.tools.register(defineTool({
+		name,
+		description,
+		parameters: { task_id: {
+			type: "string",
+			required: true,
+			description: "The task id from whale_task_list."
+		} },
+		output: {
+			schema: okSchema,
+			render: (_args, value) => [{
+				type: "text",
+				text: value.ok ? "Done." : "Task not found."
+			}]
+		},
+		async execute(args) {
+			const store = storeOf(ctx);
+			if (store === void 0) throw new Error("whale tasks are unavailable in this composition");
+			if (action === "run") {
+				const task = store.get(args.task_id);
+				if (task === void 0) return { ok: false };
+				const delivered = deliverTask(ctx, task);
+				if (delivered) await store.markDue(task.id, /* @__PURE__ */ new Date());
+				return { ok: delivered };
+			}
+			const status = action === "pause" ? "paused" : action === "resume" ? "active" : void 0;
+			if (status === void 0) return { ok: await store.remove(args.task_id) };
+			return { ok: await store.setStatus(args.task_id, status) !== void 0 };
+		},
+		presentCall(args) {
+			return presentCall(`${name} ${args.task_id}`, args.task_id);
+		},
+		presentResult(args, result) {
+			if (result.isError) return void 0;
+			return {
+				card: "generic",
+				title: `${name} ${args.task_id}`
+			};
+		}
+	}));
+}
+function normalizeSchedule(input) {
+	switch (input.kind) {
+		case "once":
+			if (input.at === void 0) throw new Error("whale task once schedule requires \"at\"");
+			return {
+				kind: "once",
+				at: input.at
+			};
+		case "cron":
+			if (input.expr === void 0) throw new Error("whale task cron schedule requires \"expr\"");
+			return {
+				kind: "cron",
+				expr: input.expr,
+				...input.tz !== void 0 ? { tz: input.tz } : {}
+			};
+		case "manual": return { kind: "manual" };
+	}
+}
+//#endregion
+//#region lib/types/index.js
+/**
+* Whale core: the durable scheduled-task layer. Provides `ctx.whaleTasks`
+* (the storage-domain-backed store), the HQ scheduler that delivers due tasks
+* into their owning session's live agent, the model-facing whale_task_* tools,
+* and the task-board snapshot events the Web board renders from.
+* @module @deepseek-ai/dsh-whale-core
+*/
+/** Cordis plugin name used by loader diagnostics. */
+const name = "whale-core";
+/** Services required by the store, scheduler, and tools. */
+const inject = [
+	"storageDomain",
+	"tools",
+	"systemPrompt",
+	"agents",
+	"sessions"
+];
+const Config = Schema.object({ intervalMs: Schema.number().min(1e3).default(DEFAULT_TICK_MS) });
+/**
+* Mount the Whale task layer: the store service, the HQ scheduler, and the
+* model-facing tools. All registrations are effects scoped to this plugin.
+* @param ctx - the plugin context.
+* @param config - validated plugin config (schemastery filled the defaults).
+*/
+function apply(ctx, config) {
+	const resolved = config;
+	const store = new WhaleTaskStore(ctx);
+	const scheduler = new WhaleTaskScheduler(ctx, store, resolved.intervalMs);
+	ctx.effect(async () => {
+		await store.openDomain();
+		scheduler.start();
+		return () => {
+			scheduler.dispose();
+		};
+	}, "whaleTasks.scheduler");
+	applyWhaleTaskTools(ctx);
+}
+//#endregion
+export { Config, apply, inject, name };

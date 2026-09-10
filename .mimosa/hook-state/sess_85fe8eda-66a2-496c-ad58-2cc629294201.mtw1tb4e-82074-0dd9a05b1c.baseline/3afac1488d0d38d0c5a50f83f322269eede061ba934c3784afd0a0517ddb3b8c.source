@@ -1,0 +1,36 @@
+/**
+ * Whale task board: one whole-value session event family (`whale/task-board`
+ * snapshots from `@deepseek-ai/dsh-whale-core`) projected into one immutable
+ * chat node per snapshot. Log-only UI state — latest write wins on replay.
+ * @module @deepseek-ai/dsh-client-ui-whale-tasks/src/client/task-board
+ */
+import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client';
+/** Wire view of one task (mirrors `@deepseek-ai/dsh-whale-core`'s WhaleTaskView). */
+export interface WhaleTaskView {
+    id: string;
+    name: string;
+    status: 'active' | 'paused' | 'done';
+    scheduleKind: 'once' | 'cron' | 'manual';
+    scheduleSummary: string;
+    tz: string;
+    nextRunAt: string | null;
+    lastRunAt: string | null;
+    workspaceCwd: string;
+}
+interface WhaleTaskBoardState {
+    readonly seq: number;
+    readonly time: number;
+    readonly tasks: readonly WhaleTaskView[];
+}
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+    interface ChatNodeDataMap {
+        /** One whole-workspace Whale task snapshot. */
+        'whale-task-board': {
+            tasks: readonly WhaleTaskView[];
+        };
+    }
+}
+/** The task-board projection: each `whale/task-board` event is one node. */
+export declare const whaleTaskBoardDefinition: ConversationNodeDefinition<WhaleTaskBoardState>;
+export {};
+//# sourceMappingURL=task-board.d.ts.map

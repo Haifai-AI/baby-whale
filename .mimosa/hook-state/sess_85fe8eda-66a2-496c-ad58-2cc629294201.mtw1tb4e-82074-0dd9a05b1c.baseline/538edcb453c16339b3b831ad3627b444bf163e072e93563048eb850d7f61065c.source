@@ -1,0 +1,220 @@
+/**
+ * The durable Whale task store: one storage-domain table (`whale-tasks`)
+ * holding every scheduled task, with lifecycle operations, cron/IANA
+ * scheduling, due detection, and board snapshot publication to the owning
+ * HQ session.
+ * @module @deepseek-ai/dsh-whale-core/src/store
+ */
+import { Service } from '@deepseek-ai/cordis';
+import { SessionId } from '@deepseek-ai/dsh-session';
+import { isValidCron, isValidTimeZone, nextRun, parseCron } from "./cron.js";
+import { taskView, whaleTaskDomainSpec } from "./spec.js";
+/**
+ * The machine's own IANA zone (UTC when it cannot be determined), used when a
+ * task is created without an explicit timezone. A hardcoded home zone would
+ * silently shift every schedule for users elsewhere.
+ */
+function defaultTimeZone() {
+    try {
+        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (typeof zone === 'string' && zone !== '')
+            return zone;
+    }
+    catch {
+        // Fall through to UTC below.
+    }
+    return 'UTC';
+}
+/** Compute the first arrival of a schedule strictly after `now`. */
+function firstRunAt(schedule, tz, now) {
+    switch (schedule.kind) {
+        case 'once':
+            return schedule.at;
+        case 'cron': {
+            const next = nextRun(parseCron(schedule.expr), tz, now);
+            if (next === undefined)
+                throw new Error(`whale task: cron "${schedule.expr}" has no occurrence within the next year`);
+            return next.toISOString();
+        }
+        case 'manual':
+            return '';
+    }
+}
+/**
+ * The Whale task store service (`ctx.whaleTasks`). Owns the durable table and
+ * the scheduling vocabulary; delivery lives in the scheduler plugin.
+ */
+export class WhaleTaskStore extends Service {
+    static inject = ['storageDomain', 'sessions'];
+    table;
+    constructor(ctx) {
+        super(ctx, 'whaleTasks');
+    }
+    /**
+     * Open the durable domain and hold the table. Called explicitly by the
+     * mounting plugin before the scheduler starts: a service constructed in
+     * `apply` never runs `Service.init`, so relying on it would leave the store
+     * permanently unopened and the first scheduler tick would crash.
+     */
+    async openDomain() {
+        const domain = await this.ctx.storageDomain.open(whaleTaskDomainSpec);
+        this.ctx.effect(() => () => domain.close(), 'whaleTasks.domainClose');
+        this.table = domain.table('tasks');
+    }
+    requireTable() {
+        if (this.table === undefined)
+            throw new Error('whaleTasks: domain not open yet');
+        return this.table;
+    }
+    /** All tasks of one workspace, next-run-first. */
+    list(workspaceCwd) {
+        const records = [...this.requireTable().entries()].map(([, record]) => record);
+        const scoped = workspaceCwd === undefined
+            ? records
+            : records.filter(record => record.workspaceCwd === workspaceCwd);
+        return scoped.sort((left, right) => left.nextRunAt.localeCompare(right.nextRunAt));
+    }
+    /** One task by id. */
+    get(id) {
+        return this.requireTable().get(id);
+    }
+    /** Wire views of one workspace, for tools and the board. */
+    viewsOf(workspaceCwd) {
+        return this.list(workspaceCwd).map(taskView);
+    }
+    /** Create a task, validating its schedule and computing the first arrival. */
+    async create(input) {
+        this.validateSchedule(input.schedule, input.tz);
+        const tz = input.tz ?? defaultTimeZone();
+        const now = new Date();
+        const record = {
+            id: crypto.randomUUID(),
+            workspaceCwd: input.workspaceCwd,
+            sessionId: String(input.sessionId),
+            name: input.name,
+            prompt: input.prompt,
+            schedule: input.schedule,
+            tz,
+            status: 'active',
+            nextRunAt: firstRunAt(input.schedule, tz, now),
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+        };
+        await this.requireTable().put(record.id, record);
+        this.publishBoard(record.workspaceCwd, record.sessionId);
+        return record;
+    }
+    /** Set status (`pause`/`resume`/`done`), recomputing the next run on resume. */
+    async setStatus(id, status) {
+        const record = this.requireTable().get(id);
+        if (record === undefined)
+            return undefined;
+        if (record.status === status)
+            return record;
+        const now = new Date();
+        const updated = {
+            ...record,
+            status,
+            nextRunAt: status === 'active'
+                ? firstRunAt(record.schedule, record.tz, now)
+                : record.nextRunAt,
+            updatedAt: now.toISOString(),
+        };
+        await this.requireTable().put(id, updated);
+        this.publishBoard(record.workspaceCwd, record.sessionId);
+        return updated;
+    }
+    /** Remove a task. */
+    async remove(id) {
+        const record = this.requireTable().get(id);
+        if (record === undefined)
+            return false;
+        await this.requireTable().delete(id);
+        this.publishBoard(record.workspaceCwd, record.sessionId);
+        return true;
+    }
+    /** Tasks due at `now` (scheduled, active, non-manual, nextRunAt reached). */
+    dueTasks(now) {
+        return this.list().filter(record => record.status === 'active'
+            && record.schedule.kind !== 'manual'
+            && new Date(record.nextRunAt).getTime() <= now.getTime());
+    }
+    /**
+     * Record a delivery: one-shot tasks move to `done`, cron tasks advance to
+     * the next arrival, and the board snapshot republishes to the owning session.
+     */
+    async markDue(id, now) {
+        const record = this.requireTable().get(id);
+        if (record === undefined)
+            return undefined;
+        let updated;
+        if (record.schedule.kind === 'once') {
+            updated = {
+                ...record,
+                status: 'done',
+                lastRunAt: now.toISOString(),
+                nextRunAt: '',
+                updatedAt: now.toISOString(),
+            };
+        }
+        else if (record.schedule.kind === 'manual') {
+            updated = {
+                ...record,
+                lastRunAt: now.toISOString(),
+                updatedAt: now.toISOString(),
+            };
+        }
+        else {
+            const next = nextRun(parseCron(record.schedule.expr), record.tz, now);
+            if (next === undefined) {
+                updated = {
+                    ...record,
+                    status: 'done',
+                    lastRunAt: now.toISOString(),
+                    nextRunAt: '',
+                    updatedAt: now.toISOString(),
+                };
+            }
+            else {
+                updated = {
+                    ...record,
+                    lastRunAt: now.toISOString(),
+                    nextRunAt: next.toISOString(),
+                    updatedAt: now.toISOString(),
+                };
+            }
+        }
+        await this.requireTable().put(updated.id, updated);
+        this.publishBoard(updated.workspaceCwd, updated.sessionId);
+        return updated;
+    }
+    validateSchedule(schedule, tz) {
+        switch (schedule.kind) {
+            case 'cron':
+                if (!isValidCron(schedule.expr))
+                    throw new Error(`whale task: invalid cron expression "${schedule.expr}"`);
+                break;
+            case 'once':
+                if (Number.isNaN(Date.parse(schedule.at)))
+                    throw new Error(`whale task: invalid one-shot time "${schedule.at}"`);
+                break;
+            case 'manual':
+                break;
+        }
+        if (schedule.kind !== 'manual' && tz !== undefined && !isValidTimeZone(tz)) {
+            throw new Error(`whale task: unknown timezone "${tz}"`);
+        }
+    }
+    /**
+     * Publish the whole-workspace board snapshot to the owning HQ session when
+     * it is live. A cold session has no board until the next mutation while it
+     * is open — the snapshot is log-only UI state.
+     */
+    publishBoard(workspaceCwd, sessionId) {
+        const session = this.ctx.sessions.get(SessionId(sessionId));
+        if (session === undefined)
+            return;
+        session.append('whale/task-board', { tasks: this.viewsOf(workspaceCwd) });
+    }
+}
+//# sourceMappingURL=store.js.map

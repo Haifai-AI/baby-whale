@@ -1,0 +1,32 @@
+/**
+ * Artifacts tab, browser half — one `conversation.view` entry beside Chat and
+ * Trajectory. The gallery lists every file under the session workspace's
+ * `deliverables/` and `uploads/` via the `artifacts.list` gateway RPC, and
+ * opens entries through `host.openPath` (Excel / Word / whatever owns the
+ * type). Pure display: no services, no events.
+ */
+import { ArtifactsView } from "./ArtifactsView.js";
+import { en, NS, zh } from "./locales.js";
+/** Required services: the conversation view slot, connection for the RPCs, and the locale service. */
+export const inject = ['slots', 'connection', 'locale'];
+/**
+ * Client plugin body: register the dictionaries and the Artifacts view tab.
+ * @param ctx - client root context.
+ */
+export function apply(ctx) {
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-whale-artifacts: dictionaries');
+    const t = ctx.locale.bind(NS);
+    const connection = ctx.get('connection');
+    ctx.slots.inject('conversation.view', () => ctx.slots.register({
+        name: 'conversation.view',
+        id: 'whale-artifacts',
+        order: 11,
+        locale: NS,
+        label: () => t('view.artifacts'),
+        inject: (sessionId) => ({
+            connection,
+            sessionId,
+        }),
+    }, ArtifactsView));
+}
+//# sourceMappingURL=index.js.map

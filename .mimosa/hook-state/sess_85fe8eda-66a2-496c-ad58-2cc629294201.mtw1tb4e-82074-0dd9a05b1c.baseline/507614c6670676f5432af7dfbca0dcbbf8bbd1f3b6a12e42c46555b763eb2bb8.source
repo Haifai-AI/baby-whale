@@ -1,0 +1,48 @@
+/**
+ * `whale-artifacts` namespace dictionaries: the Artifacts tab copy.
+ */
+/** Dictionary namespace owned by this plugin. */
+export const NS = 'whale-artifacts';
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export const zh = {
+    'view.artifacts': '产物',
+    'gallery.empty': '本次会话还没有产物。让 Whale 生成文件（deliverables/）或上传附件（uploads/），它们会出现在这里。',
+    'gallery.loading': '正在读取产物…',
+    'gallery.count': '{count} 个文件',
+    'gallery.unknownDate': '时间未知',
+    'open.app': '打开',
+    'preview': '预览',
+    'preview.close': '关闭预览',
+    'preview.unsupported': '该文件类型暂不支持内嵌预览，请用「打开」。',
+    'preview.truncated': '预览已截断：仅显示部分行列。',
+    'preview.sofficeMissing': '未检测到 LibreOffice，当前显示文本提取版。安装 LibreOffice 后可获得像素级还原的预览。',
+    'tab.data': '数据',
+    'tab.charts': '图表',
+    'charts.all': '全部图表',
+    'tab.original': '原始',
+    'refresh': '刷新',
+    'from.deliverable': '已交付',
+    'from.upload': '上传',
+};
+/** English dictionary (same key set). */
+export const en = {
+    'view.artifacts': 'Artifacts',
+    'gallery.empty': 'No artifacts yet this session. Ask Whale to produce files (deliverables/) or attach uploads (uploads/) and they land here.',
+    'gallery.loading': 'Loading artifacts…',
+    'gallery.count': '{count} files',
+    'gallery.unknownDate': 'date unknown',
+    'open.app': 'Open',
+    'preview': 'Preview',
+    'preview.close': 'Close preview',
+    'preview.unsupported': 'This file type has no embedded preview yet — use Open instead.',
+    'preview.truncated': 'Preview truncated — showing the first rows and columns only.',
+    'preview.sofficeMissing': 'LibreOffice not found — showing a text extraction. Install LibreOffice for the pixel-true preview.',
+    'tab.data': 'Data',
+    'tab.charts': 'Charts',
+    'charts.all': 'All charts',
+    'tab.original': 'Original',
+    'refresh': 'Refresh',
+    'from.deliverable': 'Delivered',
+    'from.upload': 'Uploaded',
+};
+//# sourceMappingURL=locales.js.map

@@ -1,0 +1,30 @@
+/**
+ * Dependency-light .docx text extraction: unzip the package with fflate and
+ * harvest paragraph runs from `word/document.xml`, keeping heading levels,
+ * list membership, and table cell text so the model can reason about real
+ * uploaded documents without native dependencies.
+ * @module @deepseek-ai/dsh-tool-office/src/read-docx
+ */
+/** One extracted paragraph with its structural role. */
+export interface DocxParagraph {
+    /** kind used by consumers to reconstruct document shape. */
+    style: 'title' | 'heading1' | 'heading2' | 'heading3' | 'bullet' | 'number' | 'paragraph' | 'table-cell';
+    /** Concatenated run text. */
+    text: string;
+}
+/** The parsed document text model. */
+export interface DocxTextModel {
+    paragraphs: DocxParagraph[];
+    char_count: number;
+    truncated: boolean;
+}
+/** Char budget for one extraction (roughly 6k tokens of prose). */
+export declare const DOCX_MAX_CHARS = 24000;
+/**
+ * Extract a bounded text model from .docx bytes.
+ * @param bytes - raw file payload.
+ * @param maxChars - inclusive character cap.
+ * @returns paragraphs, counts, and a truncation marker.
+ */
+export declare function extractDocxText(bytes: Uint8Array, maxChars?: number): DocxTextModel;
+//# sourceMappingURL=read-docx.d.ts.map

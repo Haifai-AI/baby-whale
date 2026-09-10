@@ -12,7 +12,7 @@ type Props = Parameters<typeof PresentRow>[0]
 const running: RunningToolCall = { callId: 'p', name: 'present', argsRaw: '{"files":[{"path":"report.txt"}]}', turn: 1, step: 1, time: 1, subCalls: [] }
 const settled: ToolResultNode = { kind: 'tool-result', seq: 2, time: 2, callId: 'p', call: { name: 'present', argsRaw: running.argsRaw }, callTime: 1, content: [{ type: 'text', text: 'Presented report.txt (4 bytes)' }], isError: false, subCalls: [] }
 function props(block: Props['block'], inspect?: () => void): Props {
-  return { block, callId: 'p', toolName: 'present', openFile: vi.fn(), inspect, t: makeTranslate(en) } as Props
+  return { block, callId: 'p', toolName: 'present', openFile: vi.fn(), inspect, loadImage: vi.fn(), t: makeTranslate(en) } as unknown as Props
 }
 
 it('discloses the saved result and offers call inspection', () => {

@@ -1,0 +1,43 @@
+/**
+ * The Whale HQ scheduler: a periodic tick that delivers due tasks into their
+ * owning session's live agent through `Agent.followup` — the queued message
+ * wakes an idle agent, and markDue advances the record. Sessions with no live
+ * agent keep their due tasks until the next tick after the agent returns.
+ * @module @deepseek-ai/dsh-whale-core/src/runtime
+ */
+import type { Context } from '@deepseek-ai/cordis';
+import type { WhaleTaskStore } from './store.ts';
+import type { WhaleTaskRecord } from './spec.ts';
+/** Default scheduler tick; deployments may set `intervalMs` in whale-core config. */
+export declare const DEFAULT_TICK_MS = 60000;
+/**
+ * Deliver one due task into its owning agent.
+ * @param ctx - the plugin context (agents registry).
+ * @param task - the due task record.
+ * @returns whether a live agent received the task.
+ */
+export declare function deliverTask(ctx: Context, task: WhaleTaskRecord): boolean;
+/**
+ * The HQ scheduler: owns the periodic tick over the Whale task store and
+ * delivers due tasks to their live owning agents.
+ */
+export declare class WhaleTaskScheduler {
+    private readonly ctx;
+    private readonly store;
+    private readonly intervalMs;
+    private timer;
+    private ticking;
+    constructor(ctx: Context, store: WhaleTaskStore, intervalMs: number);
+    /** Start the tick loop (dispose stops it). */
+    start(): void;
+    /** Stop the tick loop. */
+    dispose(): void;
+    /**
+     * Deliver every currently due task, advancing each delivered record. Ticks
+     * never overlap (a slow store cannot double-deliver), and one task's
+     * failure never skips its siblings — the failed task simply stays due for
+     * the next tick.
+     */
+    tick(): Promise<void>;
+}
+//# sourceMappingURL=runtime.d.ts.map

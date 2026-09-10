@@ -1,0 +1,43 @@
+/**
+ * Managed LibreOffice runtime: a per-user install of the official
+ * Document Foundation build, downloaded on demand into this app's support
+ * directory. Keeps preview fidelity one click away without admin rights,
+ * without touching a system LibreOffice, and without redistributing
+ * anything ourselves at packaging time (we fetch official artifacts at
+ * runtime). macOS installs automatically from the official `.dmg`;
+ * Windows/Linux are guided (their flows need an installer UI or a package
+ * manager), and this module still reports status for the banner.
+ * @module @deepseek-ai/dsh-host-apiproxy/soffice-runtime
+ */
+/** Per-OS managed layout, resolved under {@link appSupportDir}. */
+export declare function appSupportDir(): string;
+/**
+ * The managed install's soffice binary when present. Checked before system
+ * candidates by the preview layer, so a completed download upgrades the
+ * preview pipeline without a restart.
+ */
+export declare function managedSofficePath(): string | undefined;
+/** Where the official artifact for this machine lives, or guided-only. */
+export declare function managedInstallSupport(): {
+    supported: boolean;
+    url?: string;
+    guideUrl?: string;
+    sizeMb?: number;
+};
+/** Lifecycle of the one-click install, mirrored to the UI banner. */
+export interface SofficeInstallState {
+    phase: 'idle' | 'downloading' | 'installing' | 'done' | 'error';
+    /** 0..1 when meaningful for the phase. */
+    progress: number;
+    message?: string;
+    error?: string;
+}
+/** Snapshot of the current install lifecycle (copy — callers must not mutate). */
+export declare function sofficeInstallState(): SofficeInstallState;
+/**
+ * Kick the managed download+install; single-flight. Safe to call again while
+ * running (returns the live state) or after completion (no-op done state).
+ * macOS only — other platforms never enter the machine phases.
+ */
+export declare function beginManagedSofficeInstall(onInstalled?: () => void): Promise<SofficeInstallState>;
+//# sourceMappingURL=soffice-runtime.d.ts.map

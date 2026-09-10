@@ -1,0 +1,27 @@
+/**
+ * Whale core: the durable scheduled-task layer. Provides `ctx.whaleTasks`
+ * (the storage-domain-backed store), the HQ scheduler that delivers due tasks
+ * into their owning session's live agent, the model-facing whale_task_* tools,
+ * and the task-board snapshot events the Web board renders from.
+ * @module @deepseek-ai/dsh-whale-core
+ */
+import type { Context } from '@deepseek-ai/cordis';
+import z from '@deepseek-ai/schemastery';
+/** Cordis plugin name used by loader diagnostics. */
+export declare const name = "whale-core";
+/** Services required by the store, scheduler, and tools. */
+export declare const inject: string[];
+/** Plugin config. */
+export interface Config {
+    /** HQ scheduler tick interval in milliseconds. */
+    intervalMs?: number;
+}
+export declare const Config: z<Config>;
+/**
+ * Mount the Whale task layer: the store service, the HQ scheduler, and the
+ * model-facing tools. All registrations are effects scoped to this plugin.
+ * @param ctx - the plugin context.
+ * @param config - validated plugin config (schemastery filled the defaults).
+ */
+export declare function apply(ctx: Context, config: Config): void;
+//# sourceMappingURL=index.d.ts.map

@@ -1,0 +1,67 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+/**
+ * Whale task board chat node: a compact scheduled-task list rendered from the
+ * immutable `whale/task-board` snapshot.
+ * @module @deepseek-ai/dsh-client-ui-whale-tasks/src/client/TaskBoardNode
+ */
+import { memo, useEffect } from 'react';
+import css from './TaskBoardNode.module.css';
+/** Closed-union exhaustiveness fence for the wire status set. */
+/* v8 ignore next 3 -- closed-union backstop; only reached if a status is forged */
+function assertNever(_value) {
+    throw new Error('unhandled task status');
+}
+/** A due-but-undelivered window: anything past its run time by this much reads as missed. */
+const OVERDUE_GRACE_MS = 90_000;
+/** True when an active task's scheduled instant passed materially earlier. */
+function isOverdue(task, now) {
+    if (task.status !== 'active' || task.nextRunAt === null)
+        return false;
+    const at = Date.parse(task.nextRunAt);
+    return !Number.isNaN(at) && now - at > OVERDUE_GRACE_MS;
+}
+/**
+ * Local-desktop stand-in for cloud push: fire one notification when a snapshot
+ * lands containing a fresh delivery the tab may not be showing.
+ */
+function useCompletionNotification(tasks) {
+    useEffect(() => {
+        if (typeof Notification !== 'function' || Notification.permission !== 'granted')
+            return;
+        const mountedAt = Date.now();
+        for (const task of tasks) {
+            const ran = task.lastRunAt === null ? NaN : Date.parse(task.lastRunAt);
+            if (!Number.isNaN(ran) && mountedAt - ran < OVERDUE_GRACE_MS && document.hidden) {
+                new Notification('Whale', { body: `${task.name} — ${task.scheduleSummary}` });
+                break;
+            }
+        }
+    }, [tasks]);
+}
+function statusClass(status) {
+    switch (status) {
+        case 'active': return css.active;
+        case 'paused': return css.paused;
+        case 'done': return css.done;
+        /* v8 ignore next -- closed wire status union */
+        default: return assertNever(status);
+    }
+}
+/** One compact task row. */
+function TaskRow({ task, t }) {
+    const time = new Date(task.nextRunAt ?? '');
+    const overdue = isOverdue(task, Date.now());
+    const nextRun = Number.isNaN(time.getTime())
+        ? t('board.none')
+        : overdue ? t('board.overdue') : time.toLocaleString();
+    return (_jsxs("li", { className: css.row, children: [_jsx("span", { className: `${css.dot} ${statusClass(task.status)}`, "data-overdue": overdue || undefined }), _jsxs("div", { className: css.body, children: [_jsxs("div", { className: css.name, children: [task.name, overdue && _jsx("span", { className: css.late, children: t('board.missed') })] }), _jsxs("div", { className: css.meta, children: [task.scheduleSummary, " \u00B7 ", t(`status.${task.status}`)] }), _jsx("div", { className: css.meta, children: t('board.runAt', { time: nextRun }) })] })] }));
+}
+/** The board row: a titled card with the workspace's scheduled tasks. */
+export const TaskBoardNode = memo(function TaskBoardNode({ node, t }) {
+    const tasks = node.data.tasks;
+    useCompletionNotification(tasks);
+    return (_jsxs("div", { className: css.card, "data-whale-task-board": "", children: [_jsx("div", { className: css.head, children: t('board.title') }), tasks.length === 0
+                ? _jsx("div", { className: css.empty, children: t('board.empty') })
+                : _jsx("ul", { className: css.list, children: tasks.map(task => _jsx(TaskRow, { task: task, t: t }, task.id)) })] }));
+});
+//# sourceMappingURL=TaskBoardNode.js.map

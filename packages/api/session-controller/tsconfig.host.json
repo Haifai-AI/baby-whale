@@ -20,6 +20,7 @@
     "src/list.ts",
     "src/media-references.ts",
     "src/model-selection-projection.ts",
+    "src/office-runtime.ts",
     "src/skill-catalog.ts"
   ],
   "references": [

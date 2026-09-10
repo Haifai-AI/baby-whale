@@ -1,0 +1,32 @@
+/**
+ * `whale-tasks` namespace dictionaries: the task-board row copy.
+ */
+/** Dictionary namespace owned by this plugin. */
+export const NS = 'whale-tasks';
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export const zh = {
+    'board.title': 'Whale 任务',
+    'board.empty': '暂无定时任务',
+    'board.runAt': '下次运行 {time}',
+    'board.lastRun': '上次运行 {time}',
+    'board.none': '—',
+    'board.overdue': '已错过，返回后即补跑',
+    'board.missed': '错过',
+    'status.active': '进行中',
+    'status.paused': '已暂停',
+    'status.done': '已完成',
+};
+/** English dictionary (same key set). */
+export const en = {
+    'board.title': 'Whale tasks',
+    'board.empty': 'No scheduled tasks',
+    'board.runAt': 'Next run {time}',
+    'board.lastRun': 'Last run {time}',
+    'board.none': '—',
+    'board.overdue': 'Missed while away — runs on next check',
+    'board.missed': 'missed',
+    'status.active': 'Active',
+    'status.paused': 'Paused',
+    'status.done': 'Done',
+};
+//# sourceMappingURL=locales.js.map

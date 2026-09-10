@@ -1,0 +1,13 @@
+/**
+ * Model-facing Whale task tools: whale_task_create / whale_task_list /
+ * whale_task_pause / whale_task_resume / whale_task_remove / whale_task_run
+ * over `ctx.whaleTasks` plus the HQ scheduler's delivery.
+ * @module @deepseek-ai/dsh-whale-core/src/tools
+ */
+import type { Context } from '@deepseek-ai/cordis';
+/**
+ * Register the whale task tools and their guidance.
+ * @param ctx - the plugin context; registrations are effects scoped to it.
+ */
+export declare function applyWhaleTaskTools(ctx: Context): void;
+//# sourceMappingURL=tools.d.ts.map

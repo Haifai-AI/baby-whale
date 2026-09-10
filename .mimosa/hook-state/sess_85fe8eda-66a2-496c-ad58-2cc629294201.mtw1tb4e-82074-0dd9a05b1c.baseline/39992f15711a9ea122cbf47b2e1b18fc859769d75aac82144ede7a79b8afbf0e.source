@@ -1,0 +1,56 @@
+/**
+ * Pure xlsx/csv extraction cores shared by the read tools: bounded workbook
+ * parsing via exceljs's reader (formulas, merged ranges, per-column type
+ * hints) and a dependency-free RFC-4180 CSV parser with delimiter sniffing.
+ * Kept free of plugin context so they are directly unit-testable.
+ * @module @deepseek-ai/dsh-tool-office/src/read-parse
+ */
+import type { ReadCell } from './read-shared.ts';
+/** How many rows one extraction returns before `truncated` flips on. */
+export declare const READ_MAX_ROWS = 200;
+/** How many columns one extraction returns before `truncated` flips on. */
+export declare const READ_MAX_COLS = 64;
+/** One extracted worksheet sample. */
+export interface ReadSheet {
+    name: string;
+    total_rows: number;
+    total_cols: number;
+    /** First-row labels when the sheet begins with one. */
+    header?: string[];
+    /** Banner title detected above the header (our own banner convention). */
+    title?: string;
+    /** Sampled data rows after the header, shaped JSON-safe. */
+    rows: ReadCell[][];
+    /** Column letters aligned with header/rows plus inferred types. */
+    column_types: Array<{
+        col: string;
+        kind: 'number' | 'formula' | 'text';
+    }>;
+    /** Merged ranges as A1-style references. */
+    merged_ranges?: string[];
+}
+/** One parsed workbook. */
+export interface ReadWorkbook {
+    sheet_count: number;
+    sheets: ReadSheet[];
+    truncated: boolean;
+}
+/**
+ * Parse workbook bytes into bounded JSON-safe extractions.
+ * @param bytes - the .xlsx payload.
+ * @param maxRows - inclusive row cap beyond the header.
+ * @returns the parsed workbook.
+ */
+export declare function parseXlsxBytes(bytes: Uint8Array, maxRows?: number): Promise<ReadWorkbook>;
+/**
+ * Parse CSV text into one sheet-shaped extraction with delimiter sniffing.
+ * @param text - raw file text.
+ * @param maxRows - inclusive data-row cap.
+ * @returns one sheet in the shared shape plus truncation info.
+ */
+export declare function parseCsvText(text: string, maxRows?: number): ReadSheet & {
+    truncated: boolean;
+};
+/** Spreadsheet-style column letter for a zero-based index. */
+export declare function columnLetter(index: number): string;
+//# sourceMappingURL=read-xlsx.d.ts.map

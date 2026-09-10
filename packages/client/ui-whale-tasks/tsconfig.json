@@ -19,6 +19,15 @@
     },
     {
       "path": "../ui-slots"
+    },
+    {
+      "path": "../../whale/core"
+    },
+    {
+      "path": "../ui-chat"
+    },
+    {
+      "path": "../ui-approval"
     }
   ]
 }

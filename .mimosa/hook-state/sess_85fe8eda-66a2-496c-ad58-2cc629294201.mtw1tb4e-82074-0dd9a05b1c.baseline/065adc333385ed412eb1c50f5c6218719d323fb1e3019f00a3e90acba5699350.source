@@ -1,0 +1,31 @@
+/**
+ * Whale coworker guardrails: an approval-first fence over file mutations
+ * (ask before overwriting an existing target), a monotonic denial for paths
+ * that escape the session workspace, and model guidance that workspace and
+ * web content is data, not authority.
+ * @module @deepseek-ai/dsh-whale-guardrails
+ */
+import type { Context } from '@deepseek-ai/cordis';
+import z from '@deepseek-ai/schemastery';
+/** Cordis plugin name used by loader diagnostics. */
+export declare const name = "whale-guardrails";
+/** Services required by the fence and its guidance. */
+export declare const inject: string[];
+/** Plugin config. */
+export interface Config {
+    /**
+     * Ask the human before a mutation overwrites an existing file. Strict
+     * overwrite confirmation is the approval-first coworker posture (there is no
+     * always-allow grant); disable to fall back to the observation policy only.
+     */
+    askOnOverwrite?: boolean;
+}
+export declare const Config: z<Config>;
+/**
+ * Register the guardrails: monotonic workspace-escape denial, approval-first
+ * overwrite fence, and the model-facing guidance section.
+ * @param ctx - the plugin context; registrations are effects scoped to it.
+ * @param config - validated plugin config (schemastery filled the defaults).
+ */
+export declare function apply(ctx: Context, config: Config): void;
+//# sourceMappingURL=index.d.ts.map

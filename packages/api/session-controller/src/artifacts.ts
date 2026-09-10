@@ -19,6 +19,8 @@ import { basename, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import {
+  convertToPdfCached,
+  findSoffice,
   mediaPreviewKind,
   parseDocxPreview,
   parseMediaPreview,
@@ -26,7 +28,10 @@ import {
   parseTextPreview,
   parseXlsxCharts,
   parseXlsxPreview,
+  previewCacheDir,
+  recalcXlsxBytes,
   textPreviewKind,
+  xlsxHasUncachedFormulas,
   type ParsedPreview,
 } from '@deepseek-ai/dsh-host-apiproxy'
 
@@ -214,14 +219,56 @@ async function previewArtifact(ctx: Context, request: Request): Promise<Response
   }
   let preview: ParsedPreview | undefined
   if (ext === '.xlsx' || ext === '.xlsm') {
-    const parsed = await parseXlsxPreview(bytes, path)
-    if (parsed !== undefined && parsed.kind === 'xlsx') {
-      preview = { ...parsed, charts: await parseXlsxCharts(bytes) }
+    // Spreadsheets get the multi-lens payload in one response: the Data grid
+    // (parsed sheets), the Charts tab (chart parts with their cached series),
+    // and — when LibreOffice is available — the single-page-per-sheet render
+    // for the pixel-true "Original" tab. Everything degrades independently.
+    const soffice = findSoffice()
+    const info = await stat(absolute).catch(() => undefined)
+    let pdfPath: string | undefined
+    if (soffice !== undefined && info !== undefined) {
+      pdfPath = await convertToPdfCached(soffice, absolute, previewCacheDir(), info.mtimeMs,
+        'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":true}}')
     }
-  } else if (ext === '.pptx') {
-    preview = parsePptxPreview(bytes, path)
-  } else if (ext === '.docx') {
-    preview = parseDocxPreview(bytes, path)
+    let parsed = await parseXlsxPreview(bytes, path)
+    // XlsxWriter/openpyxl write formulas without cached results; a LibreOffice
+    // round-trip recomputes them so the Data grid shows VALUES (the formula
+    // bar still carries the formula text).
+    if (parsed !== undefined && xlsxHasUncachedFormulas(parsed) && soffice !== undefined && info !== undefined) {
+      const recalc = await recalcXlsxBytes(soffice, absolute, previewCacheDir(), info.mtimeMs)
+      if (recalc !== undefined) {
+        const resolved = await parseXlsxPreview(recalc, path)
+        if (resolved !== undefined) parsed = resolved
+      }
+    }
+    if (parsed !== undefined && parsed.kind === 'xlsx') {
+      preview = { ...parsed, charts: await parseXlsxCharts(bytes), ...(pdfPath !== undefined ? { pdfPath } : {}) }
+    } else if (pdfPath !== undefined) {
+      preview = { kind: 'pdf', file_name: basename(path), pdfPath }
+    }
+  } else if (ext === '.pptx' || ext === '.docx') {
+    // Slides and documents have no browser-native studio: LibreOffice renders
+    // the REAL file (charts, layouts, designs) to PDF; text parsing is the
+    // fallback, carrying an install hint when LibreOffice is absent — the
+    // pixel-true preview is one install away.
+    const soffice = findSoffice()
+    if (soffice !== undefined) {
+      const info = await stat(absolute).catch(() => undefined)
+      if (info !== undefined) {
+        const pdfPath = await convertToPdfCached(soffice, absolute, previewCacheDir(), info.mtimeMs)
+        if (pdfPath !== undefined) preview = { kind: 'pdf', file_name: basename(path), pdfPath }
+      }
+    }
+    if (preview === undefined) {
+      const notice = soffice === undefined ? 'soffice-missing' as const : undefined
+      if (ext === '.pptx') {
+        const parsed = parsePptxPreview(bytes, path)
+        preview = notice !== undefined && parsed?.kind === 'pptx' ? { ...parsed, notice } : parsed
+      } else {
+        const parsed = parseDocxPreview(bytes, path)
+        preview = notice !== undefined && parsed?.kind === 'docx' ? { ...parsed, notice } : parsed
+      }
+    }
   } else if (textPreviewKind(ext) !== undefined) {
     preview = parseTextPreview(bytes, path)
   }

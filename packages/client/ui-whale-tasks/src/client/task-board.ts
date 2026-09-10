@@ -30,7 +30,7 @@ interface WhaleTaskBoardState {
   readonly tasks: readonly WhaleTaskView[]
 }
 
-declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** One whole-workspace Whale task snapshot. */
     'whale-task-board': { tasks: readonly WhaleTaskView[] }

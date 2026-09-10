@@ -1,0 +1,33 @@
+/**
+ * Whale undo layer: every guarded file mutation backs the existing target up
+ * to `<session cwd>/.whale-trash/` before the dispatch, and the
+ * `whale_trash_list`/`whale_trash_restore` tools let the model (and the
+ * human) recover a prior version.
+ * @module @deepseek-ai/dsh-whale-trash
+ */
+import type { Context } from '@deepseek-ai/cordis';
+import z from '@deepseek-ai/schemastery';
+import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+/** Cordis plugin name used by loader diagnostics. */
+export declare const name = "whale-trash";
+/** Services required by the backup wrapper and tools. */
+export declare const inject: string[];
+/** Plugin config. */
+export interface Config {
+    /** Backup directory name inside the session workspace. */
+    directory?: string;
+    /** Maximum bytes copied per backup (default 50 MiB). */
+    maxBackupBytes?: number;
+}
+export declare const Config: z<Config>;
+export declare function restoreBackup(ctx: Context, exec: ToolExecution, workspace: string, maxBackupBytes: number, backup: string): Promise<{
+    ok: boolean;
+    original: string;
+}>;
+/**
+ * Register the backup wrapper and the trash tools.
+ * @param ctx - the plugin context; registrations are effects scoped to it.
+ * @param config - validated plugin config (schemastery filled the defaults).
+ */
+export declare function apply(ctx: Context, config: Config): void;
+//# sourceMappingURL=index.d.ts.map

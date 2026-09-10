@@ -1,0 +1,86 @@
+/**
+ * Pure helpers for the office artifact preview cards: preview-data shapes
+ * (mirroring `@deepseek-ai/dsh-tool-office`'s bounded preview payloads), the
+ * artifact path extracted from a tool call, and byte formatting.
+ * @module @deepseek-ai/dsh-client-ui-whale-artifact/src/client/whale-preview
+ */
+import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
+/** One capped spreadsheet preview cell (display value + backing formula). */
+interface PreviewCell {
+  v: string
+  /** Formula text (`=SUM(A1:A2)`) when the cell is a formula. */
+  f?: string
+}
+/** One capped worksheet preview. */
+interface PreviewSheet {
+  name: string
+  header: string[]
+  rows: PreviewCell[][]
+  total_rows: number
+  total_cols: number
+}
+/** One capped slide preview. */
+interface PreviewSlide {
+  title: string
+  subtitle?: string
+  bullets?: string[]
+}
+/** One capped document block preview. */
+interface PreviewBlock {
+  type: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'quote' | 'bullet' | 'number'
+  text: string
+}
+/** The bounded preview carried in a tool result's `presentationMeta`. */
+export type OfficePreviewData = {
+  kind: 'xlsx'
+  file_name: string
+  truncated: boolean
+  sheets: PreviewSheet[]
+} | {
+  kind: 'pptx'
+  file_name: string
+  truncated: boolean
+  title: string
+  slides: PreviewSlide[]
+} | {
+  kind: 'docx'
+  file_name: string
+  truncated: boolean
+  title?: string
+  blocks: PreviewBlock[]
+}
+/** The `presentationMeta` payload of an office tool result. */
+export interface OfficeMeta {
+  preview?: OfficePreviewData
+  /** Byte length of the artifact, when the tool result carried it. */
+  size?: number
+}
+/** The three office tool names this package renders. */
+export declare const OFFICE_TOOLS: readonly ['xlsx_create', 'pptx_create', 'docx_create']
+/**
+ * Extract the preview from a settled tool-result block, or `undefined` when the
+ * block is still running, errored, or carries no preview metadata.
+ * @param block - the frozen running or settled tool call.
+ * @returns the preview data, or undefined.
+ */
+export declare function previewOf(block: ToolCallBlock): OfficePreviewData | undefined
+/**
+ * Parse the `file_path` argument back out of a tool call's raw args JSON.
+ * @param block - the frozen running or settled tool call.
+ * @returns the model-facing artifact path, or undefined when unavailable.
+ */
+export declare function filePathOf(block: ToolCallBlock): string | undefined
+/**
+ * The final path segment for display.
+ * @param path - a model-facing artifact path.
+ * @returns the basename, or the path itself when it has no separator.
+ */
+export declare function basename(path: string): string
+/**
+ * Format a byte count for the artifact meta line.
+ * @param size - byte count.
+ * @returns a compact string like "42 KB".
+ */
+export declare function formatBytes(size: number): string
+export {}
+//# sourceMappingURL=whale-preview.d.ts.map

@@ -1,0 +1,90 @@
+/**
+ * Durable Whale task records: the zod schema at the storage-domain boundary,
+ * the domain spec the registry opens, and the wire view shapes the tools and
+ * the task board render from.
+ * @module @deepseek-ai/dsh-whale-core/src/spec
+ */
+import { z } from 'zod';
+/** One task's schedule: a one-shot instant or a cron expression in one IANA zone. */
+export declare const whaleSchedule: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"once">;
+    at: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    kind: z.ZodLiteral<"cron">;
+    expr: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    kind: z.ZodLiteral<"manual">;
+}, z.core.$strip>], "kind">;
+export type WhaleSchedule = z.infer<typeof whaleSchedule>;
+/** Durable shape of one scheduled task (ISO-8601 timestamps). */
+export declare const whaleTaskRecord: z.ZodObject<{
+    id: z.ZodString;
+    workspaceCwd: z.ZodString;
+    sessionId: z.ZodString;
+    name: z.ZodString;
+    prompt: z.ZodString;
+    schedule: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"once">;
+        at: z.ZodString;
+    }, z.core.$strip>, z.ZodObject<{
+        kind: z.ZodLiteral<"cron">;
+        expr: z.ZodString;
+    }, z.core.$strip>, z.ZodObject<{
+        kind: z.ZodLiteral<"manual">;
+    }, z.core.$strip>], "kind">;
+    status: z.ZodEnum<{
+        active: "active";
+        paused: "paused";
+        done: "done";
+    }>;
+    tz: z.ZodString;
+    nextRunAt: z.ZodString;
+    lastRunAt: z.ZodOptional<z.ZodString>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strip>;
+export type WhaleTaskRecord = z.infer<typeof whaleTaskRecord>;
+/** The durable domain: one `tasks` table keyed by task id. */
+export declare const whaleTaskDomainSpec: {
+    name: string;
+    version: number;
+    tables: {
+        tasks: import("@deepseek-ai/dsh-storage-domain").DomainTableSpec<string, {
+            id: string;
+            workspaceCwd: string;
+            sessionId: string;
+            name: string;
+            prompt: string;
+            schedule: {
+                kind: "once";
+                at: string;
+            } | {
+                kind: "cron";
+                expr: string;
+            } | {
+                kind: "manual";
+            };
+            status: "active" | "paused" | "done";
+            tz: string;
+            nextRunAt: string;
+            createdAt: string;
+            updatedAt: string;
+            lastRunAt?: string | undefined;
+        }>;
+    };
+};
+/** Wire view of one task (the toolbar + tools surface). */
+export interface WhaleTaskView {
+    id: string;
+    name: string;
+    status: 'active' | 'paused' | 'done';
+    scheduleKind: 'once' | 'cron' | 'manual';
+    scheduleSummary: string;
+    tz: string;
+    nextRunAt: string | null;
+    lastRunAt: string | null;
+    workspaceCwd: string;
+}
+/** Project a stored record to the wire view. */
+export declare function taskView(record: WhaleTaskRecord): WhaleTaskView;
+//# sourceMappingURL=spec.d.ts.map

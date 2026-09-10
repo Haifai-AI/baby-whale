@@ -1,0 +1,716 @@
+import { defineTool } from "@deepseek-ai/dsh-tools";
+import { canonicalPath } from "@deepseek-ai/dsh-sandbox";
+import ExcelJS from "exceljs";
+import { unzipSync, zipSync } from "fflate";
+//#region lib/types/session-cwd.js
+/**
+* Derive the working directory an office tool resolves relative paths against:
+* the calling agent's per-session workspace (`exec.agent.session.header.cwd`),
+* so each session's artifact writes land in ITS workspace, not the server's
+* launch dir — mirroring how `dsh-tool-fs` resolves file paths.
+* @module @deepseek-ai/dsh-tool-office/src/session-cwd
+*/
+const PARENT_PATH_SEGMENT = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
+/**
+* The session workspace cwd for this call, or `undefined` when none applies.
+* @param exec - the tool-execution context; only its optional `agent` is read.
+* @param requestedPath - the path the provider will resolve; parent traversal
+*   makes a symlinked cwd's filesystem identity observable.
+* @returns the calling agent's session cwd, or undefined for a non-agent caller (the backend then applies its own default).
+*/
+function sessionCwd(exec, requestedPath) {
+	const cwd = exec.agent?.session.header.cwd;
+	if (cwd === void 0 || !PARENT_PATH_SEGMENT.test(cwd) && !PARENT_PATH_SEGMENT.test(requestedPath)) return cwd;
+	return canonicalPath(cwd);
+}
+/**
+* Resolution options shared by all office artifact tools.
+* @param exec - the tool-execution context supplying session cwd and cancellation.
+* @param requestedPath - the path the provider will resolve.
+* @param policyWorkspaceRoot - resolved per-call workspace root, when a mutation carries sandbox policy.
+* @returns provider resolution options for the current tool call.
+*/
+function sessionResolveOptions(exec, requestedPath, policyWorkspaceRoot) {
+	const cwd = policyWorkspaceRoot ?? sessionCwd(exec, requestedPath);
+	return {
+		...cwd !== void 0 ? { cwd } : {},
+		signal: exec.signal
+	};
+}
+/**
+* Resolve the standing sandbox policy for the calling session, or `undefined`
+* when the mounted filesystem does not confine. A confining backend without a
+* mounted `sandboxPolicy` fails loud at the first write (mirrors
+* `dsh-tool-fs`'s construction guard).
+* @param ctx - the plugin context carrying `ctx.fs` and (optionally) `ctx.sandboxPolicy`.
+* @param exec - the tool-execution context identifying the calling session.
+* @returns the standing policy, or undefined for an unconfined backend.
+*/
+function resolveOfficePolicy(ctx, exec) {
+	if (ctx.fs.sandboxMode === void 0) return Promise.resolve(void 0);
+	const policy = ctx.get("sandboxPolicy");
+	if (policy === void 0) throw new Error("tool-office: the mounted filesystem confines but ctx.sandboxPolicy is missing");
+	return Promise.resolve(policy.resolve(exec.agent ? { session: exec.agent.session } : {}));
+}
+//#endregion
+//#region lib/types/read-shared.js
+/**
+* Shared plumbing for the office read tools: resolve a workspace-relative
+* path through the same sandboxed seam as artifact writes, bounded byte
+* reads, and JSON-safe cell shaping shared by xlsx/csv extraction.
+* @module @deepseek-ai/dsh-tool-office/src/read-shared
+*/
+/** Inclusive cap on one read tool's input payload (25 MB covers real workbooks). */
+const MAX_READ_BYTES = 25 * 1024 * 1024;
+/**
+* Resolve and read a workspace file as bytes through the sandboxed seam.
+* @param ctx - the plugin context providing the fs seam.
+* @param exec - the tool-execution context (session cwd + cancellation).
+* @param filePath - model-supplied workspace-relative path.
+* @returns the file content.
+*/
+async function readWorkspaceBytes(ctx, exec, filePath) {
+	let policyRoot;
+	try {
+		policyRoot = (await resolveOfficePolicy(ctx, exec))?.workspaceRoot;
+	} catch {
+		policyRoot = void 0;
+	}
+	const target = await ctx.fs.resolve(filePath, sessionResolveOptions(exec, filePath, policyRoot));
+	return ctx.fs.readBytes(target, exec.signal, MAX_READ_BYTES);
+}
+/**
+* Shape an exceljs cell value into a JSON-safe cell.
+* @param value - the raw exceljs cell value union.
+* @returns strings/numbers pass through; formulas keep their text with cached results when numeric.
+*/
+function shapeCellValue(value) {
+	if (value === null || value === void 0) return "";
+	if (typeof value === "number" || typeof value === "string") return value;
+	if (value instanceof Date) return value.toISOString().slice(0, 10);
+	if (typeof value === "object") {
+		const record = value;
+		if (typeof record.formula === "string") return { formula: `=${typeof record.formula === "string" ? record.formula : ""}` };
+		if (typeof record.richText !== "undefined" && Array.isArray(record.richText)) return record.richText.map((part) => typeof part === "object" && part !== null && typeof part.text === "string" ? part.text : String(part)).join("");
+		if (typeof record.text === "string") return record.text;
+		if (record.error !== void 0) return typeof record.error === "string" ? `{error:${record.error}}` : "{error}";
+	}
+	if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+	if (typeof value === "number") return value;
+	return "";
+}
+/**
+* Infer a compact column-type hint from sampled cells.
+* @param cells - shaped sample values for one column.
+* @returns one of number, formula, text.
+*/
+function inferColumnType(cells) {
+	let sawNumber = false;
+	let sawText = false;
+	for (const cell of cells) {
+		if (typeof cell === "number") sawNumber = true;
+		else if (typeof cell !== "string" || cell.length > 0) sawText = true;
+		if (typeof cell === "object") return "formula";
+	}
+	if (sawNumber && !sawText) return "number";
+	return sawText ? "text" : "number";
+}
+/**
+* exceljs 4.4 crashes in XLSX.reconcile on openpyxl workbooks with charts
+* (`drawing.anchors` undefined). Charts are irrelevant to text extraction,
+* so on that failure strip drawing/chart/media parts plus the sheets'
+* `<drawing>` references and reload.
+*/
+async function loadWorkbookResilient(bytes) {
+	const workbook = new ExcelJS.Workbook();
+	try {
+		await workbook.xlsx.load(Buffer.from(bytes));
+		return workbook;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (!/drawing|anchor/i.test(message)) return void 0;
+	}
+	try {
+		const entries = unzipSync(bytes);
+		for (const name of Object.keys(entries)) if (/^xl\/(drawings|charts|media)\//.test(name)) delete entries[name];
+		for (const [name, payload] of Object.entries(entries)) {
+			if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(name)) continue;
+			const xml = new TextDecoder().decode(payload);
+			if (!xml.includes("<drawing ")) continue;
+			entries[name] = new TextEncoder().encode(xml.replace(/<drawing [^>]*\/>/g, ""));
+		}
+		const stripped = zipSync(entries);
+		const retry = new ExcelJS.Workbook();
+		await retry.xlsx.load(Buffer.from(stripped));
+		return retry;
+	} catch {
+		return;
+	}
+}
+/**
+* Parse workbook bytes into bounded JSON-safe extractions.
+* @param bytes - the .xlsx payload.
+* @param maxRows - inclusive row cap beyond the header.
+* @returns the parsed workbook.
+*/
+async function parseXlsxBytes(bytes, maxRows = 200) {
+	const workbook = await loadWorkbookResilient(bytes);
+	if (workbook === void 0) throw new Error("unreadable workbook (exceljs failed, stripped-drawing retry also failed)");
+	let truncated = false;
+	const sheets = [];
+	for (const ws of workbook.worksheets) {
+		if (ws.rowCount === 0 || ws.columnCount === 0) {
+			sheets.push({
+				name: ws.name,
+				total_rows: 0,
+				total_cols: 0,
+				rows: [],
+				column_types: []
+			});
+			continue;
+		}
+		const firstRowValues = ws.getRow(1).values;
+		const dense = (rowValues, width) => Array.from({ length: Math.min(width, 64) }, (_, i) => shapeCellValue(rowValues[i + 1]));
+		const colCount = Math.min(ws.columnCount, 64);
+		if (ws.columnCount > 64) truncated = true;
+		const rowCount = ws.rowCount;
+		const rowOneCells = dense(firstRowValues, colCount);
+		const secondRowValues = rowCount >= 2 ? ws.getRow(2).values : void 0;
+		const rowTwoCells = secondRowValues !== void 0 ? dense(secondRowValues, colCount) : [];
+		const mergeList = (ws.model.merges ?? []).filter((entry) => typeof entry === "string");
+		const looksLikeBanner = /^(A1):([B-Z])1$/.exec(mergeList[0] ?? "") !== null && colCount >= 2 && rowTwoCells.length > 0 && rowTwoCells.some((cell) => typeof cell === "number" || typeof cell === "object" || cell.length > 0) && rowTwoCells.every((cell) => typeof cell === "string");
+		let startRow = 1;
+		let headerCells;
+		let titleText;
+		if (looksLikeBanner) {
+			const bannerCell = rowOneCells.find((cell) => typeof cell === "string" && cell.length > 0) ?? rowOneCells.find((cell) => cell !== "" && typeof cell.formula !== "string");
+			titleText = typeof bannerCell === "string" ? bannerCell : "";
+			headerCells = rowTwoCells.map((rowCell) => typeof rowCell === "string" ? rowCell : "");
+			startRow = 3;
+		} else {
+			const candidates = rowOneCells;
+			if (candidates.every((cell) => typeof cell === "string") && candidates.some((cell) => cell !== "")) {
+				headerCells = candidates.map((rowCell) => typeof rowCell === "string" ? rowCell : "");
+				startRow = 2;
+			}
+		}
+		const takeRows = Math.min(Math.max(rowCount - startRow + 1, 0), maxRows);
+		if (rowCount - startRow + 1 > maxRows) truncated = true;
+		const rows = [];
+		for (let r = 0; r < takeRows; r++) {
+			const values = ws.getRow(startRow + r).values;
+			rows.push(dense(values, colCount));
+		}
+		const column_types = Array.from({ length: colCount }, (_, c) => ({
+			col: columnLetter(c),
+			kind: inferColumnType(rows.map((row) => row[c] ?? ""))
+		}));
+		const sliceMerges = mergeList.slice(0, 32);
+		sheets.push({
+			name: ws.name,
+			...titleText !== void 0 ? { title: titleText } : {},
+			total_rows: Math.max(rowCount - startRow + 1, 0),
+			total_cols: ws.columnCount,
+			...headerCells !== void 0 ? { header: headerCells } : {},
+			rows,
+			column_types,
+			...sliceMerges.length > 0 ? { merged_ranges: sliceMerges } : {}
+		});
+	}
+	return {
+		sheet_count: workbook.worksheets.length,
+		sheets,
+		truncated
+	};
+}
+/**
+* Parse CSV text into one sheet-shaped extraction with delimiter sniffing.
+* @param text - raw file text.
+* @param maxRows - inclusive data-row cap.
+* @returns one sheet in the shared shape plus truncation info.
+*/
+function parseCsvText(text, maxRows = 200) {
+	const usable = parseDelimited(text, sniffDelimiter(text)).filter((row, index) => row.length > 0 || index === 0);
+	const firstRow = usable[0];
+	if (!(firstRow !== void 0 && (firstRow.length > 1 || (firstRow[0] ?? "") !== ""))) return {
+		name: "csv",
+		total_rows: 0,
+		total_cols: 0,
+		rows: [],
+		column_types: [],
+		truncated: false
+	};
+	const headerCandidates = firstRow.map(shapeCellValue);
+	const looksLikeHeader = headerCandidates.every((c) => typeof c === "string");
+	const startRow = looksLikeHeader ? 1 : 0;
+	const body = usable.slice(startRow);
+	const totalCols = Math.max(...usable.map((row) => row.length), 1);
+	const truncatedRows = body.length > maxRows;
+	const sampled = body.slice(0, maxRows).map((row) => Array.from({ length: Math.min(totalCols, 64) }, (_, c) => coerceCsvCell(row[c] ?? "")));
+	return {
+		name: "csv",
+		total_rows: body.length,
+		total_cols: totalCols,
+		...looksLikeHeader ? { header: headerCandidates.filter((c) => typeof c === "string") } : {},
+		rows: sampled,
+		column_types: Array.from({ length: Math.min(totalCols, 64) }, (_, c) => ({
+			col: columnLetter(c),
+			kind: inferColumnType(sampled.map((row) => row[c] ?? ""))
+		})),
+		truncated: truncatedRows || totalCols > 64
+	};
+}
+/** Sniff the dominant delimiter from the first non-empty line outside quotes. */
+function sniffDelimiter(text) {
+	const line = text.split(/\r?\n/, 1)[0] ?? "";
+	const candidates = [
+		",",
+		";",
+		"	",
+		"|"
+	];
+	let best = ",";
+	let bestCount = 0;
+	for (const delimiter of candidates) {
+		const count = countOutsideQuotes(line, delimiter);
+		if (count > bestCount) {
+			best = delimiter;
+			bestCount = count;
+		}
+	}
+	return best;
+}
+function countOutsideQuotes(line, char) {
+	let inQuotes = false;
+	let count = 0;
+	for (let i = 0; i < line.length; i++) {
+		const current = line[i];
+		if (current === "\"") inQuotes = !inQuotes;
+		else if (current === char && !inQuotes) count += 1;
+	}
+	return count;
+}
+/** RFC-4180-style split honoring quotes and doubled quotes. */
+function parseDelimited(text, delimiter) {
+	const rows = [];
+	let row = [];
+	let field = "";
+	let inQuotes = false;
+	for (let i = 0; i < text.length; i++) {
+		const current = text[i];
+		if (inQuotes) {
+			if (current === "\"") if (text[i + 1] === "\"") {
+				field += "\"";
+				i += 1;
+			} else inQuotes = false;
+			else field += current ?? "";
+			continue;
+		}
+		if (current === "\"") inQuotes = true;
+		else if (current === delimiter) {
+			row.push(field);
+			field = "";
+		} else if (current === "\n") {
+			row.push(field.replace(/\r$/, ""));
+			field = "";
+			rows.push(row);
+			row = [];
+		} else field += current ?? "";
+	}
+	row.push(field);
+	rows.push(row);
+	return rows.filter((entry) => entry.length > 1 || entry[0] !== "");
+}
+/** Numeric coercion for bare CSV tokens ("42" → number); leaves text intact. */
+function coerceCsvCell(token) {
+	const trimmed = token.trim();
+	if (trimmed.length > 0 && trimmed.length <= 15 && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed)) return Number(trimmed);
+	return token;
+}
+/** Spreadsheet-style column letter for a zero-based index. */
+function columnLetter(index) {
+	let value = Math.floor(index);
+	let letters = "";
+	do {
+		letters = `${String.fromCharCode(65 + value % 26)}${letters}`;
+		value = Math.floor(value / 26) - 1;
+	} while (value >= 0);
+	return letters;
+}
+//#endregion
+//#region lib/types/read-docx.js
+/**
+* Dependency-light .docx text extraction: unzip the package with fflate and
+* harvest paragraph runs from `word/document.xml`, keeping heading levels,
+* list membership, and table cell text so the model can reason about real
+* uploaded documents without native dependencies.
+* @module @deepseek-ai/dsh-tool-office/src/read-docx
+*/
+/** Char budget for one extraction (roughly 6k tokens of prose). */
+const DOCX_MAX_CHARS = 24e3;
+const STYLE_BY_PSTYLE = {
+	title: "title",
+	heading1: "heading1",
+	heading2: "heading2",
+	heading3: "heading3"
+};
+/**
+* Extract a bounded text model from .docx bytes.
+* @param bytes - raw file payload.
+* @param maxChars - inclusive character cap.
+* @returns paragraphs, counts, and a truncation marker.
+*/
+function extractDocxText(bytes, maxChars = DOCX_MAX_CHARS) {
+	const documentXml = unzipSync(bytes)["word/document.xml"];
+	if (documentXml === void 0) throw new Error("not a docx package (missing word/document.xml)");
+	const xml = new TextDecoder().decode(documentXml);
+	const paragraphs = [];
+	let charCount = 0;
+	let truncated = false;
+	const blockRegex = /<w:(p|tbl)[ >][\s\S]*?<\/w:\1>/g;
+	let match;
+	while ((match = blockRegex.exec(xml)) !== null && charCount < maxChars) {
+		const block = match[0];
+		if (block.startsWith("<w:tbl")) {
+			const rowTexts = [];
+			const rowRegex = /<w:tr[ >][\s\S]*?<\/w:tr>/g;
+			let rowMatch;
+			while ((rowMatch = rowRegex.exec(block)) !== null) {
+				const cells = extractRuns(rowMatch[0]).map((cell) => cell.text.replace(/\s+/g, " ").trim());
+				rowTexts.push(cells.join(" | "));
+			}
+			const joined = rowTexts.join("\n");
+			if (joined.length > 0) push(paragraphs, {
+				style: "table-cell",
+				text: joined
+			});
+			charCount += joined.length;
+			continue;
+		}
+		const styleAttr = /<w:pStyle w:val="([^"]+)"/.exec(block)?.[1] ?? "";
+		const isList = /<w:numPr\s*\/?>/.test(block);
+		const runs = extractRuns(block).map((run) => run.text).join("");
+		const headingStyle = STYLE_BY_PSTYLE[styleAttr.toLowerCase()];
+		const numberedMatch = /^(\d+)[.)]\s*/.exec(runs);
+		const style = headingStyle !== void 0 ? headingStyle : isList && numberedMatch !== null ? "number" : isList ? "bullet" : "paragraph";
+		if (runs.trim().length > 0 || headingStyle !== void 0) {
+			push(paragraphs, {
+				style,
+				text: runs.replace(/\s+/g, " ").trim()
+			});
+			charCount += runs.length;
+		}
+	}
+	return {
+		paragraphs,
+		char_count: charCount,
+		truncated
+	};
+	function push(target, entry) {
+		if (charCount >= maxChars) {
+			truncated = true;
+			return;
+		}
+		target.push(entry);
+	}
+}
+/**
+* Collect `<w:t>` run texts in order inside one block.
+* @param block - raw XML fragment containing one paragraph or row.
+* @returns ordered run fragments.
+*/
+function extractRuns(block) {
+	const fragments = [];
+	const runRegex = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:tab\s*\/>/g;
+	let match;
+	while ((match = runRegex.exec(block)) !== null) {
+		if (match[1] === void 0) {
+			fragments.push({ text: "	" });
+			continue;
+		}
+		fragments.push({ text: decodeEntities(match[1]) });
+	}
+	return fragments;
+}
+function decodeEntities(value) {
+	return value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code))).replace(/&amp;/g, "&");
+}
+//#endregion
+//#region lib/types/read-tools.js
+/**
+* The office read tools (`xlsx_read`, `csv_read`, `docx_text`): bounded,
+* sandboxed extraction over uploaded workspace files so analysis can start
+* from real user data instead of only generating new artifacts.
+* @module @deepseek-ai/dsh-tool-office/src/read-tools
+*/
+/**
+* Boundary cast for extraction payloads: every reader output is JSON-safe by
+* construction (shaped cells, strings/numbers only), but `ReadSheet` lacks a
+* string index signature so the inferred tool value type wants an explicit
+* bridge here rather than erasing structure everywhere downstream.
+*/
+function jsonValue(value) {
+	return value;
+}
+/** Upper bound accepted for max_rows arguments. */
+const MAX_ROWS_LIMIT = 400;
+/**
+* Register all office read tools with their system-prompt guidance.
+* @param ctx - the plugin context; registrations are effects scoped to it.
+*/
+function applyReadTools(ctx) {
+	ctx.systemPrompt.section({
+		name: "tool:office-reads",
+		order: 105,
+		text: "Reading user files: use xlsx_read on uploaded .xlsx workbooks (per-sheet header, sampled rows, column-type hints, merged ranges, formulas), csv_read on delimited text, and docx_text on .docx documents before analyzing or transforming them. Extraction is bounded; request follow-up slices only when genuinely needed. Analysis outputs still go through the create tools."
+	});
+	applyXlsxReadTool(ctx);
+	applyCsvReadTool(ctx);
+	applyDocxTextTool(ctx);
+}
+/** Register `xlsx_read`. */
+function applyXlsxReadTool(ctx) {
+	ctx.tools.register(defineTool({
+		name: "xlsx_read",
+		description: "Read an uploaded .xlsx workbook: sheet names, headers, up to N sampled rows as JSON-safe cells (formulas preserved), per-column type hints, merged ranges.",
+		parameters: {
+			file_path: {
+				type: "string",
+				required: true,
+				description: "Workspace-relative path of the workbook."
+			},
+			max_rows: {
+				type: "number",
+				description: "Data rows returned per sheet (default 100, hard cap 400)."
+			}
+		},
+		output: {
+			schema: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					path: {
+						type: "string",
+						required: true
+					},
+					format: {
+						type: "string",
+						required: true,
+						const: "xlsx"
+					},
+					sheet_count: { type: "integer" },
+					sheets: {
+						type: "json",
+						description: "Bounded per-sheet extractions."
+					},
+					truncated: { type: "boolean" }
+				}
+			},
+			render: (_args, value) => [{
+				type: "text",
+				text: `<path>${value.path ?? ""}</path>
+<type>xlsx</type>
+<content>
+${JSON.stringify(value)}
+</content>`
+			}]
+		},
+		async execute(args, exec) {
+			const parsed = await parseXlsxBytes(await readWorkspaceBytes(ctx, exec, args.file_path), clampRows(args.max_rows));
+			return {
+				path: args.file_path,
+				format: "xlsx",
+				sheet_count: parsed.sheet_count,
+				sheets: jsonValue(parsed.sheets),
+				truncated: parsed.truncated
+			};
+		},
+		presentCall(args) {
+			return {
+				card: "generic",
+				title: `Read workbook ${args.file_path}`,
+				kind: "read",
+				locations: [{ path: args.file_path }]
+			};
+		},
+		presentResult(_args, _result) {}
+	}));
+}
+/** Register `csv_read`. */
+function applyCsvReadTool(ctx) {
+	ctx.tools.register(defineTool({
+		name: "csv_read",
+		description: "Read a delimited text file (csv/tsv): delimiter sniffing, quoted fields, numeric coercion, bounded sample.",
+		parameters: {
+			file_path: {
+				type: "string",
+				required: true,
+				description: "Workspace-relative path of the file."
+			},
+			max_rows: {
+				type: "number",
+				description: "Data rows returned (default 200, hard cap 400)."
+			}
+		},
+		output: {
+			schema: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					path: {
+						type: "string",
+						required: true
+					},
+					format: {
+						type: "string",
+						required: true,
+						const: "csv"
+					},
+					sheet: {
+						type: "json",
+						description: "Single-sheet bounded extraction."
+					}
+				}
+			},
+			render: (_args, value) => [{
+				type: "text",
+				text: `<path>${value.path ?? ""}</path>
+<type>csv</type>
+<content>
+${JSON.stringify(value)}
+</content>`
+			}]
+		},
+		async execute(args, exec) {
+			const bytes = await readWorkspaceBytes(ctx, exec, args.file_path);
+			const sheet = parseCsvText(new TextDecoder().decode(bytes), clampRows(args.max_rows));
+			return {
+				path: args.file_path,
+				format: "csv",
+				sheet: jsonValue(sheet)
+			};
+		},
+		presentCall(args) {
+			return {
+				card: "generic",
+				title: `Read csv ${args.file_path}`,
+				kind: "read",
+				locations: [{ path: args.file_path }]
+			};
+		},
+		presentResult(_args, _result) {}
+	}));
+}
+/** Register `docx_text`. */
+function applyDocxTextTool(ctx) {
+	ctx.tools.register(defineTool({
+		name: "docx_text",
+		description: "Extract structured text from a .docx document: headings, paragraphs, list items, and table cell rows as markdown-like lines.",
+		parameters: { file_path: {
+			type: "string",
+			required: true,
+			description: "Workspace-relative path of the document."
+		} },
+		output: {
+			schema: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					path: {
+						type: "string",
+						required: true
+					},
+					format: {
+						type: "string",
+						required: true,
+						const: "docx"
+					},
+					char_count: { type: "integer" },
+					truncated: { type: "boolean" },
+					text: { type: "string" }
+				}
+			},
+			render: (_args, value) => [{
+				type: "text",
+				text: `<path>${value.path ?? ""}</path>
+<type>docx</type>
+<content>
+${value.text ?? ""}
+</content>`
+			}]
+		},
+		async execute(args, exec) {
+			const model = extractDocxText(await readWorkspaceBytes(ctx, exec, args.file_path));
+			return {
+				path: args.file_path,
+				format: "docx",
+				char_count: model.char_count,
+				truncated: model.truncated,
+				text: renderDocxMarkdown(model.paragraphs)
+			};
+		},
+		presentCall(args) {
+			return {
+				card: "generic",
+				title: `Read document ${args.file_path}`,
+				kind: "read",
+				locations: [{ path: args.file_path }]
+			};
+		},
+		presentResult(_args, _result) {}
+	}));
+}
+/** Clamp the model-supplied row budget into the supported window. */
+function clampRows(value) {
+	if (value === void 0 || !Number.isFinite(value) || value <= 0) return DEFAULT_ROWS;
+	return Math.min(Math.floor(value), MAX_ROWS_LIMIT);
+}
+/** Default sampling depth when no explicit budget is provided. */
+const DEFAULT_ROWS = 100;
+/** Render extracted paragraphs as markdown-flavored lines the model parses naturally. */
+function renderDocxMarkdown(paragraphs) {
+	return paragraphs.map((paragraph) => {
+		switch (paragraph.style) {
+			case "title": return `# ${paragraph.text}`;
+			case "heading1": return `## ${paragraph.text}`;
+			case "heading2": return `### ${paragraph.text}`;
+			case "heading3": return `#### ${paragraph.text}`;
+			case "bullet": return `- ${paragraph.text}`;
+			case "number": return `1. ${paragraph.text}`;
+			case "table-cell": return paragraph.text;
+			default: return paragraph.text;
+		}
+	}).join("\n");
+}
+//#endregion
+//#region lib/types/index.js
+/**
+* Model-facing office READ tools (`xlsx_read`, `csv_read`, `docx_text`):
+* bounded, sandboxed extraction over uploaded workspace files so analysis
+* starts from real user data. Office CREATION is code-first — the model
+* writes and runs Python (openpyxl / python-pptx / python-docx / reportlab)
+* through the bash tool — with finished files surfaced via `deliver`.
+* @module @deepseek-ai/dsh-tool-office
+*/
+/** Cordis plugin name used by loader diagnostics. */
+const name = "tool-office";
+/** Services required by the office read suite. */
+const inject = [
+	"tools",
+	"fs",
+	"systemPrompt"
+];
+/**
+* Register the office read tools plus their shared system-prompt guidance.
+* @param ctx - the plugin context; registrations are effects scoped to it.
+*/
+function apply(ctx) {
+	applyReadTools(ctx);
+	ctx.systemPrompt.section({
+		name: "tool:office",
+		order: 105,
+		text: "Reading user files: use xlsx_read/csv_read/docx_text on uploaded spreadsheets and documents before analyzing them. Creating office files is done by WRITING AND RUNNING PYTHON CODE (openpyxl / python-pptx / python-docx / reportlab) through the bash tool using $DSH_OFFICE_PYTHON, then surfacing finished outputs with the deliver tool."
+	});
+}
+//#endregion
+export { apply, inject, name };

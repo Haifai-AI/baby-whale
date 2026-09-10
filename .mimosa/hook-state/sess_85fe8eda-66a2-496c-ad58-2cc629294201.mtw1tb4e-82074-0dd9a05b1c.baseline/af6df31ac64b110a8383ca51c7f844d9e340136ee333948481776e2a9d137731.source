@@ -1,0 +1,29 @@
+/**
+ * The workbook preview card: Claude-style tabs over one xlsx payload —
+ * `Data` (the native grid studio), `Charts (n)` (the workbook's embedded
+ * charts re-rendered as themed SVG), and `Original` (LibreOffice's
+ * single-page-per-sheet render of the real file). Each tab degrades away
+ * independently when its source is unavailable.
+ * @module @deepseek-ai/dsh-client-ui-whale-artifacts/src/client/WorkbookPreview
+ */
+import type { JSX } from 'react';
+import type { WhaleArtifactsKey } from './locales.ts';
+import { type WorkbookChart } from './WorkbookCharts.tsx';
+/** The workbook preview payload served by `artifacts.preview`. */
+export interface WorkbookPreviewData {
+    readonly kind: 'xlsx';
+    readonly file_name: string;
+    readonly truncated?: boolean;
+    readonly pdfPath?: string;
+    readonly charts?: readonly WorkbookChart[];
+    readonly sheets: unknown;
+}
+/**
+ * The tabbed workbook lens. Remounted (keyed) per selected file so the tab
+ * resets to Data.
+ */
+export declare function WorkbookPreview({ data, t }: {
+    data: WorkbookPreviewData;
+    t: (key: WhaleArtifactsKey) => string;
+}): JSX.Element;
+//# sourceMappingURL=WorkbookPreview.d.ts.map

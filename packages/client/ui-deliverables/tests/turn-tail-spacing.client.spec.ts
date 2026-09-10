@@ -8,7 +8,10 @@ const read = (name: string): string =>
 
 describe('deliverables layout', () => {
   it('keeps the first file-section offset and removes the second', () => {
-    expect(read('ProducedFiles.module.css')).toMatch(/\.root\s*\{[^}]*margin-top:\s*4px/s)
+    // Whale keeps its measured produced-files row (0.1.9 geometry, 16px
+    // offset) while the delivered section below adopts upstream's
+    // present-open offsets.
+    expect(read('ProducedFiles.module.css')).toMatch(/\.root\s*\{[^}]*margin-top:\s*16px/s)
     const deliveries = read('Deliverables.module.css')
     expect(deliveries).toMatch(/\.root\s*\{[^}]*margin-top:\s*4px/s)
     expect(deliveries).toMatch(/\.root\[data-after-produced-files='true'\]\s*\{\s*margin-top:\s*0;\s*\}/)

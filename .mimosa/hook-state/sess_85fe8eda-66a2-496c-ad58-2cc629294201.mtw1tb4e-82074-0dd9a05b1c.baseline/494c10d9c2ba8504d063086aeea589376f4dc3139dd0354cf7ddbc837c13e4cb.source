@@ -1,0 +1,260 @@
+/**
+ * Pure xlsx/csv extraction cores shared by the read tools: bounded workbook
+ * parsing via exceljs's reader (formulas, merged ranges, per-column type
+ * hints) and a dependency-free RFC-4180 CSV parser with delimiter sniffing.
+ * Kept free of plugin context so they are directly unit-testable.
+ * @module @deepseek-ai/dsh-tool-office/src/read-parse
+ */
+import ExcelJS from 'exceljs';
+import { unzipSync, zipSync } from 'fflate';
+import { inferColumnType, shapeCellValue } from "./read-shared.js";
+/** How many rows one extraction returns before `truncated` flips on. */
+export const READ_MAX_ROWS = 200;
+/** How many columns one extraction returns before `truncated` flips on. */
+export const READ_MAX_COLS = 64;
+/**
+ * exceljs 4.4 crashes in XLSX.reconcile on openpyxl workbooks with charts
+ * (`drawing.anchors` undefined). Charts are irrelevant to text extraction,
+ * so on that failure strip drawing/chart/media parts plus the sheets'
+ * `<drawing>` references and reload.
+ */
+async function loadWorkbookResilient(bytes) {
+    const workbook = new ExcelJS.Workbook();
+    try {
+        await workbook.xlsx.load(Buffer.from(bytes));
+        return workbook;
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/drawing|anchor/i.test(message))
+            return undefined;
+    }
+    try {
+        const entries = unzipSync(bytes);
+        for (const name of Object.keys(entries)) {
+            if (/^xl\/(drawings|charts|media)\//.test(name))
+                delete entries[name];
+        }
+        for (const [name, payload] of Object.entries(entries)) {
+            if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(name))
+                continue;
+            const xml = new TextDecoder().decode(payload);
+            if (!xml.includes('<drawing '))
+                continue;
+            entries[name] = new TextEncoder().encode(xml.replace(/<drawing [^>]*\/>/g, ''));
+        }
+        const stripped = zipSync(entries);
+        const retry = new ExcelJS.Workbook();
+        await retry.xlsx.load(Buffer.from(stripped));
+        return retry;
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * Parse workbook bytes into bounded JSON-safe extractions.
+ * @param bytes - the .xlsx payload.
+ * @param maxRows - inclusive row cap beyond the header.
+ * @returns the parsed workbook.
+ */
+export async function parseXlsxBytes(bytes, maxRows = READ_MAX_ROWS) {
+    const workbook = await loadWorkbookResilient(bytes);
+    if (workbook === undefined)
+        throw new Error('unreadable workbook (exceljs failed, stripped-drawing retry also failed)');
+    let truncated = false;
+    const sheets = [];
+    for (const ws of workbook.worksheets) {
+        if (ws.rowCount === 0 || ws.columnCount === 0) {
+            sheets.push({ name: ws.name, total_rows: 0, total_cols: 0, rows: [], column_types: [] });
+            continue;
+        }
+        const firstRow = ws.getRow(1);
+        const firstRowValues = firstRow.values;
+        // exceljs row values are 1-indexed arrays; normalize to dense strings.
+        const dense = (rowValues, width) => Array.from({ length: Math.min(width, READ_MAX_COLS) }, (_, i) => shapeCellValue(rowValues[i + 1]));
+        const colCount = Math.min(ws.columnCount, READ_MAX_COLS);
+        if (ws.columnCount > READ_MAX_COLS)
+            truncated = true;
+        const rowCount = ws.rowCount;
+        const rowOneCells = dense(firstRowValues, colCount);
+        const secondRowValues = rowCount >= 2 ? ws.getRow(2).values : undefined;
+        const rowTwoCells = secondRowValues !== undefined ? dense(secondRowValues, colCount) : [];
+        // Banner heuristic: our own writers put one wide merged title spanning the
+        // used width on row 1 (re-reads duplicate the master value into each
+        // covered column) with the styled header on row 2.
+        const rawMerges = (ws.model.merges ?? []);
+        const mergeList = rawMerges.filter((entry) => typeof entry === 'string');
+        const wideFirstRowMerge = /^(A1):([B-Z])1$/.exec(mergeList[0] ?? '') !== null && colCount >= 2;
+        const looksLikeBanner = wideFirstRowMerge
+            && rowTwoCells.length > 0
+            && rowTwoCells.some(cell => typeof cell === 'number' || typeof cell === 'object' || cell.length > 0)
+            && rowTwoCells.every(cell => typeof cell === 'string');
+        let startRow = 1;
+        let headerCells;
+        let titleText;
+        if (looksLikeBanner) {
+            const bannerCell = rowOneCells.find(cell => typeof cell === 'string' && cell.length > 0)
+                ?? rowOneCells.find(cell => cell !== '' && typeof cell.formula !== 'string');
+            titleText = typeof bannerCell === 'string' ? bannerCell : '';
+            headerCells = rowTwoCells.map(rowCell => (typeof rowCell === 'string' ? rowCell : ''));
+            startRow = 3;
+        }
+        else {
+            const candidates = rowOneCells;
+            const allStrings = candidates.every(cell => typeof cell === 'string');
+            if (allStrings && candidates.some(cell => cell !== '')) {
+                headerCells = candidates.map(rowCell => (typeof rowCell === 'string' ? rowCell : ''));
+                startRow = 2;
+            }
+        }
+        const takeRows = Math.min(Math.max(rowCount - startRow + 1, 0), maxRows);
+        if (rowCount - startRow + 1 > maxRows)
+            truncated = true;
+        const rows = [];
+        for (let r = 0; r < takeRows; r++) {
+            const values = ws.getRow(startRow + r).values;
+            rows.push(dense(values, colCount));
+        }
+        const column_types = Array.from({ length: colCount }, (_, c) => ({
+            col: columnLetter(c),
+            kind: inferColumnType(rows.map(row => row[c] ?? '')),
+        }));
+        const sliceMerges = mergeList.slice(0, 32);
+        sheets.push({
+            name: ws.name,
+            ...(titleText !== undefined ? { title: titleText } : {}),
+            total_rows: Math.max(rowCount - startRow + 1, 0),
+            total_cols: ws.columnCount,
+            ...(headerCells !== undefined ? { header: headerCells } : {}),
+            rows,
+            column_types,
+            ...(sliceMerges.length > 0 ? { merged_ranges: sliceMerges } : {}),
+        });
+    }
+    return { sheet_count: workbook.worksheets.length, sheets, truncated };
+}
+/**
+ * Parse CSV text into one sheet-shaped extraction with delimiter sniffing.
+ * @param text - raw file text.
+ * @param maxRows - inclusive data-row cap.
+ * @returns one sheet in the shared shape plus truncation info.
+ */
+export function parseCsvText(text, maxRows = READ_MAX_ROWS) {
+    const delimiter = sniffDelimiter(text);
+    const table = parseDelimited(text, delimiter);
+    const usable = table.filter((row, index) => row.length > 0 || index === 0);
+    const firstRow = usable[0];
+    const hasContent = firstRow !== undefined && (firstRow.length > 1 || (firstRow[0] ?? '') !== '');
+    if (!hasContent)
+        return { name: 'csv', total_rows: 0, total_cols: 0, rows: [], column_types: [], truncated: false };
+    const headerCandidates = firstRow.map(shapeCellValue);
+    const looksLikeHeader = headerCandidates.every(c => typeof c === 'string');
+    const startRow = looksLikeHeader ? 1 : 0;
+    const body = usable.slice(startRow);
+    const totalCols = Math.max(...usable.map(row => row.length), 1);
+    const truncatedRows = body.length > maxRows;
+    const sampled = body.slice(0, maxRows).map(row => Array.from({ length: Math.min(totalCols, READ_MAX_COLS) }, (_, c) => coerceCsvCell(row[c] ?? '')));
+    return {
+        name: 'csv',
+        total_rows: body.length,
+        total_cols: totalCols,
+        ...(looksLikeHeader ? { header: headerCandidates.filter((c) => typeof c === 'string') } : {}),
+        rows: sampled,
+        column_types: Array.from({ length: Math.min(totalCols, READ_MAX_COLS) }, (_, c) => ({
+            col: columnLetter(c),
+            kind: inferColumnType(sampled.map(row => row[c] ?? '')),
+        })),
+        truncated: truncatedRows || totalCols > READ_MAX_COLS,
+    };
+}
+/** Sniff the dominant delimiter from the first non-empty line outside quotes. */
+function sniffDelimiter(text) {
+    const line = text.split(/\r?\n/, 1)[0] ?? '';
+    const candidates = [',', ';', '\t', '|'];
+    let best = ',';
+    let bestCount = 0;
+    for (const delimiter of candidates) {
+        const count = countOutsideQuotes(line, delimiter);
+        if (count > bestCount) {
+            best = delimiter;
+            bestCount = count;
+        }
+    }
+    return best;
+}
+function countOutsideQuotes(line, char) {
+    let inQuotes = false;
+    let count = 0;
+    for (let i = 0; i < line.length; i++) {
+        const current = line[i];
+        if (current === '"')
+            inQuotes = !inQuotes;
+        else if (current === char && !inQuotes)
+            count += 1;
+    }
+    return count;
+}
+/** RFC-4180-style split honoring quotes and doubled quotes. */
+function parseDelimited(text, delimiter) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const current = text[i];
+        if (inQuotes) {
+            if (current === '"') {
+                if (text[i + 1] === '"') {
+                    field += '"';
+                    i += 1;
+                }
+                else {
+                    inQuotes = false;
+                }
+            }
+            else {
+                field += current ?? '';
+            }
+            continue;
+        }
+        if (current === '"') {
+            inQuotes = true;
+        }
+        else if (current === delimiter) {
+            row.push(field);
+            field = '';
+        }
+        else if (current === '\n') {
+            row.push(field.replace(/\r$/, ''));
+            field = '';
+            rows.push(row);
+            row = [];
+        }
+        else {
+            field += current ?? '';
+        }
+    }
+    row.push(field);
+    rows.push(row);
+    return rows.filter(entry => entry.length > 1 || entry[0] !== '');
+}
+/** Numeric coercion for bare CSV tokens ("42" → number); leaves text intact. */
+function coerceCsvCell(token) {
+    const trimmed = token.trim();
+    if (trimmed.length > 0 && trimmed.length <= 15 && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed)) {
+        return Number(trimmed);
+    }
+    return token;
+}
+/** Spreadsheet-style column letter for a zero-based index. */
+export function columnLetter(index) {
+    let value = Math.floor(index);
+    let letters = '';
+    do {
+        letters = `${String.fromCharCode(65 + (value % 26))}${letters}`;
+        value = Math.floor(value / 26) - 1;
+    } while (value >= 0);
+    return letters;
+}
+//# sourceMappingURL=read-xlsx.js.map

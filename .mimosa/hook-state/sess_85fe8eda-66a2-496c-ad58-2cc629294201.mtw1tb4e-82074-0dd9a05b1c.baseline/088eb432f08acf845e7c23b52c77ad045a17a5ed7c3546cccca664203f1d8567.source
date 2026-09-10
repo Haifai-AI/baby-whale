@@ -1,0 +1,116 @@
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+/**
+ * Artifacts gallery view with right-side preview: the conversation.view tab
+ * body. Left column lists workspace `deliverables/` + `uploads/` metadata;
+ * clicking Preview parses the file via `artifacts.preview` and renders the
+ * SAME studio the tool-details panel uses; Open hands the path to the OS.
+ * @module @deepseek-ai/dsh-client-ui-whale-artifacts/src/client/ArtifactsView
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives';
+// Cross-package render reuse (client bundle face): the studio is public API.
+import { ArtifactStudioBody } from '@deepseek-ai/dsh-client-ui-whale-artifact/client';
+import { WorkbookPreview } from "./WorkbookPreview.js";
+import css from './ArtifactsView.module.css';
+/** Human byte size. */
+function formatBytes(size) {
+    if (size < 1024)
+        return `${size} B`;
+    if (size < 1024 * 1024)
+        return `${Math.round(size / 1024)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+/** Text badge per kind bucket. */
+function KindIcon({ kind }) {
+    const label = kind === 'image' ? 'IMG' : kind.toUpperCase();
+    return _jsx("span", { className: `${css.icon} ${css[`icon_${kind}`] ?? ''}`, children: label.slice(0, 4) });
+}
+/** Modified-at stamp (epoch millis), with a fallback for unparseable values. */
+export function formatModifiedAt(value, fallback) {
+    const time = new Date(value);
+    return Number.isNaN(time.getTime()) ? fallback : time.toLocaleString();
+}
+/** Whether this entry has a right-side preview. */
+function previewable(kind) {
+    return kind === 'xlsx' || kind === 'docx' || kind === 'pptx' || kind === 'csv'
+        || kind === 'pdf' || kind === 'image' || kind === 'markdown' || kind === 'text'
+        || kind === 'video' || kind === 'audio';
+}
+/**
+ * The gallery + preview split. `useSessions` rides the global standard kit,
+ * `sessionId` the session kit; connection arrives through ctx at apply().
+ */
+export function ArtifactsView({ sessionId, connection, t }) {
+    const [artifacts, setArtifacts] = useState(null);
+    const [failed, setFailed] = useState(false);
+    const [selected, setSelected] = useState(null);
+    const [preview, setPreview] = useState(null);
+    // Mutable race guard for the async preview parse below. A ref (not a
+    // closure local) so the linter cannot constant-fold the "still current"
+    // checks away — the cleanup really does flip it after unmounts/reselects.
+    const cancelledRef = useRef(false);
+    const load = useCallback(async () => {
+        try {
+            const query = new URLSearchParams({ session: sessionId });
+            const response = await fetch(`/api/artifacts.list?${query.toString()}`);
+            if (response.ok) {
+                const value = await response.json();
+                setArtifacts(value.artifacts);
+                setFailed(false);
+            }
+            else {
+                setFailed(true);
+            }
+        }
+        catch {
+            setFailed(true);
+        }
+    }, [connection, sessionId]);
+    useEffect(() => { void load(); }, [load]);
+    // Reset + parse whenever the selection changes; cancelled-flag guards races.
+    useEffect(() => {
+        if (selected === null) {
+            setPreview(null);
+            return;
+        }
+        cancelledRef.current = false;
+        if (selected.kind === 'pdf' || selected.kind === 'image'
+            || selected.kind === 'video' || selected.kind === 'audio') {
+            // Browser-native rendering: serve the original bytes directly.
+            const query = new URLSearchParams({ session: sessionId, path: selected.path });
+            setPreview({ status: 'raw', url: `/api/artifacts.raw?${query.toString()}` });
+            return;
+        }
+        setPreview({ status: 'loading' });
+        void (async () => {
+            try {
+                const query = new URLSearchParams({ session: sessionId, path: selected.path });
+                const response = await fetch(`/api/artifacts.preview?${query.toString()}`);
+                const value = response.ok ? await response.json() : undefined;
+                const parsed = value?.preview;
+                if (!cancelledRef.current && parsed !== undefined && typeof parsed.kind === 'string') {
+                    setPreview({ status: 'ready', data: parsed });
+                }
+                else if (!cancelledRef.current) {
+                    setPreview({ status: 'unsupported' });
+                }
+            }
+            catch {
+                if (!cancelledRef.current)
+                    setPreview({ status: 'unsupported' });
+            }
+        })();
+        return () => { cancelledRef.current = true; };
+    }, [connection, selected, sessionId]);
+    const open = (entry) => {
+        // The relocated chat owns OS opens via present-open for presented files;
+        // until that surface takes arbitrary artifact paths, open the raw bytes
+        // in a new tab (the browser renders what it can, downloads the rest).
+        const query = new URLSearchParams({ session: sessionId, path: entry.path });
+        window.open(`/api/artifacts.raw?${query.toString()}`, '_blank', 'noopener');
+    };
+    return (_jsxs("div", { className: `${css.split} ${selected !== null ? css.splitOpen : ''}`, children: [_jsx("div", { className: css.root, children: artifacts === null || artifacts.length === 0 ? (_jsx("p", { className: css.empty, children: artifacts !== null || failed ? t('gallery.empty') : t('gallery.loading') })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: css.header, children: [_jsx("span", { className: css.count, children: t('gallery.count', { count: artifacts.length }) }), _jsx("button", { type: "button", className: css.refresh, onClick: () => { void load(); }, children: t('refresh') })] }), _jsx("ul", { className: css.grid, children: artifacts.map(entry => (_jsxs("li", { className: `${css.card} ${selected?.path === entry.path ? css.selected : ''}`, children: [_jsx(KindIcon, { kind: entry.kind }), _jsxs("div", { className: css.text, children: [_jsx("span", { className: css.name, title: entry.path, children: entry.name }), _jsxs("span", { className: css.meta, children: [t(entry.origin === 'upload' ? 'from.upload' : 'from.deliverable'), ' · ', formatBytes(entry.size), ' · ', formatModifiedAt(entry.modifiedAt, t('gallery.unknownDate'))] })] }), previewable(entry.kind) && (_jsx("button", { type: "button", className: css.previewBtn, onClick: () => { setSelected(entry); }, children: t('preview') })), _jsx("button", { type: "button", className: css.open, onClick: () => { open(entry); }, children: t('open.app') })] }, entry.path))) })] })) }), selected !== null && (_jsxs("div", { className: css.pane, children: [_jsxs("div", { className: css.paneHeader, children: [_jsx("span", { className: css.paneTitle, title: selected.path, children: selected.name }), _jsx("button", { type: "button", className: css.open, onClick: () => { open(selected); }, children: t('open.app') }), _jsx("button", { type: "button", className: css.closePane, "aria-label": t('preview.close'), onClick: () => { setSelected(null); setPreview(null); }, children: "\u00D7" })] }), _jsxs("div", { className: `${css.paneBody} ${preview?.status === 'ready' && preview.data.kind !== 'pdf' ? css.paneStudio : ''}`, "data-whale-artifact-preview": "", children: [preview?.status === 'loading' && _jsx("p", { className: css.empty, children: t('gallery.loading') }), preview?.status === 'unsupported' && _jsx("p", { className: css.empty, children: t('preview.unsupported') }), preview?.status === 'ready' && preview.data.kind === 'pdf' && (_jsx("iframe", { title: selected.name, src: `/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`, className: css.pdfFrame })), preview?.status === 'raw' && selected.kind === 'image' && (_jsx(ZoomableImage, { src: preview.url, alt: selected.name })), preview?.status === 'raw' && selected.kind === 'video' && (_jsx("video", { src: preview.url, controls: true, preload: "metadata", className: css.mediaPlayerVideo }, preview.url)), preview?.status === 'raw' && selected.kind === 'audio' && (_jsx("audio", { src: preview.url, controls: true, preload: "metadata", className: css.mediaPlayerAudio }, preview.url)), preview?.status === 'raw' && selected.kind !== 'image' && selected.kind !== 'video'
+                                && selected.kind !== 'audio' && (_jsx("iframe", { title: selected.name, src: preview.url, className: css.pdfFrame })), preview?.status === 'ready' && preview.data.kind === 'xlsx' && (_jsx(WorkbookPreview, { data: preview.data, t: t }, selected.path)), preview?.status === 'ready' && preview.data.kind === 'markdown' && (_jsxs("div", { className: css.filePreview, children: [_jsx(MarkdownFilePreview, { text: preview.data.text ?? '' }), preview.data.truncated === true && _jsx("p", { className: css.truncNote, children: t('preview.truncated') })] })), preview?.status === 'ready' && preview.data.kind === 'text' && (_jsxs("div", { className: css.filePreview, children: [_jsx(CodeFilePreview, { text: preview.data.text ?? '', language: preview.data.language }), preview.data.truncated === true && _jsx("p", { className: css.truncNote, children: t('preview.truncated') })] })), preview?.status === 'ready' && preview.data.kind !== 'pdf' && preview.data.kind !== 'xlsx'
+                                && preview.data.kind !== 'markdown' && preview.data.kind !== 'text' && (_jsxs(_Fragment, { children: [preview.data.notice === 'soffice-missing' && (_jsx("p", { className: css.sofficeNotice, children: t('preview.sofficeMissing') })), _jsx(ArtifactStudioBody, { preview: preview.data }), preview.data.truncated === true && _jsx("p", { className: css.truncNote, children: t('preview.truncated') })] }))] })] }))] }));
+}
+//# sourceMappingURL=ArtifactsView.js.map

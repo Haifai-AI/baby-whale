@@ -1,0 +1,31 @@
+/**
+ * Office artifact studios. The bodies render from the persisted preview meta
+ * (xlsx: Excel-style chrome — sheet tabs, formula bar, column letters, frozen
+ * navy header, gridlines; pptx: slide gallery; docx: document page), so the
+ * studio replays identically and needs no file bytes.
+ * @module @deepseek-ai/dsh-client-ui-whale-artifact/src/client/DetailsArtifact
+ */
+import type { OfficePreviewData } from './whale-preview.ts';
+/** The studio body for any parsed office preview (shared with the Artifacts tab). */
+export declare function ArtifactStudioBody({ preview }: {
+    preview: OfficePreviewData;
+}): import("react").JSX.Element;
+/** Excel-style spreadsheet studio. */
+export declare function ExcelStudio({ preview }: {
+    preview: Extract<OfficePreviewData, {
+        kind: 'xlsx';
+    }>;
+}): import("react").JSX.Element | null;
+/** Slide gallery studio: larger 16:9 cards in one column, page-numbered. */
+export declare function SlideGallery({ preview }: {
+    preview: Extract<OfficePreviewData, {
+        kind: 'pptx';
+    }>;
+}): import("react").JSX.Element;
+/** Document studio: a readable paper page. */
+export declare function DocPage({ preview }: {
+    preview: Extract<OfficePreviewData, {
+        kind: 'docx';
+    }>;
+}): import("react").JSX.Element;
+//# sourceMappingURL=DetailsArtifact.d.ts.map

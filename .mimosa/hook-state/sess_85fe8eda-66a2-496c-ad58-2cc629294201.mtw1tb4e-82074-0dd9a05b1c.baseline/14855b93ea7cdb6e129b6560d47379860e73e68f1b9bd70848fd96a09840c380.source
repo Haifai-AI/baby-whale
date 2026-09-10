@@ -1,0 +1,177 @@
+/**
+ * Managed LibreOffice runtime: a per-user install of the official
+ * Document Foundation build, downloaded on demand into this app's support
+ * directory. Keeps preview fidelity one click away without admin rights,
+ * without touching a system LibreOffice, and without redistributing
+ * anything ourselves at packaging time (we fetch official artifacts at
+ * runtime). macOS installs automatically from the official `.dmg`;
+ * Windows/Linux are guided (their flows need an installer UI or a package
+ * manager), and this module still reports status for the banner.
+ * @module @deepseek-ai/dsh-host-apiproxy/soffice-runtime
+ */
+import { spawnSync } from 'node:child_process';
+import { createWriteStream } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
+/** Pinned Document Foundation release the managed installer fetches. */
+const LIBREOFFICE_VERSION = '26.2.4';
+/** Per-OS managed layout, resolved under {@link appSupportDir}. */
+export function appSupportDir() {
+    const override = process.env.DSH_APP_SUPPORT;
+    if (override !== undefined && override !== '')
+        return override;
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
+    if (process.platform === 'darwin') {
+        return path.join(home, 'Library', 'Application Support', 'BabyWhale');
+    }
+    if (process.platform === 'win32') {
+        return path.join(process.env.LOCALAPPDATA ?? path.join(home, 'AppData', 'Local'), 'BabyWhale');
+    }
+    return path.join(home, '.local', 'share', 'BabyWhale');
+}
+/**
+ * The managed install's soffice binary when present. Checked before system
+ * candidates by the preview layer, so a completed download upgrades the
+ * preview pipeline without a restart.
+ */
+export function managedSofficePath() {
+    const support = appSupportDir();
+    const candidate = process.platform === 'darwin'
+        ? path.join(support, 'LibreOffice.app', 'Contents', 'MacOS', 'soffice')
+        : process.platform === 'win32'
+            ? path.join(support, 'LibreOfficePortable', 'App', 'libreoffice', 'program', 'soffice.exe')
+            : path.join(support, 'libre', 'program', 'soffice');
+    return existsSync(candidate) ? candidate : undefined;
+}
+/** Where the official artifact for this machine lives, or guided-only. */
+export function managedInstallSupport() {
+    if (process.platform === 'darwin') {
+        const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+        const dmgArch = process.arch === 'arm64' ? 'aarch64' : 'x86-64';
+        return {
+            supported: true,
+            url: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/mac/${arch}/LibreOffice_${LIBREOFFICE_VERSION}_MacOS_${dmgArch}.dmg`,
+            sizeMb: 281,
+        };
+    }
+    // Both flows need an interactive installer or a package manager; the
+    // banner guides instead of downloading.
+    return { supported: false, guideUrl: 'https://www.libreoffice.org/download/download-libreoffice/' };
+}
+let state = { phase: 'idle', progress: 0 };
+let inflight;
+/** Snapshot of the current install lifecycle (copy — callers must not mutate). */
+export function sofficeInstallState() {
+    return { ...state };
+}
+/**
+ * Kick the managed download+install; single-flight. Safe to call again while
+ * running (returns the live state) or after completion (no-op done state).
+ * macOS only — other platforms never enter the machine phases.
+ */
+export async function beginManagedSofficeInstall(onInstalled) {
+    if (managedSofficePath() !== undefined) {
+        state = { phase: 'done', progress: 1 };
+        return { ...state };
+    }
+    const support = managedInstallSupport();
+    if (!support.supported || support.url === undefined) {
+        state = {
+            phase: 'error',
+            progress: 0,
+            error: 'Managed install is available on macOS; use the guided download for this platform.',
+        };
+        return { ...state };
+    }
+    if (inflight !== undefined)
+        return { ...state };
+    inflight = runManagedInstall(support.url, onInstalled).finally(() => {
+        inflight = undefined;
+    });
+    return { ...state };
+}
+async function runManagedInstall(url, onInstalled) {
+    const work = await mkdtemp(path.join(tmpdir(), 'babywhale-lo-'));
+    try {
+        state = {
+            phase: 'downloading',
+            progress: 0,
+            message: `Downloading LibreOffice ${LIBREOFFICE_VERSION}`,
+        };
+        const dmg = path.join(work, 'LibreOffice.dmg');
+        await downloadToFile(url, dmg, (fraction) => {
+            state = { ...state, progress: Math.min(0.8, fraction * 0.8) };
+        });
+        state = { phase: 'installing', progress: 0.85, message: 'Installing into the application support folder' };
+        const support = appSupportDir();
+        await mkdir(support, { recursive: true });
+        const mount = path.join(work, 'mount');
+        await mkdir(mount, { recursive: true });
+        run('hdiutil', ['attach', '-nobrowse', '-readonly', '-mountpoint', mount, dmg]);
+        try {
+            const entries = await readdir(mount);
+            const app = entries.find(entry => entry.endsWith('.app'));
+            if (app === undefined)
+                throw new Error('the disk image contains no LibreOffice.app');
+            await cp(path.join(mount, app), path.join(support, 'LibreOffice.app'), {
+                recursive: true,
+                verbatimSymlinks: true,
+            });
+        }
+        finally {
+            try {
+                run('hdiutil', ['detach', '-force', mount]);
+            }
+            catch {
+                // A stuck mount is cleaned up by the tmp rm; the install itself succeeded.
+            }
+        }
+        const bin = managedSofficePath();
+        if (bin === undefined)
+            throw new Error('the install did not produce a soffice binary');
+        run(bin, ['--version'], 60_000);
+        onInstalled?.();
+        state = { phase: 'done', progress: 1, message: 'Pixel-perfect previews are ready' };
+    }
+    catch (error) {
+        state = {
+            phase: 'error',
+            progress: 0,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+    finally {
+        await rm(work, { recursive: true, force: true }).catch(() => undefined);
+    }
+}
+/** Stream a download to disk, reporting received/total as 0..1. */
+async function downloadToFile(url, dest, onFraction) {
+    const response = await fetch(url, { redirect: 'follow' });
+    if (!response.ok || response.body === null) {
+        throw new Error(`download failed with HTTP ${response.status}`);
+    }
+    const total = Number(response.headers.get('content-length') ?? '0');
+    let received = 0;
+    const out = createWriteStream(dest);
+    const source = Readable.fromWeb(response.body);
+    source.on('data', (chunk) => {
+        received += chunk.length;
+        if (total > 0)
+            onFraction(received / total);
+    });
+    await finished(source.pipe(out));
+    if (total > 0 && received < total)
+        throw new Error(`download truncated (${received}/${total} bytes)`);
+}
+function run(bin, args, timeoutMs = 300_000) {
+    const result = spawnSync(bin, args, { timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] });
+    if (result.status !== 0) {
+        const stderr = result.stderr?.toString().trim().slice(0, 300) ?? '';
+        throw new Error(`${path.basename(bin)} ${args[0]} failed${stderr === '' ? '' : `: ${stderr}`}`);
+    }
+}
+//# sourceMappingURL=soffice-runtime.js.map

@@ -1,0 +1,20 @@
+import { TaskBoardNode } from "./TaskBoardNode.js";
+import { whaleTaskBoardDefinition } from "./task-board.js";
+import { en, NS, zh } from "./locales.js";
+/** Required services for the event definition, dictionaries, and keyed renderer. */
+export const inject = ['slots', 'locale', 'conversationEvents'];
+/**
+ * Client plugin body: register the dictionaries, the definition, and the
+ * keyed chat-node renderer.
+ * @param ctx - client root context.
+ */
+export function apply(ctx) {
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-whale-tasks: dictionaries');
+    ctx.uiConversation.events.register(whaleTaskBoardDefinition);
+    ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+        name: 'conversation.chat.node',
+        key: 'whale-task-board',
+        locale: NS,
+    }, TaskBoardNode));
+}
+//# sourceMappingURL=index.js.map

@@ -1,0 +1,101 @@
+/**
+ * Dependency-light .docx text extraction: unzip the package with fflate and
+ * harvest paragraph runs from `word/document.xml`, keeping heading levels,
+ * list membership, and table cell text so the model can reason about real
+ * uploaded documents without native dependencies.
+ * @module @deepseek-ai/dsh-tool-office/src/read-docx
+ */
+import { unzipSync } from 'fflate';
+/** Char budget for one extraction (roughly 6k tokens of prose). */
+export const DOCX_MAX_CHARS = 24000;
+const STYLE_BY_PSTYLE = {
+    title: 'title',
+    heading1: 'heading1',
+    heading2: 'heading2',
+    heading3: 'heading3',
+};
+/**
+ * Extract a bounded text model from .docx bytes.
+ * @param bytes - raw file payload.
+ * @param maxChars - inclusive character cap.
+ * @returns paragraphs, counts, and a truncation marker.
+ */
+export function extractDocxText(bytes, maxChars = DOCX_MAX_CHARS) {
+    const entries = unzipSync(bytes);
+    const documentXml = entries['word/document.xml'];
+    if (documentXml === undefined)
+        throw new Error('not a docx package (missing word/document.xml)');
+    const xml = new TextDecoder().decode(documentXml);
+    const paragraphs = [];
+    let charCount = 0;
+    let truncated = false;
+    const blockRegex = /<w:(p|tbl)[ >][\s\S]*?<\/w:\1>/g;
+    let match;
+    while ((match = blockRegex.exec(xml)) !== null && charCount < maxChars) {
+        const block = match[0];
+        if (block.startsWith('<w:tbl')) {
+            // Table cells become one compact paragraph preserving row/col structure.
+            const rowTexts = [];
+            const rowRegex = /<w:tr[ >][\s\S]*?<\/w:tr>/g;
+            let rowMatch;
+            while ((rowMatch = rowRegex.exec(block)) !== null) {
+                const cells = extractRuns(rowMatch[0]).map(cell => cell.text.replace(/\s+/g, ' ').trim());
+                rowTexts.push(cells.join(' | '));
+            }
+            const joined = rowTexts.join('\n');
+            if (joined.length > 0)
+                push(paragraphs, { style: 'table-cell', text: joined });
+            charCount += joined.length;
+            continue;
+        }
+        const styleAttr = /<w:pStyle w:val="([^"]+)"/.exec(block)?.[1] ?? '';
+        const isList = /<w:numPr\s*\/?>/.test(block);
+        const runs = extractRuns(block).map(run => run.text).join('');
+        const headingStyle = STYLE_BY_PSTYLE[styleAttr.toLowerCase()];
+        const numberedMatch = /^(\d+)[.)]\s*/.exec(runs);
+        const style = headingStyle !== undefined ? headingStyle
+            : isList && numberedMatch !== null ? 'number'
+                : isList ? 'bullet'
+                    : 'paragraph';
+        if (runs.trim().length > 0 || headingStyle !== undefined) {
+            push(paragraphs, { style, text: runs.replace(/\s+/g, ' ').trim() });
+            charCount += runs.length;
+        }
+    }
+    return { paragraphs, char_count: charCount, truncated };
+    function push(target, entry) {
+        if (charCount >= maxChars) {
+            truncated = true;
+            return;
+        }
+        target.push(entry);
+    }
+}
+/**
+ * Collect `<w:t>` run texts in order inside one block.
+ * @param block - raw XML fragment containing one paragraph or row.
+ * @returns ordered run fragments.
+ */
+function extractRuns(block) {
+    const fragments = [];
+    const runRegex = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:tab\s*\/>/g;
+    let match;
+    while ((match = runRegex.exec(block)) !== null) {
+        if (match[1] === undefined) {
+            fragments.push({ text: '\t' });
+            continue;
+        }
+        fragments.push({ text: decodeEntities(match[1]) });
+    }
+    return fragments;
+}
+function decodeEntities(value) {
+    return value
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, '\'')
+        .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+        .replace(/&amp;/g, '&');
+}
+//# sourceMappingURL=read-docx.js.map

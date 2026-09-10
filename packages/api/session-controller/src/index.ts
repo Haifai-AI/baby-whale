@@ -25,6 +25,7 @@ import { installModelSelectionProjection } from './model-selection-projection.ts
 import { SessionSkillCatalog } from './skill-catalog.ts'
 import { SessionMediaReferences } from './media-references.ts'
 import { SessionArtifacts } from './artifacts.ts'
+import { SessionOfficeRuntime } from './office-runtime.ts'
 import type {
   ModelCatalog,
   SessionAttachmentRequest,
@@ -143,6 +144,7 @@ export class SessionController extends TypertRemoteService {
     ctx.plugin(SessionFileReferences)
     ctx.plugin(SessionMediaReferences)
     ctx.plugin(SessionArtifacts)
+    ctx.plugin(SessionOfficeRuntime)
     ctx.plugin(SessionSkillCatalog)
 
     ctx.on('session/created', (session) => {

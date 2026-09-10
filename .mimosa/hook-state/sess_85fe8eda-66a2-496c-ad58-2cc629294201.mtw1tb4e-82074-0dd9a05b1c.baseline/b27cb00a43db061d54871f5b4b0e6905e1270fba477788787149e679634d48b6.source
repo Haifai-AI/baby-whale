@@ -1,0 +1,36 @@
+/**
+ * Minimal cron support for Whale task schedules: a five-field expression
+ * parser (minute hour day-of-month month day-of-week) and a timezone-aware
+ * next-arrival computation. Only the semantics the ship needs are
+ * implemented; the grammar accepts `*`, lists, ranges, steps, and named
+ * month/day-of-week names are not supported (numbers only).
+ * @module @deepseek-ai/dsh-whale-core/src/cron
+ */
+export interface CronExpr {
+    minute: number[];
+    hour: number[];
+    dom: number[];
+    month: number[];
+    dow: number[];
+}
+/**
+ * Parse a five-field cron expression.
+ * @param expr - whitespace-separated minutes hours dom month dow.
+ * @returns the normalized expression.
+ */
+export declare function parseCron(expr: string): CronExpr;
+/** Validate a cron expression, throwing on malformed input. */
+export declare function isValidCron(expr: string): boolean;
+/** Validate an IANA timezone, throwing on an unknown zone. */
+export declare function isValidTimeZone(timeZone: string): boolean;
+/**
+ * Compute the next arrival of a cron expression strictly after `from`, in one
+ * IANA timezone. Day-stepping wins over minute-stepping: it stays bounded
+ * (370 days) and unambiguous across DST transitions.
+ * @param expr - normalized cron expression.
+ * @param timeZone - IANA zone, e.g. 'Asia/Shanghai'.
+ * @param from - exclusive lower bound.
+ * @returns the next matching instant, or undefined when no match exists within the horizon.
+ */
+export declare function nextRun(expr: CronExpr, timeZone: string, from: Date): Date | undefined;
+//# sourceMappingURL=cron.d.ts.map

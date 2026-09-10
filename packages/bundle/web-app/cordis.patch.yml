@@ -59,7 +59,7 @@
 
     # Whale undo layer: backups every overwrite to .whale-trash + restore tool.
     - id: whale-trash
-      name: '@deepseek-ai/dsh-whale-trash'> theirs
+      name: '@deepseek-ai/dsh-whale-trash'
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:

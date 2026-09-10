@@ -34,7 +34,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -53,7 +53,7 @@
 .rowOff + .rowOff,
 .rowOff + .rowOn,
 .rowOn + .rowOff {
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .rowOff .name,
@@ -78,8 +78,9 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 999px;
+  corner-shape: round;
   padding: 1px 7px;
   color: var(--dsw-alias-label-secondary);
 }

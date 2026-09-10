@@ -669,6 +669,7 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
   'Context',
   'Error',
   'EntryTree',
+  'FsBinaryWriteOutcome',
   'Exclude',
   'Extract',
   'Map',

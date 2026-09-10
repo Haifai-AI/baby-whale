@@ -1,5 +1,5 @@
 .card {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   background: var(--dsw-alias-bg-base);
   padding: 10px 12px;
@@ -38,6 +38,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  corner-shape: round;
   margin-top: 4px;
   flex: none;
 }
@@ -86,5 +87,6 @@
   color: var(--dsw-warning-strong, #b06f0a);
   border: 1px solid currentColor;
   border-radius: 999px;
+  corner-shape: round;
   padding: 0 6px;
 }

@@ -20,6 +20,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
 | `@deepseek-ai/dsh-tool-bash` | `bash` | `ctx.tools`, `ctx.shell`, `ctx.systemPrompt`, `ctx.shellEnv`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The bash tool is the model-facing consumer of the bash executor seam. A `run_in_background` run registers with the generic `ctx.jobs` runtime and is collected/stopped through the `job_*` tools from `@deepseek-ai/dsh-tool-jobs`; the `enableRunInBackground` config (default true) removes the parameter entirely when disabled. |
 | `@deepseek-ai/dsh-tool-present` | `present` | `ctx.tools`, `ctx.fs`, `ctx.sessionProjections` | `tool/call`, `deliverables/presented after a successful final result`, `tool/result` | - | Deliveries belong to the calling Session; Web ui-deliverables supplies source-file opening and cards. |
+| `@deepseek-ai/dsh-tool-deliver` | `deliver` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | deliver claims finished workspace files as user-facing deliverables (Baby Whale). |
 | `@deepseek-ai/dsh-tool-pwsh` | `pwsh` | `ctx.tools`, `ctx.shell`, `ctx.systemPrompt`, `ctx.shellEnv`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The pwsh tool is the PowerShell-dialect consumer of the bash executor seam for Windows compositions (a PowerShell executor such as `@deepseek-ai/dsh-pwsh-local` backs `ctx.shell`); it mirrors the bash tool call-for-call minus sandbox controls — `run_in_background` runs register with the generic `ctx.jobs` runtime and are collected/stopped through the `job_*` tools, and the managed `DSH_*` environment comes from `@deepseek-ai/dsh-shell-env`. Each call runs in a fresh process (no persistent PTY session), with native `C:\...` paths and `$env:NAME` variables. |
 | `@deepseek-ai/dsh-tool-cordis` | `cordis_define`, `cordis_inspect_list`, `cordis_inspect_query`, `cordis_inspect_self`, `cordis_run`, `cordis_stop`, `cordis_undefine` | `ctx.tools`, `ctx.dynamicCordisRunner` | `tool/call`, `tool/result`, `process-local dynamic package lifecycle` | - | Not in any shipped tree (a deliberate opt-in — dynamic package code reaches the real runtime, see .agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.md). The toolset injects `ctx.dynamicCordisRunner` from `@deepseek-ai/dsh-cordis-host-runner`, which owns the definition registry and the vm sandbox; a composition missing it never activates the tools. A running package may register ADDITIONAL model-visible tools until it is stopped, undefined, or DSH restarts; a full changed request header logs those tool-set changes. |
 | `@deepseek-ai/dsh-tool-bash-persistent` | `bash` | `ctx.tools`, `ctx.terminals`, `an owning Agent at execution time` | `tool/call`, `PTY shell state`, `tool/result` | - | One owner-isolated persistent bash tool; deployment composition supplies the PTY backend and may override the model-facing environment description. |
@@ -39,7 +40,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
-| `@deepseek-ai/dsh-tool-office` | `docx_create`, `pptx_create`, `xlsx_create` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | - |
+| `@deepseek-ai/dsh-tool-office` | `csv_read`, `docx_text`, `xlsx_read` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
 
@@ -262,6 +263,36 @@ Declare existing files accessible through the Session filesystem as final delive
 Source: [`packages/fs/tool-present/src/index.ts`](../packages/fs/tool-present/src/index.ts)
 
 Deliveries belong to the calling Session; Web ui-deliverables supplies source-file opening and cards.
+
+<a id="deepseek-aidsh-tool-deliver"></a>
+
+## `@deepseek-ai/dsh-tool-deliver`
+
+### `deliver`
+
+Surface finished workspace files as deliverable cards for the user. Call once per finished file, after verifying it exists.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "paths": {
+      "type": "array",
+      "description": "Workspace-relative paths of finished files (e.g. \"deliverables/q2-revenue.xlsx\"). One to ten entries.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "paths"
+  ]
+}
+```
+
+Source: [`packages/whale/tool-deliver/src/index.ts`](../packages/whale/tool-deliver/src/index.ts)
+
+deliver claims finished workspace files as user-facing deliverables (Baby Whale).
 
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
@@ -2127,9 +2158,9 @@ todo_write is session-owned state; UIs render the latest todo/write event as a c
 
 ## `@deepseek-ai/dsh-tool-office`
 
-### `docx_create`
+### `csv_read`
 
-Create a styled .docx document (title, headings, paragraphs, quotes, bullets, numbered lists).
+Read a delimited text file (csv/tsv): delimiter sniffing, quoted fields, numeric coercion, bounded sample.
 
 ```json
 {
@@ -2137,56 +2168,24 @@ Create a styled .docx document (title, headings, paragraphs, quotes, bullets, nu
   "properties": {
     "file_path": {
       "type": "string",
-      "description": "Path to write the .docx file, resolved under the session workspace."
+      "description": "Workspace-relative path of the file."
     },
-    "title": {
-      "type": "string",
-      "description": "Optional document title."
-    },
-    "blocks": {
-      "type": "array",
-      "description": "Document blocks in order.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "Block style: paragraph body, heading 1-3, quote, bullet, or numbered item.",
-            "enum": [
-              "paragraph",
-              "heading1",
-              "heading2",
-              "heading3",
-              "quote",
-              "bullet",
-              "number"
-            ]
-          },
-          "text": {
-            "type": "string",
-            "description": "The text content of the block."
-          }
-        },
-        "required": [
-          "type",
-          "text"
-        ]
-      }
+    "max_rows": {
+      "type": "number",
+      "description": "Data rows returned (default 200, hard cap 400)."
     }
   },
   "required": [
-    "file_path",
-    "blocks"
+    "file_path"
   ]
 }
 ```
 
 Source: [`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts)
 
-### `pptx_create`
+### `docx_text`
 
-Create a styled .pptx presentation deck (title slide, content slides with bullets).
+Extract structured text from a .docx document: headings, paragraphs, list items, and table cell rows as markdown-like lines.
 
 ```json
 {
@@ -2194,73 +2193,20 @@ Create a styled .pptx presentation deck (title slide, content slides with bullet
   "properties": {
     "file_path": {
       "type": "string",
-      "description": "Path to write the .pptx file, resolved under the session workspace."
-    },
-    "title": {
-      "type": "string",
-      "description": "Deck title shown on the title slide."
-    },
-    "subtitle": {
-      "type": "string",
-      "description": "Optional subtitle under the deck title."
-    },
-    "slides": {
-      "type": "array",
-      "description": "Content slides; at least one.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "Slide title."
-          },
-          "subtitle": {
-            "type": "string",
-            "description": "Optional subtitle under the title."
-          },
-          "bullets": {
-            "type": "array",
-            "description": "Optional bullet lines (plain text, no markup).",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "title"
-        ]
-      }
-    },
-    "theme": {
-      "type": "object",
-      "description": "Optional theme colors.",
-      "additionalProperties": false,
-      "properties": {
-        "primary": {
-          "type": "string",
-          "description": "Primary brand color as #RRGGBB."
-        },
-        "accent": {
-          "type": "string",
-          "description": "Accent color as #RRGGBB."
-        }
-      }
+      "description": "Workspace-relative path of the document."
     }
   },
   "required": [
-    "file_path",
-    "title",
-    "slides"
+    "file_path"
   ]
 }
 ```
 
 Source: [`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts)
 
-### `xlsx_create`
+### `xlsx_read`
 
-Create a styled .xlsx workbook file (header row, frozen panes, fitted columns).
+Read an uploaded .xlsx workbook: sheet names, headers, up to N sampled rows as JSON-safe cells (formulas preserved), per-column type hints, merged ranges.
 
 ```json
 {
@@ -2268,56 +2214,15 @@ Create a styled .xlsx workbook file (header row, frozen panes, fitted columns).
   "properties": {
     "file_path": {
       "type": "string",
-      "description": "Path to write the .xlsx file, resolved under the session workspace."
+      "description": "Workspace-relative path of the workbook."
     },
-    "sheets": {
-      "type": "array",
-      "description": "Worksheets to generate; at least one.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Optional worksheet name (defaults to Sheet1, Sheet2, …)."
-          },
-          "header": {
-            "type": "array",
-            "description": "Optional column labels shown as the styled first row.",
-            "items": {
-              "type": "string"
-            }
-          },
-          "rows": {
-            "type": "array",
-            "description": "Data rows, aligned with the header columns; numbers stay numbers.",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  }
-                }
-              ]
-            }
-          }
-        },
-        "required": [
-          "rows"
-        ]
-      }
+    "max_rows": {
+      "type": "number",
+      "description": "Data rows returned per sheet (default 100, hard cap 400)."
     }
   },
   "required": [
-    "file_path",
-    "sheets"
+    "file_path"
   ]
 }
 ```

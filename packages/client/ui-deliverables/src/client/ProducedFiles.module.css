@@ -119,7 +119,7 @@
   align-items: center;
   gap: 14px;
   width: 100%;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 14px;
   padding: 13px 16px;
   background: var(--dsw-alias-bg-layer-1);
@@ -146,7 +146,7 @@
   width: 48px;
   height: 48px;
   flex: none;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   background: linear-gradient(180deg, var(--dsw-alias-bg-layer-2), transparent);
   display: inline-flex;
@@ -162,7 +162,7 @@
   width: 22px;
   height: 28px;
   border-radius: 4px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2);
   transform: translate(-4px, -2px) rotate(-7deg);
 }
@@ -172,7 +172,7 @@
   width: 26px;
   height: 32px;
   border-radius: 5px;
-  border: 1px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--dsw-alias-border-l3);
   background: var(--dsw-alias-bg-layer-1);
   display: inline-flex;
   align-items: center;
@@ -229,7 +229,7 @@
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--dsw-alias-label-tertiary);
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 5px;
   padding: 2px 6px;
 }
@@ -270,7 +270,7 @@
 .cardName:hover { text-decoration: underline; }
 
 .cardOpen {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
   font-size: 11.5px;
   border-radius: 6px;
@@ -289,7 +289,7 @@
 }
 
 .splitMain {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-right: none;
   border-radius: 9px 0 0 9px;
   background: var(--dsw-alias-bg-layer-2);
@@ -306,7 +306,7 @@
 .splitMain:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 .splitChevron {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 0 9px 9px 0;
   background: var(--dsw-alias-bg-layer-2);
   padding: 0 9px;
@@ -328,7 +328,7 @@
   flex-direction: column;
   padding: 4px;
   gap: 2px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-1);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
@@ -366,7 +366,7 @@
   height: min(86vh, 780px);
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   background: var(--dsw-alias-bg-layer-1);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
@@ -378,7 +378,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
   flex: none;
 }
 
@@ -401,7 +401,7 @@
 }
 
 .modalAction {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
   background: var(--dsw-alias-bg-layer-1);
   font-size: 11.5px;
@@ -429,6 +429,10 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
+  /* The modal card is an l2 surface and this pane scrolls on it: rebind the
+     scrollbar indirection to the elevation pair (ui-theme contract). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .modalNote {

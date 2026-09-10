@@ -20,7 +20,7 @@
 
 .splitOpen .root {
   max-width: 46%;
-  border-right: 1px solid var(--dsw-alias-border-l2);
+  border-right: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .empty {
@@ -46,7 +46,7 @@
 }
 
 .refresh {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
@@ -68,7 +68,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   padding: 10px 14px;
   background: var(--dsw-alias-bg-layer-1);
@@ -124,7 +124,7 @@
 
 .previewBtn,
 .open {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font-size: 12.5px;
@@ -153,7 +153,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .paneTitle {
@@ -186,7 +186,7 @@
   padding: 6px 12px;
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 /* ── Workbook preview: Data / Charts / Original tabs ─────────────────────── */
@@ -202,7 +202,7 @@
   display: flex;
   gap: 4px;
   padding: 8px 10px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
   flex: none;
 }
@@ -282,7 +282,7 @@
   min-width: 0;
   max-width: 240px;
   padding: 7px 12px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 9px;
   background: var(--dsw-alias-bg-layer-1);
   cursor: pointer;
@@ -323,7 +323,7 @@
 }
 
 .chartCard {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   background: var(--dsw-alias-bg-layer-1);
   padding: 12px 14px;
@@ -425,7 +425,7 @@
 .sofficeNotice {
   margin: 0;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-secondary);
+  border-bottom: 0.5px solid var(--dsw-alias-border-secondary);
   background: var(--dsw-alias-fill-secondary);
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;

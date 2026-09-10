@@ -5,7 +5,7 @@
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.08));
-  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.16));
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.16));
   display: flex;
   flex-direction: column;
   gap: 6px;

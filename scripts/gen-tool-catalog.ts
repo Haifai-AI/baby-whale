@@ -47,6 +47,7 @@ import * as ToolPwshPersistent from '@deepseek-ai/dsh-tool-pwsh-persistent'
 import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
+import * as ToolDeliver from '@deepseek-ai/dsh-tool-deliver'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
@@ -254,6 +255,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolPresent)
     },
     note: 'Deliveries belong to the calling Session; Web ui-deliverables supplies source-file opening and cards.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-deliver',
+    dir: 'tool-deliver',
+    source: 'packages/whale/tool-deliver/src/index.ts',
+    requires: ['ctx.tools', 'ctx.fs', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(LocalFileSystem)
+      await ctx.plugin(ToolDeliver)
+    },
+    note: 'deliver claims finished workspace files as user-facing deliverables (Baby Whale).',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-pwsh',

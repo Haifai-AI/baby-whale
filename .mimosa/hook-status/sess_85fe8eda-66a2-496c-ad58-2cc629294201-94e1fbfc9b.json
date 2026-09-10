@@ -1,14 +1,14 @@
 {
   "schemaVersion": "mimosa-hook-status/v1",
-  "recordedAt": "2026-09-10T23:07:39.044Z",
+  "recordedAt": "2026-09-10T23:16:01.485Z",
   "sessionId": "sess_85fe8eda-66a2-496c-ad58-2cc629294201",
   "event": "PostToolUse",
-  "toolName": "Edit",
-  "file": "packages/client/ui-whale-artifact/src/client/OfficeArtifactCard.module.css",
+  "toolName": "Write",
+  "file": "packages/client/ui-whale-artifact/README.md",
   "outcome": "clear",
   "coverage": "complete",
   "findingCount": 0,
-  "durationMs": 5,
+  "durationMs": 3,
   "hostState": "hook_complete",
   "reportHint": ".mimosa/reports/"
 }

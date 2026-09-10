@@ -5,13 +5,13 @@ kind: "package-reference"
 
 # `@deepseek-ai/whale-trash`
 
-English | [中文](README.zh.md)
+[English](README.md) | 中文
 
-## Summary
+## 概述
 
 Overwrites route their previous content into .whale-trash with a timestamped name; the restore tool lists and restores entries without touching anything else.
 
-## Table of Contents
+## 目录
 
 - [What it provides](#what-it-provides)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -20,14 +20,14 @@ Overwrites route their previous content into .whale-trash with a timestamped nam
 -----
 
 <a id="what-it-provides"></a>
-## What it provides
+## 提供什么
 
 Overwrites route their previous content into .whale-trash with a timestamped name; the restore tool lists and restores entries without touching anything else.
 
-## Known Limitations and Deferred Work
+## 已知限制与后续工作
 
 - Trash is per-workspace and unbounded; pruning is deferred.
 
-## Dev Note
+## 开发备注
 
 - Baby Whale-specific package introduced in the 0.1.x line; upstream v0.1.5 does not carry it, so sync merges must re-register it (tsconfig aliases, catalog manifests) rather than expect upstream support.

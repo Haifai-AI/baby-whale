@@ -5,13 +5,13 @@ kind: "package-reference"
 
 # `@deepseek-ai/office-tool-office`
 
-English | [中文](README.zh.md)
+[English](README.md) | 中文
 
-## Summary
+## 概述
 
 Each tool opens the document through the session filesystem and returns a capped, structured view (worksheet grids with formulas, csv rows, document blocks) so analysis starts from real user data instead of guesses.
 
-## Table of Contents
+## 目录
 
 - [What it provides](#what-it-provides)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -20,14 +20,14 @@ Each tool opens the document through the session filesystem and returns a capped
 -----
 
 <a id="what-it-provides"></a>
-## What it provides
+## 提供什么
 
 Each tool opens the document through the session filesystem and returns a capped, structured view (worksheet grids with formulas, csv rows, document blocks) so analysis starts from real user data instead of guesses.
 
-## Known Limitations and Deferred Work
+## 已知限制与后续工作
 
 - Reads are bounded by design; creation flows belong to the skills and bash.
 
-## Dev Note
+## 开发备注
 
 - Baby Whale-specific package introduced in the 0.1.x line; upstream v0.1.5 does not carry it, so sync merges must re-register it (tsconfig aliases, catalog manifests) rather than expect upstream support.

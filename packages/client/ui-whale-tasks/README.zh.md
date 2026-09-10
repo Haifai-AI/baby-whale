@@ -5,13 +5,13 @@ kind: "package-reference"
 
 # `@deepseek-ai/dsh-ui-whale-tasks`
 
-English | [中文](README.zh.md)
+[English](README.md) | 中文
 
-## Summary
+## 概述
 
 One whole-value session event family (whale/task-board snapshots from whale-core) is projected by a conversation node definition into an immutable chat node; a keyed renderer draws the titled card with per-task status, schedule summary, and next-run time.
 
-## Table of Contents
+## 目录
 
 - [What it provides](#what-it-provides)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -20,14 +20,14 @@ One whole-value session event family (whale/task-board snapshots from whale-core
 -----
 
 <a id="what-it-provides"></a>
-## What it provides
+## 提供什么
 
 One whole-value session event family (whale/task-board snapshots from whale-core) is projected by a conversation node definition into an immutable chat node; a keyed renderer draws the titled card with per-task status, schedule summary, and next-run time.
 
-## Known Limitations and Deferred Work
+## 已知限制与后续工作
 
 - Notification delivery rides the local Notification API when the tab is hidden; no push relay exists.
 
-## Dev Note
+## 开发备注
 
 - Baby Whale-specific package introduced in the 0.1.x line; upstream v0.1.5 does not carry it, so sync merges must re-register it (tsconfig aliases, catalog manifests) rather than expect upstream support.

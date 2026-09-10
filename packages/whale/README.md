@@ -1,3 +1,8 @@
+---
+description: "Whale packages for the dsh host: durable task scheduling, guardrails, the trash undo layer, and the deliver claim tool."
+kind: "package-group"
+---
+
 # whale/
 
 Whale: the knowledge-work coworker layer of dsh.

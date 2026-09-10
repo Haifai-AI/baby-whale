@@ -1,3 +1,8 @@
+---
+description: "Office tool packages for the dsh host: bounded document extraction over session workspaces."
+kind: "package-group"
+---
+
 # office/
 
 Model-facing office artifact generation.

@@ -59,6 +59,7 @@ Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`
 - A duplicate `serverName` across live instances fails the later plugin instance at load.
 - A server listing the same tool name twice is rejected as an invalid tool list.
 - A foreign registration squatting on this server's namespace rolls back the whole generation (never a partial set), with a loud error.
+- Every registered definition carries an origin stamp (`MCP_TOOL_ORIGIN`: `{ serverName, rawName }`) — the exact mount identity behind the public name. Consumers resolve tool ownership from this stamp instead of parsing the public name: prefix parsing misattributes names like `mcp__a__b__t` when servers `a` and `a__b` coexist, and a stale configured name can steal attribution. Each re-sync stamps the fresh generation, so the metadata always reflects the live mount.
 
 ## Behavior
 

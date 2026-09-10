@@ -16,8 +16,10 @@ export const inject = ['invariants']
 
 /**
  * No runtime invariant: mounts, status cells, and the approval fence are all
- * effect-owned registrations whose disposal rides the hosting fiber; the
- * manager holds no state that outlives them.
+ * effect-owned registrations whose disposal rides the hosting fiber. One
+ * deliberate exception lives in the manager: a fiber whose disposal never
+ * settles stays retained (cell or stranded record) until it settles or the
+ * process restarts — observed ownership, never a leaked invisible child.
  */
 const install: InvariantInstaller = () => {}
 

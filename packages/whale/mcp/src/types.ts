@@ -13,13 +13,23 @@ export type McpServerState =
   | 'connected'
   /** The initial connection or tool synchronization failed. */
   | 'failed'
+  /**
+   * A previous mount wedged below the bridge: its fiber neither settled nor
+   * disposed, so it may still own tool registrations and its server-name
+   * namespace. No remount is attempted (a duplicate could not take the
+   * namespace anyway); an explicit restart re-arms a bounded wait, and a Host
+   * process restart is the recovery when the fiber never settles.
+   */
+  | 'stuck'
   /** Configured but disabled by the user. */
   | 'disabled'
 
 /**
  * One configured MCP server as the Settings tab renders it. `id` is the
  * user-section identity (stable across edits); every other field mirrors the
- * saved section, and `toolNames` reflects the registry as of the read.
+ * saved section. `toolNames`/`localToolNames` reflect the registry as of the
+ * read, attributed by the owning mount's recorded identity — never by parsing
+ * the public name.
  */
 export interface McpServerStatus {
   readonly id: string
@@ -30,10 +40,21 @@ export interface McpServerStatus {
   readonly target: string
   readonly enabled: boolean
   readonly state: McpServerState
-  /** Present when `state` is `'failed'`: the actionable failure message. */
+  /** Present when `state` is `'failed'`/`'stuck'`: the actionable failure message. */
   readonly error: string | null
-  /** Model-facing names registered by this server at read time. */
+  /**
+   * Model-facing public names this server's mount registered, as of the read.
+   * Exact ownership: each name was registered by THIS server's bridge mount
+   * (its recorded origin), so a public name that merely shares a prefix with
+   * another server's namespace is never listed here.
+   */
   readonly toolNames: readonly string[]
+  /**
+   * Display-safe local (raw) tool names behind {@link toolNames}, in the same
+   * order — the UI renders these instead of stripping a prefix off the public
+   * name.
+   */
+  readonly localToolNames: readonly string[]
 }
 
 /** Point-in-time snapshot returned by the `mcpStatus` Remote. */

@@ -71,6 +71,7 @@ const STATE_KEYS: Record<ServerState, McpSettingsLocaleKey> = {
   connected: 'stateConnected',
   connecting: 'stateConnecting',
   failed: 'stateFailed',
+  stuck: 'stateStuck',
   disabled: 'stateDisabled',
 } as const
 
@@ -500,11 +501,15 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
                   {status?.error ? <p className={css.errorText} role="alert">{status.error}</p> : null}
                   <div className={css.toolBlock}>
                     <span className={css.toolHeading}>{t('tools')}</span>
-                    {status !== undefined && status.toolNames.length > 0 ? (
+                    {status !== undefined && status.localToolNames.length > 0 ? (
                       <ul className={css.toolChips}>
-                        {status.toolNames.map(toolName => (
-                          <li className={css.toolChip} key={toolName} title={toolName}>
-                            {toolName.replace(`mcp__${entry.name}__`, '')}
+                        {status.localToolNames.map(localName => (
+                          // The payload's local names are already display-safe
+                          // and owner-exact (the Host attributes each tool by
+                          // its mount's recorded identity): render verbatim
+                          // instead of stripping a prefix off the public name.
+                          <li className={css.toolChip} key={localName} title={localName}>
+                            {localName}
                           </li>
                         ))}
                       </ul>

@@ -33,6 +33,29 @@ export interface ToolBridgeOptions {
   toolCallTimeoutMs: number
 }
 
+/**
+ * Symbol-keyed origin metadata stamped on every `ToolDefinition` this bridge
+ * registers: the exact mount identity `(serverName, rawName)` behind the
+ * model-facing public name. Consumers (whale-mcp status grouping, the
+ * approval fence) resolve tool ownership from this metadata instead of
+ * parsing the public name — prefix parsing misattributes names like
+ * `mcp__a__b__t` when servers `a` and `a__b` coexist, and a stale configured
+ * name can steal attribution. Each re-sync (`list_changed`, reconnect) stamps
+ * the fresh generation, so the metadata always reflects the live mount.
+ */
+export const MCP_TOOL_ORIGIN: unique symbol = Symbol('@deepseek-ai/dsh-mcp-client.tool-origin')
+
+/** The mount identity stamped under {@link MCP_TOOL_ORIGIN}. */
+export interface McpToolOrigin {
+  /** The `serverName` of the bridge instance that registered the tool. */
+  readonly serverName: string
+  /** The MCP server's own tool name (sent on the wire at `tools/call`). */
+  readonly rawName: string
+}
+
+/** A definition carrying the bridge's origin stamp. */
+export type OriginStampedTool = ToolDefinition & { readonly [MCP_TOOL_ORIGIN]?: McpToolOrigin }
+
 /** State for one sync generation: the current set of disposers keyed by public name. */
 export type ToolDisposers = Map<string, () => void>
 
@@ -251,9 +274,9 @@ function createDefinition(
   structuredSchema: JsonSchemaNode | undefined,
   taskRequired: boolean,
   opts: ToolBridgeOptions,
-): ToolDefinition {
+): OriginStampedTool {
   const projections = new WeakMap<ToolExecution, PreparedProjection>()
-  return {
+  const definition: ToolDefinition = {
     name: publicName,
     description,
     parameters,
@@ -269,6 +292,9 @@ function createDefinition(
       return projection.content
     },
   }
+  // Exact ownership: the registering mount's identity rides the definition,
+  // so registry readers never recover it by parsing the public name.
+  return Object.assign(definition, { [MCP_TOOL_ORIGIN]: { serverName: opts.serverName, rawName } satisfies McpToolOrigin })
 }
 
 /** Build the canonical result schema and existing Native text projection. */

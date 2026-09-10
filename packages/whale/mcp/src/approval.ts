@@ -4,6 +4,12 @@
  * the memory, exactly like the whale guardrails overwrite fence. Under the
  * never-prompt policy (danger-full-access) the fence stands down — an ask
  * there would be auto-rejected without any human seeing it.
+ *
+ * Ownership is INJECTED, never inferred from the tool name: the caller
+ * supplies a resolver that answers "which server's mount registered this
+ * exact tool". Prefix parsing (first `__` or longest configured prefix both)
+ * misattributes names like `mcp__a__b__t` when servers `a` and `a__b`
+ * coexist, and a stale configured name can steal attribution.
  * @module @deepseek-ai/dsh-whale-mcp/approval
  */
 
@@ -11,6 +17,14 @@ import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 
 /** Model-facing prefix every bridge tool carries (`mcp__<server>__<tool>`). */
 export const MCP_TOOL_PREFIX = 'mcp__'
+
+/**
+ * Resolves the exact mount identity behind one model-facing tool name.
+ * The whale MCP manager answers from the origin stamp its bridge mounts put
+ * on every registered definition; `undefined` means no live mount owns the
+ * name (or the caller has no ownership source) and the ask names no server.
+ */
+export type McpToolOwnerResolver = (toolName: string) => string | undefined
 
 /**
  * The session's approval policy: the last `approval/policy` event wins, and a
@@ -74,54 +88,34 @@ function approvedReasons(session: unknown): ReadonlySet<string> {
 }
 
 /**
- * Attribute a tool name to its configured server by LITERAL prefix match.
- * Tool names are never parsed to recover identity: a server named `a__b`
- * registers `mcp__a__b__<tool>`, and splitting at the first `__` would
- * misattribute it to a server `a`. Longest configured name wins, so servers
- * `a` and `a__b` coexist deterministically.
- * @param toolName - the model-facing public tool name.
- * @param serverNames - the names of the servers currently configured.
- * @returns the owning configured server name, or undefined when none matches.
- */
-function configuredServerOf(toolName: string, serverNames: ReadonlySet<string>): string | undefined {
-  let owner: string | undefined
-  for (const name of serverNames) {
-    if (!toolName.startsWith(`${MCP_TOOL_PREFIX}${name}__`)) continue
-    if (owner === undefined || name.length > owner.length) owner = name
-  }
-  return owner
-}
-
-/**
  * The approval ask reason for one MCP tool call: stable per (tool name,
- * configured server set) so a later audit scan recognizes the earlier grant.
- * The server clause names the CONFIGURED server owning the tool's literal
- * prefix; an unconfigured tool (never the case for a mounted server) asks
+ * resolved owner) so a later audit scan recognizes the earlier grant. The
+ * server clause names the mount that ACTUALLY registered the tool, as
+ * resolved by the caller's ownership source; a name no live mount owns asks
  * without one.
  * @param toolName - the model-facing public tool name.
- * @param serverNames - the names of the servers currently configured.
+ * @param owner - the owning server's configured name, when resolved.
  * @returns the human-facing ask reason.
  */
-export function mcpAskReason(toolName: string, serverNames: ReadonlySet<string> = new Set()): string {
-  const server = configuredServerOf(toolName, serverNames)
-  return `run MCP tool "${toolName}"${server !== undefined ? ` from server "${server}"` : ''}?`
+export function mcpAskReason(toolName: string, owner?: string): string {
+  return `run MCP tool "${toolName}"${owner !== undefined ? ` from server "${owner}"` : ''}?`
 }
 
 /**
  * Decide one tool execution for the MCP fence.
  * @param exec - the execution about to dispatch.
- * @param serverNames - the names of the servers currently configured, used to
- * attribute the tool to its server by literal prefix (see {@link mcpAskReason}).
+ * @param resolveOwner - resolves the exact mount identity behind a tool name
+ *   (see {@link McpToolOwnerResolver}); the ask reason names that server.
  * @returns an ask decision on first use, or `undefined` to let the call pass.
  */
 export function decideMcpApproval(
   exec: Readonly<ToolExecution>,
-  serverNames: ReadonlySet<string> = new Set(),
+  resolveOwner: McpToolOwnerResolver = () => undefined,
 ): PreToolDecision | undefined {
   if (!exec.name.startsWith(MCP_TOOL_PREFIX)) return undefined
   const session = exec.agent?.session
   if (sessionApprovalPolicy(session) === 'never') return undefined
-  const reason = mcpAskReason(exec.name, serverNames)
+  const reason = mcpAskReason(exec.name, resolveOwner(exec.name))
   if (approvedReasons(session).has(reason)) return undefined
   return { kind: 'ask', reason }
 }

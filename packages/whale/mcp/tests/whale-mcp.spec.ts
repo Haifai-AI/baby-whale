@@ -39,56 +39,60 @@ function auditPair(id: string, reason: string, outcome: string): readonly unknow
 
 describe('decideMcpApproval', () => {
   it('leaves non-MCP tools alone', () => {
-    expect(decideMcpApproval(execOf('bash'), new Set(['bash']))).toBeUndefined()
-    expect(decideMcpApproval(execOf('write'), new Set(['write']))).toBeUndefined()
+    expect(decideMcpApproval(execOf('bash'), () => 'bash')).toBeUndefined()
+    expect(decideMcpApproval(execOf('write'), () => 'write')).toBeUndefined()
   })
 
-  it('asks on first use with a reason naming the tool and configured server', () => {
-    const decision = decideMcpApproval(execOf('mcp__github__create_issue'), new Set(['github']))
+  it('asks on first use with a reason naming the tool and its resolved owner', () => {
+    const decision = decideMcpApproval(execOf('mcp__github__create_issue'), () => 'github')
     expect(decision).toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__github__create_issue" from server "github"?' })
   })
 
   it('stands down under the never-prompt policy', () => {
     const events = [{ type: 'approval/policy', data: { policy: 'never' } }]
-    expect(decideMcpApproval(execOf('mcp__a__b', events), new Set(['a']))).toBeUndefined()
+    expect(decideMcpApproval(execOf('mcp__a__b', events), () => 'a')).toBeUndefined()
   })
 
   it('does not re-ask within the session once allowed-once for the same reason', () => {
     const tool = 'mcp__web__search'
-    const servers = new Set(['web'])
-    const reason = mcpAskReason(tool, servers)
-    const events = auditPair('ask-1', reason, 'allowed-once')
-    expect(decideMcpApproval(execOf(tool, events), servers)).toBeUndefined()
+    const owner = mcpAskReason(tool, 'web')
+    const events = auditPair('ask-1', owner, 'allowed-once')
+    expect(decideMcpApproval(execOf(tool, events), () => 'web')).toBeUndefined()
   })
 
   it('keeps asking after a rejected or cancelled ask', () => {
     const tool = 'mcp__web__search'
-    const servers = new Set(['web'])
-    const reason = mcpAskReason(tool, servers)
+    const reason = mcpAskReason(tool, 'web')
     for (const outcome of ['rejected', 'cancelled']) {
       const events = auditPair('ask-1', reason, outcome)
-      expect(decideMcpApproval(execOf(tool, events), servers)).toMatchObject({ kind: 'ask' })
+      expect(decideMcpApproval(execOf(tool, events), () => 'web')).toMatchObject({ kind: 'ask' })
     }
   })
 
   it('scopes the grant per tool, not per server', () => {
-    const servers = new Set(['web'])
-    const allowed = mcpAskReason('mcp__web__search', servers)
+    const allowed = mcpAskReason('mcp__web__search', 'web')
     const events = auditPair('ask-1', allowed, 'allowed-once')
-    expect(decideMcpApproval(execOf('mcp__web__fetch', events), servers)).toMatchObject({ kind: 'ask' })
+    expect(decideMcpApproval(execOf('mcp__web__fetch', events), () => 'web')).toMatchObject({ kind: 'ask' })
   })
 
-  it('attributes tools by literal configured prefix, longest match first', () => {
-    // A server named `a__b` registers `mcp__a__b__t`; splitting the name at
-    // the first `__` would misattribute it to a server `a`. Both configured,
-    // each tool must name its own server.
-    const servers = new Set(['a', 'a__b'])
-    expect(mcpAskReason('mcp__a__b__t', servers)).toBe('run MCP tool "mcp__a__b__t" from server "a__b"?')
-    expect(mcpAskReason('mcp__a__t', servers)).toBe('run MCP tool "mcp__a__t" from server "a"?')
+  it('takes ownership from the resolver, never from parsing the tool name', () => {
+    // The same public name may be attributed differently by mount truth: with
+    // servers `a` and `a__b` both live, `mcp__a__b__t` belongs to whichever
+    // server's mount actually registered it. The name itself must not be
+    // parsed for identity (first-`__` or longest-prefix both misattribute one
+    // of the two).
+    expect(mcpAskReason('mcp__a__b__t', 'a')).toBe('run MCP tool "mcp__a__b__t" from server "a"?')
+    expect(mcpAskReason('mcp__a__b__t', 'a__b')).toBe('run MCP tool "mcp__a__b__t" from server "a__b"?')
+    expect(decideMcpApproval(execOf('mcp__a__b__t'), () => 'a'))
+      .toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__a__b__t" from server "a"?' })
+    expect(decideMcpApproval(execOf('mcp__a__b__t'), () => 'a__b'))
+      .toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__a__b__t" from server "a__b"?' })
   })
 
-  it('asks without a server clause for a tool no configured server owns', () => {
-    expect(mcpAskReason('mcp__gone__t', new Set(['web']))).toBe('run MCP tool "mcp__gone__t"?')
+  it('asks without a server clause for a tool no mount owns', () => {
+    expect(mcpAskReason('mcp__gone__t')).toBe('run MCP tool "mcp__gone__t"?')
+    expect(decideMcpApproval(execOf('mcp__gone__t'), () => undefined))
+      .toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__gone__t"?' })
   })
 })
 
@@ -166,8 +170,9 @@ class MemorySettings extends SettingsProvider {
 /* jscpd:ignore-end */
 
 /** Writes a newline-delimited JSON-RPC MCP fixture server and returns its launch entry. */
-async function writeEchoFixture(): Promise<{ entry: McpServerEntry; dir: string }> {
+async function writeEchoFixture(options?: { name?: string; tool?: string }): Promise<{ entry: McpServerEntry; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'whale-mcp-'))
+  const tool = options?.tool ?? 'echo'
   const script = [
     'let buffer = ""',
     'const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\\n")',
@@ -181,7 +186,7 @@ async function writeEchoFixture(): Promise<{ entry: McpServerEntry; dir: string 
     '    if (msg.method === "initialize") {',
     '      send({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "echo", version: "1.0.0" } } })',
     '    } else if (msg.method === "tools/list") {',
-    '      send({ jsonrpc: "2.0", id: msg.id, result: { tools: [{ name: "echo", description: "Echo.", inputSchema: { type: "object", properties: { message: { type: "string" } } } }] } })',
+    `      send({ jsonrpc: "2.0", id: msg.id, result: { tools: [{ name: ${JSON.stringify(tool)}, description: "Echo.", inputSchema: { type: "object", properties: { message: { type: "string" } } } }] } })`,
     '    } else if (msg.method === "tools/call") {',
     '      send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text: `echo:${msg.params.arguments.message}` }] } })',
     '    }',
@@ -190,10 +195,11 @@ async function writeEchoFixture(): Promise<{ entry: McpServerEntry; dir: string 
   ].join('\n')
   const scriptPath = join(dir, 'echo-server.mjs')
   await writeFile(scriptPath, script)
+  const name = options?.name ?? 'whale'
   return {
     dir,
     entry: {
-      id: 'srv-echo', name: 'whale', enabled: true, transport: 'stdio',
+      id: `srv-${name}`, name, enabled: true, transport: 'stdio',
       command: process.execPath, args: [scriptPath], env: {}, cwd: '',
       url: '', headers: {}, toolCallTimeoutMs: 10_000,
     },
@@ -258,6 +264,51 @@ async function untilCells(manager: WhaleMcpService, predicate: (cells: Map<strin
     await new Promise(resolve => setTimeout(resolve, 50))
   }
 }
+
+/** Count `mount()` attempts per server name by wrapping the prototype method (restored by `restore`). */
+function trackMounts(): { countOf(name: string): number; restore(): void } {
+  const counts = new Map<string, number>()
+  type Mount = (entry: McpServerEntry) => Promise<void>
+  const proto = WhaleMcpService.prototype as unknown as { mount: Mount }
+  const original: Mount = proto.mount
+  proto.mount = async function mount(entry: McpServerEntry) {
+    counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1)
+    return original.call(this, entry)
+  }
+  return {
+    countOf: name => counts.get(name) ?? 0,
+    restore: () => { (WhaleMcpService.prototype as unknown as { mount: Mount }).mount = original },
+  }
+}
+
+/** Poll until `predicate` holds (or time out) — for counters a settings watch settles asynchronously. */
+async function untilCount(predicate: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 15_000
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`never observed: ${what}`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
+/** A fiber whose `await()` and `dispose()` never settle until released — a deterministic fiber wedged below the bridge. */
+function wedgedFiber(): {
+  fiber: { await(): Promise<unknown>; dispose(): Promise<true> }
+  settleAwait(): void
+  settleDispose(): void
+} {
+  const startup = Promise.withResolvers<true>()
+  const cleanup = Promise.withResolvers<true>()
+  return {
+    fiber: {
+      await: () => startup.promise,
+      dispose: () => cleanup.promise,
+    },
+    settleAwait: () => startup.resolve(true),
+    settleDispose: () => cleanup.resolve(true),
+  }
+}
+
+type WedgeFixture = ReturnType<typeof wedgedFiber>
 
 describe('WhaleMcpService', () => {
   it('exposes the mcpStatus Remote with list and restart', async () => {
@@ -351,6 +402,184 @@ describe('WhaleMcpService', () => {
         () => Promise.resolve({ kind: 'allow' } as const),
       )
       expect(decision).toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__a__b__echo" from server "a__b"?' })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('attributes the a / a__b collision to the true owner in status, local names, and the live fence; a disabled conflicting name cannot steal', async () => {
+    // Server `a` exposes the RAW tool `b__t` (public `mcp__a__b__t`) while a
+    // second server is literally named `a__b`: the longest configured prefix
+    // (`mcp__a__b__`) would give `mcp__a__b__t` to `a__b`. Ownership must come
+    // from the mount that registered each tool, and a disabled/stale
+    // conflicting name must never steal the attribution.
+    const serverA = await writeEchoFixture({ name: 'a', tool: 'b__t' })
+    const serverAmb = await writeEchoFixture({ name: 'a__b', tool: 'echo' })
+    try {
+      const { ctx, manager } = await harness()
+      await ctx.settings.update(settingsNamespace('mcp'), {
+        servers: [structuredClone(serverA.entry), structuredClone(serverAmb.entry)],
+      } as McpSettings)
+      await until(manager, serverA.entry.id, 'connected')
+      await until(manager, serverAmb.entry.id, 'connected')
+
+      // Status ownership and display-safe local names, from mount truth.
+      const rows = new Map(manager.list().servers.map(row => [row.name, row]))
+      expect(rows.get('a')?.toolNames).toEqual(['mcp__a__b__t'])
+      expect(rows.get('a')?.localToolNames).toEqual(['b__t'])
+      expect(rows.get('a__b')?.toolNames).toEqual(['mcp__a__b__echo'])
+      expect(rows.get('a__b')?.localToolNames).toEqual(['echo'])
+
+      // The live fence names the true server for each tool.
+      for (const [toolName, owner] of [['mcp__a__b__t', 'a'], ['mcp__a__b__echo', 'a__b']] as const) {
+        const decision = await ctx.waterfall(
+          ctx.tools as never,
+          'tools/pre-execute',
+          execOf(toolName),
+          () => Promise.resolve({ kind: 'allow' } as const),
+        )
+        expect(decision).toEqual({ kind: 'ask', reason: `run MCP tool "${toolName}" from server "${owner}"?` })
+      }
+
+      // Disabling the conflicting `a__b` (a stale configured name) must not
+      // hand `mcp__a__b__t` to it: the tool stays owned by `a`, and the
+      // disabled row owns nothing.
+      await ctx.settings.update(settingsNamespace('mcp'), {
+        servers: [structuredClone(serverA.entry), { ...structuredClone(serverAmb.entry), enabled: false }],
+      } as McpSettings)
+      await until(manager, serverAmb.entry.id, 'disabled')
+      await until(manager, serverA.entry.id, 'connected')
+      const after = new Map(manager.list().servers.map(row => [row.name, row]))
+      expect(after.get('a')?.toolNames).toEqual(['mcp__a__b__t'])
+      expect(after.get('a')?.localToolNames).toEqual(['b__t'])
+      expect(after.get('a__b')?.toolNames).toEqual([])
+      const decision = await ctx.waterfall(
+        ctx.tools as never,
+        'tools/pre-execute',
+        execOf('mcp__a__b__t'),
+        () => Promise.resolve({ kind: 'allow' } as const),
+      )
+      expect(decision).toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__a__b__t" from server "a"?' })
+    } finally {
+      await rm(serverA.dir, { recursive: true, force: true })
+      await rm(serverAmb.dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('does not retry a failed server on unrelated reconciles; only a fingerprint change or explicit restart remounts it', async () => {
+    const { entry, dir } = await writeEchoFixture()
+    try {
+      const { ctx, manager } = await harness()
+      manager.startupTimeoutMs = 400
+      const broken: McpServerEntry = { ...structuredClone(entry), id: 'srv-bad', name: 'bad', command: 'definitely-not-a-binary-xyz' }
+      const mounts = trackMounts()
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] } as McpSettings)
+      await until(manager, entry.id, 'connected')
+      await until(manager, broken.id, 'failed')
+      expect(mounts.countOf('bad')).toBe(1)
+
+      // An unrelated edit to the HEALTHY server (fingerprint change) runs a
+      // full reconcile pass — the failing server's start count must not move.
+      // The remount itself is the synchronization: wait for it by count, since
+      // the old cell still reads `connected` until its teardown completes.
+      const edited = { ...structuredClone(entry), args: [...entry.args, '-v'] }
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [edited, broken] } as McpSettings)
+      await untilCount(() => mounts.countOf('whale') >= 2, 'remount of the edited healthy server')
+      await until(manager, entry.id, 'connected')
+      expect(mounts.countOf('whale')).toBe(2)
+      expect(mounts.countOf('bad')).toBe(1)
+
+      // The failure stays visible with its actionable error.
+      const row = manager.list().servers.find(candidate => candidate.id === broken.id)
+      expect(row?.state).toBe('failed')
+      expect(row?.error).toBeTruthy()
+
+      // An explicit restart is the way back: one fresh attempt, still failing.
+      await manager.restart({ id: broken.id })
+      expect(mounts.countOf('bad')).toBe(2)
+      expect(manager.list().servers.find(candidate => candidate.id === broken.id)?.state).toBe('failed')
+      mounts.restore()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('retains a wedged fiber: stuck status, responsive queue, no duplicate mount, recovery only after a real settle', async () => {
+    const { entry, dir } = await writeEchoFixture()
+    try {
+      const { ctx, manager } = await harness()
+      manager.startupTimeoutMs = 100
+      const seams = manager as unknown as Record<string, unknown>
+      // The wedged-fiber lifecycle needs the fiber-mount seam; on the
+      // pre-fix code it does not exist and this test fails fast.
+      if (typeof seams.mountFiber !== 'function') throw new TypeError('mountFiber seam is missing')
+      seams.startupGraceMs = 50
+      seams.disposeAbandonMs = 50
+      const wedges: WedgeFixture[] = []
+      const proto = WhaleMcpService.prototype as unknown as { mountFiber: (config: unknown) => unknown }
+      const realMountFiber = proto.mountFiber
+      seams.mountFiber = (config: { serverName: string }) => {
+        if (config.serverName !== 'wedge') return realMountFiber.call(manager, config)
+        const wedge = wedgedFiber()
+        wedges.push(wedge)
+        return wedge.fiber
+      }
+      const wedge: McpServerEntry = {
+        id: 'srv-wedge', name: 'wedge', enabled: true, transport: 'stdio',
+        command: 'whatever', args: [], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 10_000,
+      }
+      const mounts = trackMounts()
+      let unhandled = 0
+      const onUnhandled = (): void => { unhandled += 1 }
+      process.on('unhandledRejection', onUnhandled)
+      try {
+        // The wedged server mounts FIRST; the healthy one must still mount.
+        await ctx.settings.update(settingsNamespace('mcp'), { servers: [wedge, structuredClone(entry)] } as McpSettings)
+        await until(manager, entry.id, 'connected')
+        await until(manager, wedge.id, 'stuck')
+        expect(mounts.countOf('wedge')).toBe(1)
+
+        // Status is visible and actionable, and the fiber handle is retained.
+        const row = manager.list().servers.find(candidate => candidate.id === wedge.id)
+        expect(row?.state).toBe('stuck')
+        expect(row?.error).toContain('settle')
+        const cell = cellsOf(manager).get(wedge.id) as { fiber?: unknown } | undefined
+        expect(cell?.fiber).toBe(wedges[0]?.fiber)
+
+        // Reconciliation of OTHER servers stays responsive, and the wedged
+        // entry is never mounted a second time behind it.
+        await ctx.settings.update(settingsNamespace('mcp'), {
+          servers: [wedge, { ...structuredClone(entry), args: [...entry.args, '-v'] }],
+        } as McpSettings)
+        await until(manager, entry.id, 'connected')
+        expect(mounts.countOf('wedge')).toBe(1)
+
+        // Restart stays bounded and honest: no duplicate mount while the old
+        // fiber still owns its effects.
+        const before = Date.now()
+        const snapshot = await manager.restart({ id: wedge.id })
+        expect(Date.now() - before).toBeLessThan(2_000)
+        expect(snapshot.servers.find(candidate => candidate.id === wedge.id)).toMatchObject({ state: 'stuck' })
+        expect(mounts.countOf('wedge')).toBe(1)
+        expect(wedges).toHaveLength(1)
+
+        // The wedge eventually settles: the cell demotes to an ordinary
+        // recoverable failure, and only then does a restart mount one fresh
+        // replacement fiber (the abandoned handle is never reused).
+        wedges[0]!.settleAwait()
+        wedges[0]!.settleDispose()
+        await until(manager, wedge.id, 'failed')
+        expect(wedges).toHaveLength(1)
+        await manager.restart({ id: wedge.id })
+        await until(manager, wedge.id, 'stuck')
+        expect(mounts.countOf('wedge')).toBe(2)
+        expect(wedges).toHaveLength(2)
+        expect((cellsOf(manager).get(wedge.id) as { fiber?: unknown } | undefined)?.fiber).toBe(wedges[1]?.fiber)
+        expect(unhandled).toBe(0)
+      } finally {
+        process.off('unhandledRejection', onUnhandled)
+        mounts.restore()
+      }
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

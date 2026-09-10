@@ -6,14 +6,15 @@
  * registry under `mcp__<name>__<tool>`; edits to the section reconcile the
  * mount set — untouched servers keep their fibers, changed ones remount.
  *
- * Tool ownership is EXACT, never inferred from the public name: every
- * definition a bridge registers carries an origin stamp
- * (`MCP_TOOL_ORIGIN`: the mounting server's name plus the raw wire name),
- * and status grouping and the approval fence resolve ownership from that
- * stamp. Prefix parsing cannot be made sound — with servers `a` and `a__b`
- * both configured, the public name `mcp__a__b__t` (raw `b__t` on server `a`)
- * matches `a__b`'s namespace too, and a stale or disabled configured name
- * would steal attribution.
+ * Tool ownership is EXACT, never inferred from the public name: the bridge
+ * records each definition's mount identity in module-private provenance,
+ * exposed only through its read-only `getMcpToolOrigin` accessor, and status
+ * grouping and the approval fence resolve ownership through that accessor.
+ * Nothing a foreign same-process plugin stamps onto its own definitions can
+ * forge attribution. Prefix parsing cannot be made sound — with servers `a`
+ * and `a__b` both configured, the public name `mcp__a__b__t` (raw `b__t` on
+ * server `a`) matches `a__b`'s namespace too, and a stale or disabled
+ * configured name would steal attribution.
  *
  * Mount cells keep their fiber handles for as long as a fiber may still own
  * effects. A mount that never settles is abandoned by a bounded net; if its
@@ -36,7 +37,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import * as bridge from '@deepseek-ai/dsh-mcp-client'
-import { MCP_TOOL_ORIGIN, type McpToolOrigin } from '@deepseek-ai/dsh-mcp-client'
+import { getMcpToolOrigin, type McpToolOrigin } from '@deepseek-ai/dsh-mcp-client'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
 import type { Config as BridgeConfig } from '@deepseek-ai/dsh-mcp-client'
@@ -564,10 +565,12 @@ export class WhaleMcpService extends TypertRemoteService {
   }
 }
 
-/** Read the origin stamp off a registered tool definition, if any. */
+/**
+ * Read a registered definition's bridge provenance through the bridge's own
+ * read-only accessor — never from any public metadata a lookalike could carry.
+ */
 function toolOriginOf(definition: unknown): McpToolOrigin | undefined {
-  if (definition === undefined || definition === null || typeof definition !== 'object') return undefined
-  return (definition as { [MCP_TOOL_ORIGIN]?: McpToolOrigin })[MCP_TOOL_ORIGIN]
+  return getMcpToolOrigin(definition)
 }
 
 /**

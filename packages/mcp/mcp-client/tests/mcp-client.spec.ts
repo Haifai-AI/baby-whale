@@ -11,6 +11,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type JsonValue } from '@deepseek-ai/dsh-tools'
 import type { PostToolDecision } from '@deepseek-ai/dsh-tools'
 import { publicToolName, syncTools, type ToolBridgeOptions } from '@deepseek-ai/dsh-mcp-client/src/tools.ts'
+import * as bridgeTools from '@deepseek-ai/dsh-mcp-client/src/tools.ts'
 import { createTransport } from '@deepseek-ai/dsh-mcp-client/src/transport.ts'
 import type { Config } from '@deepseek-ai/dsh-mcp-client'
 
@@ -148,6 +149,88 @@ const defaultOpts: ToolBridgeOptions = {
   serverName: 'srv',
   toolCallTimeoutMs: 60_000,
 }
+
+/**
+ * The bridge's provenance accessor, resolved off the module namespace so the
+ * forgery tests degrade to an explicit failure instead of a module-load error
+ * on a build that predates the accessor.
+ */
+const getMcpToolOrigin = (bridgeTools as unknown as Record<string, unknown>)['getMcpToolOrigin'] as
+  | ((definition: unknown) => { readonly serverName: string; readonly rawName: string } | undefined)
+  | undefined
+
+function requireProvenanceAccessor(): NonNullable<typeof getMcpToolOrigin> {
+  if (getMcpToolOrigin === undefined) throw new Error('bridge provenance accessor (getMcpToolOrigin) is missing')
+  return getMcpToolOrigin
+}
+
+describe('bridge tool provenance', () => {
+  let ctx: Context
+
+  beforeEach(async () => {
+    ctx = await mountRegistry()
+  })
+
+  it('recognizes exactly the definitions the bridge created, with their mount identity', async () => {
+    const provenance = requireProvenanceAccessor()
+    const client = createMockClient([
+      { name: 'greet', description: 'Say hello', inputSchema: { type: 'object', properties: {} } },
+    ])
+    await syncTools(client as never, ctx, { ...defaultOpts, serverName: 'github' }, new Map())
+
+    const definition = ctx.tools.get('mcp__github__greet')
+    expect(provenance(definition)).toEqual({ serverName: 'github', rawName: 'greet' })
+  })
+
+  it('hands out copies: mutating a returned origin never corrupts the store', async () => {
+    const provenance = requireProvenanceAccessor()
+    const client = createMockClient([
+      { name: 'greet', description: 'Say hello', inputSchema: { type: 'object', properties: {} } },
+    ])
+    await syncTools(client as never, ctx, defaultOpts, new Map())
+
+    const definition = ctx.tools.get('mcp__srv__greet')
+    const first = provenance(definition)
+    expect(first).toBeDefined()
+    const mutated = first as { serverName: string }
+    mutated.serverName = 'evil'
+    expect(provenance(definition)).toEqual({ serverName: 'srv', rawName: 'greet' })
+  })
+
+  it('never recognizes foreign definitions, however they imitate provenance', async () => {
+    const provenance = requireProvenanceAccessor()
+    const client = createMockClient([
+      { name: 'greet', description: 'Say hello', inputSchema: { type: 'object', properties: {} } },
+    ])
+    await syncTools(client as never, ctx, defaultOpts, new Map())
+    const legit = ctx.tools.get('mcp__srv__greet')
+    expect(legit).toBeDefined()
+
+    const lookalike = {
+      name: 'mcp__srv__greet',
+      description: 'forged',
+      parameters: { type: 'object', properties: {} },
+      // Lookalike plain properties and a registry-wide symbol keyed with the
+      // historical stamp description.
+      origin: { serverName: 'srv', rawName: 'greet' },
+      mcpToolOrigin: { serverName: 'srv', rawName: 'greet' },
+      [Symbol.for('@deepseek-ai/dsh-mcp-client.tool-origin')]: { serverName: 'srv', rawName: 'greet' },
+    }
+    // Any formerly exported stamp symbol, when the build still has one.
+    const bridgeModule = await import('@deepseek-ai/dsh-mcp-client') as unknown as Record<string, unknown>
+    const formerlyExported = bridgeModule['MCP_TOOL_ORIGIN']
+    if (typeof formerlyExported === 'symbol') {
+      (lookalike as Record<PropertyKey, unknown>)[formerlyExported] = { serverName: 'srv', rawName: 'greet' }
+    }
+
+    expect(provenance(lookalike)).toBeUndefined()
+    // Prototype inheritance from a legitimate definition cannot borrow identity.
+    expect(provenance(Object.create(legit!))).toBeUndefined()
+    // Non-objects are simply unrecognized.
+    expect(provenance(undefined)).toBeUndefined()
+    expect(provenance('mcp__srv__greet')).toBeUndefined()
+  })
+})
 
 // ---- Tests ----
 

@@ -34,18 +34,13 @@ export interface ToolBridgeOptions {
 }
 
 /**
- * Symbol-keyed origin metadata stamped on every `ToolDefinition` this bridge
- * registers: the exact mount identity `(serverName, rawName)` behind the
- * model-facing public name. Consumers (whale-mcp status grouping, the
- * approval fence) resolve tool ownership from this metadata instead of
- * parsing the public name — prefix parsing misattributes names like
- * `mcp__a__b__t` when servers `a` and `a__b` coexist, and a stale configured
- * name can steal attribution. Each re-sync (`list_changed`, reconnect) stamps
- * the fresh generation, so the metadata always reflects the live mount.
+ * The mount identity behind one bridge-registered definition: the exact
+ * `(serverName, rawName)` pair the model-facing public name was derived from.
+ * Consumers (whale-mcp status grouping, the approval fence) resolve tool
+ * ownership from this provenance instead of parsing the public name — prefix
+ * parsing misattributes names like `mcp__a__b__t` when servers `a` and `a__b`
+ * coexist, and a stale configured name can steal attribution.
  */
-export const MCP_TOOL_ORIGIN: unique symbol = Symbol('@deepseek-ai/dsh-mcp-client.tool-origin')
-
-/** The mount identity stamped under {@link MCP_TOOL_ORIGIN}. */
 export interface McpToolOrigin {
   /** The `serverName` of the bridge instance that registered the tool. */
   readonly serverName: string
@@ -53,8 +48,35 @@ export interface McpToolOrigin {
   readonly rawName: string
 }
 
-/** A definition carrying the bridge's origin stamp. */
-export type OriginStampedTool = ToolDefinition & { readonly [MCP_TOOL_ORIGIN]?: McpToolOrigin }
+/**
+ * Module-private provenance store, keyed by the EXACT definition object this
+ * bridge registered. Nothing is exported that could write it, look it up, or
+ * name it: no setter, no symbol, no map, no token. A foreign plugin importing
+ * this package can therefore never stamp provenance onto its own definitions
+ * — authenticity derives from object identity inside this module, and each
+ * re-sync (`list_changed`, reconnect) stamps the fresh generation so the
+ * provenance always reflects the live mount.
+ */
+const toolOrigins = new WeakMap<object, Readonly<McpToolOrigin>>()
+
+/** Record the mount identity of one bridge-created definition (module-private). */
+function stampToolOrigin(definition: ToolDefinition, origin: McpToolOrigin): void {
+  toolOrigins.set(definition, Object.freeze({ ...origin }))
+}
+
+/**
+ * The read-only provenance of a definition IF — and only if — this bridge
+ * created it; `undefined` for anything else. The returned record is a fresh
+ * copy, so a caller can never mutate the stored identity.
+ * @param definition - any registered tool definition (or any value at all).
+ * @returns the frozen mount identity, or undefined when this bridge did not
+ *   create the definition.
+ */
+export function getMcpToolOrigin(definition: unknown): Readonly<McpToolOrigin> | undefined {
+  if (definition === null || typeof definition !== 'object') return undefined
+  const origin = toolOrigins.get(definition)
+  return origin === undefined ? undefined : { ...origin }
+}
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
 export type ToolDisposers = Map<string, () => void>
@@ -274,7 +296,7 @@ function createDefinition(
   structuredSchema: JsonSchemaNode | undefined,
   taskRequired: boolean,
   opts: ToolBridgeOptions,
-): OriginStampedTool {
+): ToolDefinition {
   const projections = new WeakMap<ToolExecution, PreparedProjection>()
   const definition: ToolDefinition = {
     name: publicName,
@@ -292,9 +314,11 @@ function createDefinition(
       return projection.content
     },
   }
-  // Exact ownership: the registering mount's identity rides the definition,
-  // so registry readers never recover it by parsing the public name.
-  return Object.assign(definition, { [MCP_TOOL_ORIGIN]: { serverName: opts.serverName, rawName } satisfies McpToolOrigin })
+  // Exact ownership: the registering mount's identity is recorded privately,
+  // keyed by this exact definition object, so registry readers resolve it
+  // through the accessor without any public name parsing or forgeable stamp.
+  stampToolOrigin(definition, { serverName: opts.serverName, rawName })
+  return definition
 }
 
 /** Build the canonical result schema and existing Native text projection. */

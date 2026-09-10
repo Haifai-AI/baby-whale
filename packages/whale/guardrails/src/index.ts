@@ -93,6 +93,13 @@ function substitutionEnd(code: string, start: number): number {
   return index
 }
 
+/** The index of the backtick closing a substitution body opened at `start`, or end of text. */
+function backtickBodyEnd(code: string, start: number): number {
+  let cursor = start
+  while (cursor < code.length && code[cursor] !== '`') { cursor += code[cursor] === '\\' ? 2 : 1 }
+  return cursor
+}
+
 /** Depth bound for nested executable bodies; deeper nesting gives up rather than risk runaway recursion. */
 const MAX_SUBSTITUTION_DEPTH = 8
 
@@ -108,11 +115,9 @@ function scanDoubleQuotedSpan(code: string, start: number, depth: number, target
     if (ch === '\\') { index += 2; continue }
     if (ch === '"') return index + 1
     if (ch === '`') {
-      let cursor = index + 1
-      while (cursor < code.length && code[cursor] !== '`') { cursor += code[cursor] === '\\' ? 2 : 1 }
-      if (cursor >= code.length) return cursor
-      scanRedirectTargets(code.slice(index + 1, cursor), depth + 1, targets)
-      index = cursor + 1
+      const end = backtickBodyEnd(code, index + 1)
+      scanRedirectTargets(code.slice(index + 1, end), depth + 1, targets)
+      index = end >= code.length ? end : end + 1
       continue
     }
     if (ch === '$' && code[index + 1] === '(') {
@@ -160,7 +165,10 @@ function heredocHeader(code: string, index: number): { delimiter: string; dashFo
  * The index past one heredoc's body: the first line after `lineStart` equal
  * to the delimiter (leading tabs stripped for `<<-`), or end of text. The
  * body is data — a `>` inside it is never executed — so it is skipped
- * rather than scanned.
+ * rather than scanned. A quoted delimiter's body is literal data; an
+ * unquoted one may execute expansions, which this parser deliberately does
+ * not inspect: like the other unparsed shell-mediated writes, that stays
+ * sandbox-confined.
  */
 function skipHeredocBody(code: string, lineStart: number, heredoc: PendingHeredoc): number {
   let line = lineStart
@@ -227,7 +235,7 @@ function parseRedirectWord(code: string, start: number): { decoded: string; end:
  * The direct output-redirect targets of a shell command — `>`, `>>`, `>|`,
  * `&>`, `&>>`, and the `N>` / `N>>` descriptor forms — including unspaced
  * spellings (`hi>out`), quoted/escaped/concatenated target words
- * (`>"my file.txt"`), and the bodies of `$()` / backtick command
+ * (`>"my file.txt"`), and the bodies of `$()` and backtick command
  * substitutions, which the shell executes even inside double quotes.
  * Heredoc bodies are treated as data and skipped. This is a
  * defense-in-depth approval convenience, not a complete shell parser:
@@ -267,6 +275,14 @@ function scanRedirectTargets(code: string, depth: number, targets: string[]): vo
     // except a double quote's executable `$()` / backtick substitutions.
     if (ch === "'") { index = skipQuotedSpan(code, index); continue }
     if (ch === '"') { index = scanDoubleQuotedSpan(code, index, depth, targets); continue }
+    // A top-level backtick body executes like `$()`: recurse into it
+    // rather than let the closing backtick glue onto a target word.
+    if (ch === '`') {
+      const end = backtickBodyEnd(code, index + 1)
+      scanRedirectTargets(code.slice(index + 1, end), depth + 1, targets)
+      index = end >= code.length ? end : end + 1
+      continue
+    }
     // An escaped character (`\>`) is literal, not an operator.
     if (ch === '\\') { index += 2; continue }
     if (code.startsWith('[[', index)) { index = skipComparisonSpan(code, index, ']]'); continue }
@@ -460,25 +476,29 @@ export function apply(ctx: Context, config: Config): void {
     return undefined
   })
   ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
-    const [path] = overwritePathsOf(exec)
     const guarded = GUARDED_TOOLS.has(exec.name) || SHELL_TOOLS.has(exec.name)
-    if (!guarded || path === undefined || config.askOnOverwrite !== true) return next()
+    if (!guarded || config.askOnOverwrite !== true) return next()
+    const paths = overwritePathsOf(exec)
+    if (paths.length === 0) return next()
     // Under the never-prompt policy (danger-full-access) the fence stands
     // down: an ask would be auto-rejected by the approval service before any
     // human sees it, and the sandbox layer already owns the decision.
     if (sessionApprovalPolicy(exec.agent?.session) === 'never') return next()
     const cwd = exec.agent?.session.header.cwd
-    const state = await targetState(ctx, exec, path)
-    if (state.exists) {
+    // A command may name several targets (`echo a > fresh > existing`): the
+    // first that actually exists decides the ask, so a fresh earlier target
+    // cannot mask a later existing one. One ask leaves per call; a second
+    // existing target re-asks on the command's next run.
+    for (const path of paths) {
+      const state = await targetState(ctx, exec, path)
+      if (!state.exists) continue
       // Workspace Write's grant is "write inside the workspace; wider
       // retries require approval" — overwriting an existing in-workspace
       // file is exactly that grant, so the fence stands down there and
       // keeps its ask for targets the preset does not cover.
-      if (sessionPermissionPreset(exec.agent?.session) === 'workspace-write' && withinWorkspace(state.resolved, cwd)) {
-        return next()
-      }
+      if (sessionPermissionPreset(exec.agent?.session) === 'workspace-write' && withinWorkspace(state.resolved, cwd)) continue
       const reason = `overwrite existing file "${path}"?`
-      if (approvedOverwriteReasons(exec.agent?.session).has(reason)) return next()
+      if (approvedOverwriteReasons(exec.agent?.session).has(reason)) continue
       return { kind: 'ask', reason }
     }
     return next()

@@ -377,6 +377,29 @@ describe('whale-guardrails', () => {
     expect(allowDecision).toEqual({ kind: 'allow' })
   })
 
+  it('scans top-level backtick substitution bodies without gluing the closer onto a target', async () => {
+    const { ctx, recorded } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    // The decoded target must be the path the shell opens — the closing
+    // backtick is body syntax, not part of the filename.
+    const traversal = recorded(execution('bash', { command: 'echo `printf x > ../outside.txt`' }))
+    expect(traversal).toContain('escapes the session workspace')
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo `printf x >> existing.txt`' }),
+      allow,
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+    // Bodies that redirect nothing leave the surrounding command free to.
+    const outside = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo `tag --rev` > fresh-backtick.txt' }),
+      allow,
+    )
+    expect(outside).toEqual({ kind: 'allow' })
+  })
+
   it('treats heredoc bodies as data while still guarding the operator line', async () => {
     const { ctx, recorded } = await booted()
     writeFileSync(join(root, 'existing.txt'), 'x')
@@ -404,6 +427,50 @@ describe('whale-guardrails', () => {
     // And a substitution executed from the body-writing command is scanned.
     const traversal = recorded(execution('bash', { command: 'cat <<EOF > ../outside.txt\nbody\nEOF' }))
     expect(traversal).toContain('escapes the session workspace')
+  })
+
+  it('asks for an existing later target even when an earlier target is fresh', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'existing.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo a > fresh-first.txt > existing.txt' }),
+      allow,
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "existing.txt"?' })
+  })
+
+  it('asks once, for the first existing target among several, and never for all-fresh', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'first.txt'), 'x')
+    writeFileSync(join(root, 'second.txt'), 'x')
+    const allow = () => Promise.resolve({ kind: 'allow' } as const)
+    const decision = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo a > first.txt > second.txt' }),
+      allow,
+    )
+    expect(decision).toEqual({ kind: 'ask', reason: 'overwrite existing file "first.txt"?' })
+    const fresh = await ctx.waterfall(
+      'tools/pre-execute',
+      execution('bash', { command: 'echo a > fresh-a.txt > fresh-b.txt' }),
+      allow,
+    )
+    expect(fresh).toEqual({ kind: 'allow' })
+  })
+
+  it('stands a multiple-target redirect down per existing target under workspace-write', async () => {
+    const { ctx } = await booted()
+    writeFileSync(join(root, 'in-workspace.txt'), 'x')
+    const exec = {
+      ...execution('bash', { command: 'echo a > fresh-ws.txt > in-workspace.txt' }),
+      agent: { session: { header: { cwd: root }, events: [
+        { type: 'permission/preset', data: { preset: 'workspace-write' } },
+      ] } },
+    } as unknown as ToolExecution
+    const decision = await ctx.waterfall('tools/pre-execute', exec, () => Promise.resolve({ kind: 'allow' } as const))
+    expect(decision).toEqual({ kind: 'allow' })
   })
 
   it('asks before an unspaced shell redirect overwrites or appends to an existing file', async () => {

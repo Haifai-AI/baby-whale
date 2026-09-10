@@ -1,1 +1,0 @@
-{"version":3,"file":"locales.d.ts","sourceRoot":"","sources":["locales.ts"],"names":[],"mappings":"AAAA,sCAAsC;AACtC,eAAO,MAAM,EAAE;;;;;;;;;;CAUmB,CAAA;AAElC,wDAAwD;AACxD,MAAM,MAAM,YAAY,GAAG,MAAM,OAAO,EAAE,CAAA;AAE1C,uCAAuC;AACvC,eAAO,MAAM,EAAE;;;;;;;;;;CAUyB,CAAA;AAExC,OAAO,QAAQ,kCAAkC,CAAC;IAChD,UAAU,kBAAkB;QAC1B,+CAA+C;QAC/C,UAAU,EAAE,YAAY,CAAA;KACzB;CACF"}

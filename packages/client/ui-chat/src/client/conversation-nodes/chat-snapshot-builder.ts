@@ -426,7 +426,6 @@ function isBootstrapNoise(node: ChatConversationViewNode): boolean {
     return data.command?.name === 'permission'
   }
   if (kind === 'unknown') return true
-  if (kind === 'context') return (node as ChatNode<'context'>).data.provenance.role !== 'recall'
   return false
 }
 

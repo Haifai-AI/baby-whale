@@ -20,9 +20,6 @@ afterEach(() => {
   cleanup()
 })
 
-const t = (key: string, params?: Record<string, unknown>): string =>
-  `${key}${params === undefined ? '' : `:${JSON.stringify(params)}`}`
-
 const produced = (...values: ReadonlyArray<readonly [seq: number, path: string]>): DeliverablesTurnData => ({
   produced: values.map(([seq, path]) => ({ seq, path, tool: 'write' })),
 })
@@ -103,7 +100,7 @@ describe('producedFileMentions', () => {
     const opened: string[] = []
     const mentions = producedFileMentions(
       ['deliverables/report.xlsx', 'notes/summary.md', 'notes/other/summary.md'],
-      path => { opened.push(path) },
+      (path) => { opened.push(path) },
       path => `open ${path}`,
     )
     mentions.resolve('deliverables/report.xlsx')?.open()

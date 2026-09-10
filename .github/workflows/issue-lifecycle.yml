@@ -43,22 +43,25 @@ jobs:
     # reviews never mint a write-capable App token.
     runs-on: ubuntu-latest
     steps:
-      - name: Check out trusted policy
+      - name: Check out policy
+        # PR events check out the merge ref so the policy that runs is the one
+        # this PR carries; issue events fall back to the default branch.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Create project token
         id: app-token
-        if: ${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}
+        # Board automation needs a configured GitHub App; without the repo
+        # variables/secrets it skips (green) instead of failing every event.
+        if: ${{ vars.DSH_ISSUE_APP_CLIENT_ID != '' && (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ vars.DSH_ISSUE_APP_CLIENT_ID }}
           private-key: ${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}
-          owner: deepseek-harness
-          repositories: deepseek-harness
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
       - name: Handle repository event
-        if: ${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}
+        if: ${{ vars.DSH_ISSUE_APP_CLIENT_ID != '' && (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/issue-management/policy.mjs lifecycle

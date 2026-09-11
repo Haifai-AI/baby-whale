@@ -209,7 +209,7 @@ describe('web e2e: whale office artifact preview cards', () => {
     page.on('console', (message) => {
       if (message.type() === 'error') console.error('CONSOLE_ERR:', message.text().slice(0, 300))
     })
-    page.on('pageerror', error => console.error('PAGEERROR:', String(error).slice(0, 300)))
+    page.on('pageerror', (error) => { console.error('PAGEERROR:', String(error).slice(0, 300)) })
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     // Phase 2: the shipped roster includes the Whale coworker preset (the

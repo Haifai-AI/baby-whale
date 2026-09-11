@@ -38,6 +38,37 @@ import {
 } from './fsio.ts'
 import type { FsIoInternals } from './fsio.ts'
 
+/**
+ * The write prologue shared by `writeText`/`writeBytes`: probe the target,
+ * then enforce the regular-file fence plus the caller's write intent
+ * (stale-version and create-if-absent) before any mutation.
+ * @param target - the resolved write target.
+ * @param expected - the caller's write intent, when declared.
+ * @returns the probed existing entry (null when the file is absent).
+ */
+async function probeForWrite(
+  target: FsTarget,
+  expected: FsWriteIntent | undefined,
+): Promise<Awaited<ReturnType<typeof probe>>> {
+  const existing = await probe(target.targetKey)
+  if (existing && existing.type !== 'file') {
+    throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
+  }
+
+  if (expected?.kind === 'replaceIfVersion') {
+    // Stale guard: the file must still exist at the version the owner observed.
+    if (!existing) throw new FsError(`cannot write "${target.displayPath}": file no longer exists`, 'FS_STALE_VERSION')
+    if (existing.version !== expected.version) {
+      throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
+    }
+  } else if (expected?.kind === 'createIfAbsent' && existing) {
+    // createIfAbsent onto an existing file: a blind overwrite — require a read first.
+    throw new FsError(`cannot overwrite existing "${target.displayPath}" without reading it first`, 'FS_NOT_OBSERVED')
+  }
+  // No expectation means an unconditional but still atomic write.
+  return existing
+}
+
 /** Configuration for the local filesystem backend. */
 export interface Config {
   /** Base directory for relative paths. Defaults to `process.cwd()`. */
@@ -171,22 +202,7 @@ export class LocalFileSystem extends FileSystem {
     signal?: AbortSignal,
   ): Promise<FsWriteOutcome> {
     return this.withLock(target.targetKey, async () => {
-      const existing = await probe(target.targetKey)
-      if (existing && existing.type !== 'file') {
-        throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
-      }
-
-      if (expected?.kind === 'replaceIfVersion') {
-        // Stale guard: the file must still exist at the version the owner observed.
-        if (!existing) throw new FsError(`cannot write "${target.displayPath}": file no longer exists`, 'FS_STALE_VERSION')
-        if (existing.version !== expected.version) {
-          throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
-        }
-      } else if (expected?.kind === 'createIfAbsent' && existing) {
-        // createIfAbsent onto an existing file: a blind overwrite — require a read first.
-        throw new FsError(`cannot overwrite existing "${target.displayPath}" without reading it first`, 'FS_NOT_OBSERVED')
-      }
-      // No expectation means an unconditional but still atomic write.
+      const existing = await probeForWrite(target, expected)
 
       // Capture an optional contextual-diff basis before the write. The bounded
       // reader checks the opened file itself, so an external replacement after
@@ -226,22 +242,7 @@ export class LocalFileSystem extends FileSystem {
     signal?: AbortSignal,
   ): Promise<FsBinaryWriteOutcome> {
     return this.withLock(target.targetKey, async () => {
-      const existing = await probe(target.targetKey)
-      if (existing && existing.type !== 'file') {
-        throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
-      }
-
-      if (expected?.kind === 'replaceIfVersion') {
-        // Stale guard: the file must still exist at the version the owner observed.
-        if (!existing) throw new FsError(`cannot write "${target.displayPath}": file no longer exists`, 'FS_STALE_VERSION')
-        if (existing.version !== expected.version) {
-          throw new FsError(`cannot write "${target.displayPath}": file changed since it was read`, 'FS_STALE_VERSION')
-        }
-      } else if (expected?.kind === 'createIfAbsent' && existing) {
-        // createIfAbsent onto an existing file: a blind overwrite — require a read first.
-        throw new FsError(`cannot overwrite existing "${target.displayPath}" without reading it first`, 'FS_NOT_OBSERVED')
-      }
-      // No expectation means an unconditional but still atomic write.
+      const existing = await probeForWrite(target, expected)
 
       await writeFileAtomic(
         target.targetKey,

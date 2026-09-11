@@ -66,6 +66,30 @@ function equalBreadcrumbs(left: readonly Breadcrumb[], right: readonly Breadcrum
 }
 
 /**
+ * The shared session-view preamble: subscribe to the view ledger, resolve the
+ * office-filtered tab strip, and pick the active view. A custom hook so the
+ * header and the session shell run the identical subscription set (rules of
+ * hooks: same hooks, same order, in each component).
+ * @param sessionId - the rendered session.
+ * @param useSessions - the session-list store selector hook.
+ * @param useStore - the chat store selector hook.
+ * @param views - the view ledger share.
+ * @returns the filtered tabs and the active view.
+ */
+function useOfficeAwareViews(
+  sessionId: SessionId,
+  useSessions: ConversationSessionProps['useSessions'],
+  useStore: ConversationSessionProps['useStore'],
+  views: ConversationSessionProps['views'],
+): { readonly tabs: readonly ViewTab[]; readonly active: ViewTab | undefined } {
+  useSyncExternalStore(views.subscribe, views.version)
+  const officeless = useSessions(store => OFFICELESS_PRESETS.has(store.byId[sessionId]?.agentPreset ?? ''))
+  const tabs = views.list().filter(tab => !(officeless && tab.id === 'whale-artifacts'))
+  const selectedId = useStore(s => s.view)
+  return { tabs, active: resolveActiveView(tabs, selectedId) }
+}
+
+/**
  * Renders Session header chrome above the resident conversation scrollport.
  * @param props - Strict Session store, view ledger, navigation, render, and locale shares.
  * @returns the hidden blank-session header or visible title and tabs.
@@ -74,11 +98,7 @@ export function ConversationSessionHeader({
   sessionId, useSession, useSessions, useStore, actions,
   renderSlot, views, open, t,
 }: ConversationSessionHeaderProps) {
-  useSyncExternalStore(views.subscribe, views.version)
-  const officeless = useSessions(store => OFFICELESS_PRESETS.has(store.byId[sessionId]?.agentPreset ?? ''))
-  const tabs = views.list().filter(tab => !(officeless && tab.id === 'whale-artifacts'))
-  const selectedId = useStore(s => s.view)
-  const active = resolveActiveView(tabs, selectedId)
+  const { tabs, active } = useOfficeAwareViews(sessionId, useSessions, useStore, views)
   const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
   const composerPhase = useSession(s => s.composerPhase)
   const blank = useSession(s => s.blank)
@@ -182,11 +202,7 @@ export function ConversationSession({
   sessionId, useSession, useSessions, useInput, inputActions, useStore, actions,
   renderSlot, views, bindDraftMirror, releaseSessionImages,
 }: ConversationSessionProps) {
-  useSyncExternalStore(views.subscribe, views.version)
-  const officeless = useSessions(store => OFFICELESS_PRESETS.has(store.byId[sessionId]?.agentPreset ?? ''))
-  const tabs = views.list().filter(tab => !(officeless && tab.id === 'whale-artifacts'))
-  const selectedId = useStore(s => s.view)
-  const active = resolveActiveView(tabs, selectedId)
+  const { active } = useOfficeAwareViews(sessionId, useSessions, useStore, views)
   const composerPhase = useSession(s => s.composerPhase)
   const blank = useSession(s => s.blank)
   const inputState = useInput(s => s)

@@ -79,9 +79,9 @@ export function ZoomableImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div className={css.zoomRoot}>
       <div className={css.zoomBar}>
-        <button type="button" className={css.zoomBtn} aria-label="zoom out" onClick={() => step(-1)}>−</button>
+        <button type="button" className={css.zoomBtn} aria-label="zoom out" onClick={() => { step(-1) }}>−</button>
         <span className={css.zoomLevel}>{percent === null ? 'Fit' : `${percent}%`}</span>
-        <button type="button" className={css.zoomBtn} aria-label="zoom in" onClick={() => step(1)}>+</button>
+        <button type="button" className={css.zoomBtn} aria-label="zoom in" onClick={() => { step(1) }}>+</button>
         <button type="button" className={css.zoomBtn} onClick={() => { setZoom(null) }}>⤢</button>
         <button
           type="button" className={css.zoomBtn} aria-label="actual size"

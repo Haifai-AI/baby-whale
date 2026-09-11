@@ -34,6 +34,8 @@ apps/web/dist/
 .artifacts/
 .dsh-build/
 .playwright-mcp/
+.dsh-whale-play-home/ # whale-play-seed.ts demo home (apps/web/tests dev tool output)
+whale-play-workspace/ # whale-play-seed.ts demo workspace artifacts
 .orig
 .worktrees/
 worktrees/

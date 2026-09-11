@@ -116,7 +116,7 @@ function extractRuns(block: string): RunFragment[] {
   return fragments
 }
 
-function decodeEntities(value: string): string {
+export function decodeEntities(value: string): string {
   return value
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

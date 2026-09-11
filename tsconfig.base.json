@@ -60,6 +60,7 @@
       "@deepseek-ai/dsh-tool-todo/types": ["./packages/todo/tool-todo/src/types.ts"],
       "@deepseek-ai/dsh-tool-todo/client": ["./packages/todo/tool-todo/src/client.ts"],
       "@deepseek-ai/dsh-tool-office/src/*": ["./packages/office/tool-office/src/*"],
+      "@deepseek-ai/dsh-tool-office": ["./packages/office/tool-office/src/index.ts"],
       "@deepseek-ai/dsh-whale-core/src/*": ["./packages/whale/core/src/*"],
       "@deepseek-ai/dsh-whale-core": ["./packages/whale/core/src"],
       "@deepseek-ai/dsh-whale-guardrails": ["./packages/whale/guardrails/src"],

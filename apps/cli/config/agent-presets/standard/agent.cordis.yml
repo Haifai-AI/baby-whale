@@ -41,8 +41,8 @@
 # never reached the model's shell at all. Both shell tools consume the host
 # registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
 # host-plane too.
-# tool-deliver stays in the HOST composition — a row belongs to exactly one
-# plane, and the host already mounts it for every session.
+- id: tool-deliver
+  name: '@deepseek-ai/dsh-tool-deliver'
 
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'

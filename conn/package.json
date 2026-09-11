@@ -1,1 +1,5 @@
-{"name":"@scope/connection","version":"1.0.0","main":"lib/index.js"}
+{
+  "name": "@scope/connection",
+  "version": "0.1.9",
+  "main": "lib/index.js"
+}

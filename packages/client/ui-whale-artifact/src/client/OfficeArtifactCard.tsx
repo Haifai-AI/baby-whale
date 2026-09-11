@@ -11,6 +11,7 @@ import type { PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { OfficeMeta, OfficePreviewData } from './whale-preview.ts'
 import { basename, filePathOf, formatBytes, previewOf } from './whale-preview.ts'
+import { DocxPage, SlideCard } from './office-pages.tsx'
 import type { NS } from './locales.ts'
 import css from './OfficeArtifactCard.module.css'
 
@@ -131,51 +132,21 @@ function SlidesPreview({ preview, t }: { preview: Extract<OfficePreviewData, { k
         <span className={css.slideDeckTitle}>{preview.title}</span>
       </div>
       {preview.slides.map((slide, index) => (
-        <div key={index} className={css.slideCard}>
-          <span className={css.slideAccent} />
-          <span className={css.slideTitleText}>{slide.title}</span>
-          {slide.subtitle !== undefined && <span className={css.slideSubtitle}>{slide.subtitle}</span>}
-          {slide.bullets !== undefined && (
-            <ul className={css.slideBullets}>
-              {slide.bullets.slice(0, MAX_SLIDE_BULLETS).map((bullet, bulletIndex) => <li key={bulletIndex}>{bullet}</li>)}
-            </ul>
-          )}
-          {slide.bullets !== undefined && slide.bullets.length > MAX_SLIDE_BULLETS && (
-            <div className={css.truncated}>{t('artifact.more', { count: slide.bullets.length - MAX_SLIDE_BULLETS })}</div>
-          )}
-        </div>
+        <SlideCard
+          key={index}
+          slide={slide}
+          css={css}
+          maxBullets={MAX_SLIDE_BULLETS}
+          overflowNote={slide.bullets !== undefined && slide.bullets.length > MAX_SLIDE_BULLETS
+            ? t('artifact.more', { count: slide.bullets.length - MAX_SLIDE_BULLETS })
+            : undefined}
+        />
       ))}
     </div>
   )
 }
 
-/** Document chrome: a readable page. */
+/** Document chrome: a readable paper page (shared body, card locals). */
 function DocumentPreview({ preview }: { preview: Extract<OfficePreviewData, { kind: 'docx' }> }) {
-  // Running counter: numbered items number among themselves, not by their
-  // flat position (headings and paragraphs must not shift the sequence).
-  let number = 0
-  return (
-    <div className={css.page}>
-      {preview.title !== undefined && <div className={css.docTitle}>{preview.title}</div>}
-      {preview.blocks.map((block, index) => {
-        switch (block.type) {
-          case 'heading1':
-            return <div key={index} className={css.h1}>{block.text}</div>
-          case 'heading2':
-            return <div key={index} className={css.h2}>{block.text}</div>
-          case 'heading3':
-            return <div key={index} className={css.h3}>{block.text}</div>
-          case 'quote':
-            return <div key={index} className={css.quote}>{block.text}</div>
-          case 'bullet':
-            return <div key={index} className={css.bullet}>• {block.text}</div>
-          case 'number':
-            number += 1
-            return <div key={index} className={css.bullet}>{number}. {block.text}</div>
-          case 'paragraph':
-            return <div key={index} className={css.paragraph}>{block.text}</div>
-        }
-      })}
-    </div>
-  )
+  return <DocxPage preview={preview} css={css} />
 }

@@ -381,11 +381,7 @@ export class E2BFileSystem extends FileSystem {
     signal?: AbortSignal,
   ): Promise<FsWriteOutcome> {
     return this.withLock(String(target.targetKey), async () => {
-      const existing = await this.probe(String(target.targetKey), target.displayPath, signal)
-      if (existing !== undefined && entryType(existing) !== 'file') {
-        throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
-      }
-      this.checkWriteIntent(existing, expected, target)
+      const existing = await this.probeForWrite(target, expected, signal)
       const before = existing === undefined ? null : await this.readForDiff(target, signal)
       const version = await this.writeAtomic(
         target,
@@ -410,11 +406,7 @@ export class E2BFileSystem extends FileSystem {
     signal?: AbortSignal,
   ): Promise<FsBinaryWriteOutcome> {
     return this.withLock(String(target.targetKey), async () => {
-      const existing = await this.probe(String(target.targetKey), target.displayPath, signal)
-      if (existing !== undefined && entryType(existing) !== 'file') {
-        throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
-      }
-      this.checkWriteIntent(existing, expected, target)
+      const existing = await this.probeForWrite(target, expected, signal)
       const version = await this.writeAtomic(
         target,
         bytes,
@@ -499,6 +491,28 @@ export class E2BFileSystem extends FileSystem {
     if (info === undefined) throw new FsError(`cannot read "${target.displayPath}": not found`, 'FS_NOT_FOUND')
     if (info.type !== 'file') throw new FsError(`cannot read "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
     return info
+  }
+
+  /**
+   * The write prologue shared by `writeText`/`writeBytes`: probe the target
+   * under the caller's signal, then enforce the regular-file and write-intent
+   * fences before any mutation.
+   * @param target - the resolved write target.
+   * @param expected - the caller's write intent, when declared.
+   * @param signal - cancellation for the probe.
+   * @returns the existing entry observation (undefined when the file is absent).
+   */
+  private async probeForWrite(
+    target: FsTarget,
+    expected: FsWriteIntent | undefined,
+    signal?: AbortSignal,
+  ): Promise<EntryInfo | undefined> {
+    const existing = await this.probe(String(target.targetKey), target.displayPath, signal)
+    if (existing !== undefined && entryType(existing) !== 'file') {
+      throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
+    }
+    this.checkWriteIntent(existing, expected, target)
+    return existing
   }
 
   private checkWriteIntent(existing: EntryInfo | undefined, expected: FsWriteIntent | undefined, target: FsTarget): void {

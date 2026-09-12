@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tool-office",
   "description": "Model-facing office read tools (xlsx_read, csv_read, docx_text) over the DeepSeek Harness filesystem seam; creation is code-first via bash",
-  "version": "0.1.1-rc.2",
+  "version": "0.1.9",
   "publishConfig": {
     "access": "public"
   },

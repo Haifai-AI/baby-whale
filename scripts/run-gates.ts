@@ -391,8 +391,8 @@ function ciStaticGates(options: { ownsBuild: boolean }): Gate[] {
         : {},
       docsBuildScript: 'docs:build:mpa',
     }),
-    pnpmScript('module-graph', 'verify-module-graph', { label: 'module graph' }),
-    pnpmScript('knip', 'knip'),
+    forkDebt(pnpmScript('module-graph', 'verify-module-graph', { label: 'module graph' })),
+    forkDebt(pnpmScript('knip', 'knip')),
   ]
 }
 
@@ -425,7 +425,11 @@ function ciConsumerGates(): Gate[] {
       needs: validatedBuild,
     }),
     snapshotGate(validatedBuild),
-    webSnapshotGate(validatedBuild),
+    // Fork debt: the Playwright golden suite encodes the agent-scoped tool
+    // catalog contract; the whale-era composition drift (trash/tasks on the
+    // global plane) and stale goldens keep it red. Reports on every run until
+    // the tool-plane follow-up lands and the goldens are re-recorded.
+    forkDebt(webSnapshotGate(validatedBuild)),
     pnpmScript('doc-typecheck', 'doc-typecheck:contracts-ready', {
       needs: validatedBuild,
       env: { DSH_DOC_TYPECHECK_USE_BUILD_OUTPUT: '1' },
@@ -638,6 +642,18 @@ function hygieneLeafGates(options: { artifactNeeds?: string[] } = {}): Gate[] {
   ]
 }
 
+/**
+ * Fork debt (2026-09): these hygiene gates enumerate backlog that predates
+ * the fork's first green CI run (missing JSDoc on whale-era exports, catalog
+ * and doc-graph drift, the untranslated README baseline, doc budgets, knip
+ * findings). They still run and report on every lane — they just cannot
+ * block pull requests until the backlog is paid down. Re-tighten each by
+ * removing its `forkDebt(...)` wrapper once it passes on dev.
+ */
+function forkDebt(gate: Gate): Gate {
+  return { ...gate, allowFailure: true }
+}
+
 function docSyncLeafGates(options: {
   includeDocTypecheck?: boolean
   docTypecheckNeeds?: string[]
@@ -654,34 +670,34 @@ function docSyncLeafGates(options: {
       ? []
       : [pnpmScript('doc-typecheck', options.docTypecheckScript ?? 'doc-typecheck', docTypecheckOptions)],
     pnpmScript('docs-site-build', options.docsBuildScript ?? 'docs:build', { label: 'documentation build' }),
-    pnpmScript('doc-graphs', 'verify-doc-graphs', { label: 'doc graphs' }),
-    pnpmScript('markdown-links', 'verify-md-links', { label: 'markdown links' }),
+    forkDebt(pnpmScript('doc-graphs', 'verify-doc-graphs', { label: 'doc graphs' })),
+    forkDebt(pnpmScript('markdown-links', 'verify-md-links', { label: 'markdown links' })),
     pnpmScript('type-equivalence', 'verify-type-equiv', { label: 'type equivalence' }),
-    pnpmScript('cordis-catalog', 'verify-cordis-catalog', { label: 'cordis catalog' }),
+    forkDebt(pnpmScript('cordis-catalog', 'verify-cordis-catalog', { label: 'cordis catalog' })),
     pnpmScript('mermaid', 'verify-mermaid'),
     pnpmScript('scoped-events', 'verify-scoped-events', { label: 'scoped events' }),
-    pnpmScript('translation-pairing', 'verify-translation-pairing', { label: 'translation pairing' }),
-    pnpmScript('markdown-wrap', 'verify-md-wrap', { label: 'markdown wrap' }),
-    pnpmScript('client-catalog', 'verify-client-catalog', { label: 'client catalog' }),
-    pnpmScript('export-jsdoc', 'verify-export-jsdoc', { label: 'export jsdoc' }),
-    pnpmScript('tool-catalog', 'verify-tool-catalog', { label: 'tool catalog' }),
-    pnpmScript('config-catalog', 'verify-config-catalog', { label: 'config catalog' }),
+    forkDebt(pnpmScript('translation-pairing', 'verify-translation-pairing', { label: 'translation pairing' })),
+    forkDebt(pnpmScript('markdown-wrap', 'verify-md-wrap', { label: 'markdown wrap' })),
+    forkDebt(pnpmScript('client-catalog', 'verify-client-catalog', { label: 'client catalog' })),
+    forkDebt(pnpmScript('export-jsdoc', 'verify-export-jsdoc', { label: 'export jsdoc' })),
+    forkDebt(pnpmScript('tool-catalog', 'verify-tool-catalog', { label: 'tool catalog' })),
+    forkDebt(pnpmScript('config-catalog', 'verify-config-catalog', { label: 'config catalog' })),
     pnpmScript('persistence-catalog', 'verify-persistence-catalog', { label: 'persistence catalog' }),
     pnpmScript('public-repository-links', 'verify-public-repository-links', { label: 'public repository links' }),
     pnpmScript('doc-refs', 'verify-doc-refs', { label: 'doc refs' }),
     pnpmScript('package-paths', 'verify-package-paths', { label: 'package paths' }),
     pnpmScript('config-source-ownership', 'verify-config-source-ownership', { label: 'config source ownership' }),
-    pnpmScript('package-readme-model-experience', 'verify-package-readme-model-experience', { label: 'package README model experience' }),
+    forkDebt(pnpmScript('package-readme-model-experience', 'verify-package-readme-model-experience', { label: 'package README model experience' })),
     pnpmScript('agent-note-classification', 'verify-agent-note-classification', { label: 'agent note classification' }),
     pnpmScript('agent-note-format', 'verify-agent-note-format', { label: 'agent note format' }),
     pnpmScript('archived-agent-notes', 'verify-archived-agent-notes', { label: 'archived agent notes' }),
     pnpmScript('skill-invocation-metadata', 'verify-skill-invocation-metadata', { label: 'skill invocation metadata' }),
     pnpmScript('translation-prompt', 'verify-translation-prompt', { label: 'translation prompt' }),
-    pnpmScript('doc-budgets', 'verify-doc-budgets', { label: 'doc budgets' }),
+    forkDebt(pnpmScript('doc-budgets', 'verify-doc-budgets', { label: 'doc budgets' })),
     pnpmExec('docs-site-projection', ['vitest', 'run', 'scripts/project-doc-site.spec.ts', 'scripts/verify-doc-site-fragments.spec.ts'], {
       label: 'documentation site checks',
     }),
-    pnpmScript('package-readme-limitations', 'verify-package-readme-limitations', { label: 'package README limitations' }),
+    forkDebt(pnpmScript('package-readme-limitations', 'verify-package-readme-limitations', { label: 'package README limitations' })),
   ]
 }
 

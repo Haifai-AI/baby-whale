@@ -70,6 +70,7 @@
 
 # ── office artifacts ───────────────────────────────────────────────────────
 
+# Agent-scoped readers: the session's own catalog, never the global plane.
 - id: tool-office
   name: '@deepseek-ai/dsh-tool-office'
 

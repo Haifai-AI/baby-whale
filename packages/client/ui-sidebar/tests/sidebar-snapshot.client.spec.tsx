@@ -46,7 +46,7 @@ async function bench(options: { locale?: 'en' } = {}) {
         install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
       },
     },
-  } as never)
+  })
   runtime.slots.installLocale(locale)
   await runtime.declare({ 'sidebar': { kind: 'single', scope: 'root' } })
   await runtime.mount({ inject: [...inject], apply })

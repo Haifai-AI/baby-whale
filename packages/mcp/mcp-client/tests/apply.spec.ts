@@ -132,6 +132,7 @@ describe('mcp-client plugin module exports', () => {
       command: 'echo',
     } as never)
     expect(omitted.reconnect).toEqual({ enabled: true, initialDelayMs: 500, maxDelayMs: 30_000, maxAttempts: 10 })
+    expect(omitted.startupTimeoutMs).toBe(30_000)
 
     const partial = ConfigSchema({
       transport: 'stdio',
@@ -267,6 +268,52 @@ describe('apply (plugin lifecycle)', () => {
     expect(mockListTools).not.toHaveBeenCalled()
     expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()
     await ctx.fiber.dispose()
+    expect(mockClose).toHaveBeenCalled()
+  })
+
+  it('fails the fiber when startup exceeds startupTimeoutMs (fatal)', async () => {
+    // A server that accepts the transport but never answers `initialize`:
+    // connect never settles on its own.
+    const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
+    mockConnect.mockImplementation(() => connectGate.promise)
+
+    await expect(apply(ctx, {
+      ...stdioConfig,
+      startupTimeoutMs: 80,
+      failOnStartupError: true,
+    })).rejects.toMatchObject({
+      message: 'mcp-client(srv): initial connection or tool synchronization failed',
+      cause: expect.objectContaining({ message: expect.stringContaining('startup did not settle within 80ms') }),
+    })
+
+    expect(mockListTools).not.toHaveBeenCalled()
+    expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()
+
+    // The rollback disposed the connection; let the abandoned in-flight
+    // attempt settle so the supervisor quiesces.
+    connectGate.reject(new Error('initialize never answered'))
+    await ctx.fiber.dispose()
+    await sleep(50)
+    expect(mockClose).toHaveBeenCalled()
+  })
+
+  it('activates without tools when startup exceeds startupTimeoutMs (non-fatal) and the supervisor keeps going', async () => {
+    const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
+    mockConnect.mockImplementation(() => connectGate.promise)
+
+    await expect(apply(ctx, {
+      ...stdioConfig,
+      startupTimeoutMs: 80,
+    })).resolves.toBeUndefined()
+
+    expect(mockListTools).not.toHaveBeenCalled()
+    expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()
+
+    // The supervisor is still running: settling the abandoned attempt funnels
+    // it into the reconnect path, and disposal stops it cleanly.
+    connectGate.reject(new Error('initialize never answered'))
+    await ctx.fiber.dispose()
+    await sleep(50)
     expect(mockClose).toHaveBeenCalled()
   })
 

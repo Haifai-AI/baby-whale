@@ -14,8 +14,9 @@
 /**
  * File-effect policy for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace and a
- * backend-defined temp area; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * backend-defined temp area; `danger-full-access` bypasses confinement.
+ * Process visibility is outside this vocabulary; network egress is governed by
+ * {@link SandboxEgress} beside the mode.
  */
 type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 ```
@@ -51,6 +52,8 @@ type SandboxEnforcement = 'full' | 'partial'
 interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
+  /** Network-egress posture this execution runs under (default-deny). */
+  egress: SandboxEgress
   /** Absolute root directory `workspace-write` may write under. */
   workspaceRoot: string
   /**

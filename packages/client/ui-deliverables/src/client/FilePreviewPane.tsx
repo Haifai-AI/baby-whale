@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import { withApiTokenQuery } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -78,7 +79,7 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
     return () => { cancelled = true }
   }, [connection, mode, path, sessionId])
 
-  const rawUrl = `/api/artifacts.raw?${rawQuery.toString()}`
+  const rawUrl = withApiTokenQuery(`/api/artifacts.raw?${rawQuery.toString()}`)
   if (mode === 'image') {
     return (
       <div className={css.filePreviewPane}>
@@ -112,7 +113,7 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
       {preview.status === 'ready' && preview.data.kind === 'pdf' && (
         <iframe
           title={basename(path)}
-          src={`/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`}
+          src={withApiTokenQuery(`/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`)}
           className={css.filePreviewFrame}
         />
       )}

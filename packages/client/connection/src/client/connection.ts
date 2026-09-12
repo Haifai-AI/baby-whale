@@ -62,6 +62,13 @@ export class ConnectionController {
   private generation = 0
   private attempt = 0
   private current: AbortController | null = null
+  /**
+   * The start-to-stop token: the backoff sleep listens to it, so stop()
+   * cancels a pending backoff as well as the live attempt, and a loop
+   * orphaned by a stop-then-start restart sees its own token aborted and
+   * exits instead of doubling the new loop.
+   */
+  private lifecycle: AbortController | null = null
   private running = false
   private lastState: ConnectionState | null = null
   private readonly config: Required<ConnectionConfig>
@@ -78,12 +85,16 @@ export class ConnectionController {
   start(): void {
     if (this.running) return
     this.running = true
-    void this.loop()
+    const lifecycle = new AbortController()
+    this.lifecycle = lifecycle
+    void this.loop(lifecycle.signal)
   }
 
-  /** Stop the loop and abort the current generation's streams. */
+  /** Stop the loop: abort the live attempt and any pending backoff wait. */
   stop(): void {
     this.running = false
+    this.lifecycle?.abort()
+    this.lifecycle = null
     this.current?.abort()
     this.current = null
   }
@@ -99,13 +110,19 @@ export class ConnectionController {
     return this.running
   }
 
-  /** Re-read both mutable liveness guards after a potentially reentrant sink. */
-  private isGenerationActive(controller: AbortController): boolean {
-    return this.isRunning() && !controller.signal.aborted
+  /** Re-read the running flag plus one abort token after a potentially reentrant sink. */
+  private isLive(signal: AbortSignal): boolean {
+    return this.isRunning() && !signal.aborted
   }
 
-  private async loop(): Promise<void> {
-    while (this.running) {
+  /**
+   * The connect/pump/reconnect loop for one start-to-stop span.
+   * @param lifecycle - the owning start() call's token; an orphaned loop
+   *   (stop-then-start during backoff) exits on its aborted token instead of
+   *   running beside the new loop.
+   */
+  private async loop(lifecycle: AbortSignal): Promise<void> {
+    while (this.running && !lifecycle.aborted) {
       const gen = ++this.generation
       const ac = new AbortController()
       this.current = ac
@@ -150,7 +167,7 @@ export class ConnectionController {
         this.emitState('connected')
         // A state sink may synchronously stop this controller. Do not publish
         // a description for a generation that no longer exists afterward.
-        if (this.isGenerationActive(ac)) {
+        if (this.isLive(ac.signal)) {
           this.callSink(() => { this.sinks.onConnected?.(descriptionResult.value) })
         }
       } catch {
@@ -159,12 +176,13 @@ export class ConnectionController {
       }
 
       await failed
-      if (!this.isRunning()) return
+      if (!this.isLive(lifecycle)) return
       this.emitState('reconnecting')
       this.attempt += 1
       console.warn(`[web-runtime] connection lost, retry #${this.attempt}`)
-      const idle = new AbortController()
-      await sleep(this.backoffDelay(this.attempt), idle.signal)
+      // A stop() during this wait aborts the lifecycle token and wakes the
+      // sleep at once; a restart orphans this loop on its aborted token.
+      await sleep(this.backoffDelay(this.attempt), lifecycle)
     }
   }
 

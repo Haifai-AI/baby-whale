@@ -64,14 +64,10 @@
 
 # ── office artifacts ───────────────────────────────────────────────────────
 
-# Readers only (xlsx_read / csv_read / docx_text). Creation happens through
-# user-authored Python run via the bash tool above; finished files surface as
-# deliverables through the deliver tool.
-- id: tool-office
-  name: '@deepseek-ai/dsh-tool-office'
-
-- id: tool-deliver
-  name: '@deepseek-ai/dsh-tool-deliver'
+# tool-office (readers only: xlsx_read / csv_read / docx_text; creation happens
+# through user-authored Python run via the bash tool above) and tool-deliver
+# stay in the HOST composition — a row belongs to exactly one plane, and the
+# host already mounts both for every session.
 
 # ── research ────────────────────────────────────────────────────────────────
 

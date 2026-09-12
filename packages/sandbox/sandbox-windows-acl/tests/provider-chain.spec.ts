@@ -13,8 +13,10 @@ import { Context } from '@deepseek-ai/cordis'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
 
-const RO: SandboxPolicy = { mode: 'read-only', workspaceRoot: '/ws' }
-const WW: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: '/ws' }
+// Allow posture: this suite pins the files-only rung's argv contract, which a
+// deny policy never reaches (pinned in sandbox-local/tests/local.spec.ts).
+const RO: SandboxPolicy = { mode: 'read-only', egress: 'allow', workspaceRoot: '/ws' }
+const WW: SandboxPolicy = { mode: 'workspace-write', egress: 'allow', workspaceRoot: '/ws' }
 
 async function setup(internals: LocalSandboxProvider['internals']) {
   const ctx = new Context()

@@ -1,7 +1,14 @@
 /** Behavior of the /api browser-trust fence (rebinding + cross-site defense). */
 
 import { describe, expect, it } from 'vitest'
-import { assertTrustedAuthority, isTrustedApiRequest } from '../src/api-request-trust.ts'
+import {
+  assertPinnedApiToken,
+  assertTrustedAuthority,
+  createApiToken,
+  extractApiToken,
+  isTrustedApiRequest,
+  verifyApiToken,
+} from '../src/api-request-trust.ts'
 
 function request(headers: Record<string, string | undefined>): { headers: Record<string, string | undefined> } {
   return { headers }
@@ -104,5 +111,42 @@ describe('isTrustedApiRequest', () => {
     expect(isTrustedApiRequest(request({ ...markers, host: 'bad host' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '127.0.0.999' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '128.0.0.1' }), [])).toBe(false)
+  })
+})
+
+describe('instance API token', () => {
+  it('mints URL-safe 256-bit tokens that differ every call', () => {
+    for (const token of [createApiToken(), createApiToken()]) {
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    }
+    expect(createApiToken()).not.toBe(createApiToken())
+  })
+
+  it('extracts the credential from the header first, then the query', () => {
+    expect(extractApiToken('Bearer abc', '/api/x?token=query')).toBe('abc')
+    expect(extractApiToken('Basic dXNlcg==', '/api/x?token=query')).toBe('query')
+    expect(extractApiToken('Bearer', '/api/x')).toBeUndefined()
+    expect(extractApiToken('Bearer ', '/api/x')).toBeUndefined()
+    expect(extractApiToken('Bearer a b', '/api/x')).toBeUndefined()
+    expect(extractApiToken('Basic dXNlcg==', undefined)).toBeUndefined()
+    expect(extractApiToken(undefined, '/api/x')).toBeUndefined()
+    expect(extractApiToken(undefined, undefined)).toBeUndefined()
+    // A malformed percent-encoding names no token rather than throwing.
+    expect(extractApiToken(undefined, '/api/x?token=%E0%A4%A')).toBeUndefined()
+  })
+
+  it('verifies only an exact match against a non-empty instance token', () => {
+    expect(verifyApiToken('abc', 'abc')).toBe(true)
+    expect(verifyApiToken('abc', 'abd')).toBe(false)
+    expect(verifyApiToken(undefined, 'abc')).toBe(false)
+    expect(verifyApiToken('', 'abc')).toBe(false)
+    expect(verifyApiToken('abc', '')).toBe(false)
+  })
+
+  it('rejects weak deployment pins and passes strong ones through', () => {
+    for (const pinned of ['short', 'has space in it', 'punctuation!']) {
+      expect(() => { assertPinnedApiToken(pinned) }).toThrow(/at least 16 URL-safe/)
+    }
+    expect(assertPinnedApiToken('0123456789abcdef')).toBe('0123456789abcdef')
   })
 })

@@ -6,8 +6,8 @@ import type {} from '@deepseek-ai/dsh-attachment'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
 import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
-import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
-import { assertTrustedAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES, RequestMemoryBudget } from './http-bridge.ts'
+import { assertPinnedApiToken, assertTrustedAuthority, createApiToken, extractApiToken, isTrustedApiRequest, verifyApiToken } from './api-request-trust.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
 
@@ -57,13 +57,33 @@ export interface ConnectionConfig {
    * that is not a bare, canonical authority fails the plugin load.
    */
   trustedHosts?: string[]
+  /**
+   * Pinned host API token: at least 16 URL-safe characters
+   * (`[A-Za-z0-9_-]`). Default (empty): a fresh random token minted at every
+   * server start — the first-party UI learns it from the entry URL, and
+   * non-browser automation reads the token file the web bundle maintains.
+   * Pin only for automation that cannot read that file; a weak pin fails the
+   * plugin load.
+   */
+  apiToken?: string
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+  /**
+   * Total in-flight request-body bytes across all concurrent bridged
+   * requests. Small API calls declare small sizes and never contend; a
+   * second giant arriving while the first is in flight gets 503 instead of
+   * OOMing the host. Default: one per-request maximum.
+   */
+  maxInflightRequestBytes?: number
 }
 
 export const Config: z<ConnectionConfig> = z.object({
   trustedHosts: z.array(String).default([]),
+  // Empty means unpinned (a fresh token per boot); a pin is validated in
+  // apply(), where a weak value fails the load loudly.
+  apiToken: z.string().default(''),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
+  maxInflightRequestBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
 })
 
 /**
@@ -135,7 +155,15 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
   // silently authorizing its hostname prefix at request time.
   for (const entry of trustedHosts) assertTrustedAuthority(entry)
   if (ctx.get('apiProxy') !== undefined) assertImageBodyCapacity(ctx, maxRequestBodyBytes)
-  const connection = new HostConnectionService(ctx, trustedHosts)
+  const maxInflightRequestBytes = config?.maxInflightRequestBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
+  const requestBudget = new RequestMemoryBudget(maxInflightRequestBytes)
+  // The per-instance credential other local processes do not have: loopback
+  // passes any local caller, so the fence alone cannot authorize. A pinned
+  // deployment token is honored (validated); otherwise every boot mints one.
+  const apiToken = config?.apiToken !== undefined && config.apiToken !== ''
+    ? assertPinnedApiToken(config.apiToken)
+    : createApiToken()
+  const connection = new HostConnectionService(ctx, trustedHosts, requestBudget, apiToken)
   const fetchHandler = connection.createSharedFetchHandler(API_PATH, {
     async fetch(request) {
       const pathname = new URL(request.url).pathname
@@ -162,12 +190,13 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
     kind: 'prefix',
     path: API_PATH,
     handler: async (req, res) => {
-      if (!isTrustedApiRequest(req, trustedHosts)) {
+      if (!isTrustedApiRequest(req, trustedHosts)
+        || !verifyApiToken(extractApiToken(req.headers.authorization, req.url), apiToken)) {
         res.writeHead(403)
         res.end('forbidden')
         return
       }
-      await bridge(req, res, fetchHandler, maxRequestBodyBytes)
+      await bridge(req, res, fetchHandler, maxRequestBodyBytes, requestBudget)
     },
   }
   ctx.effect(() => ctx.webServer.register(route), 'client-connection: /api route')
@@ -181,7 +210,10 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
       apiCtx.effect(() => apiCtx.webServer.registerUpgrade({
         path,
         handler: (req, socket, head) => {
-          if (!isTrustedApiRequest(req, trustedHosts)) {
+          // Browsers cannot set WebSocket headers, so the downlink token
+          // travels as the `token` query parameter the client appends.
+          if (!isTrustedApiRequest(req, trustedHosts)
+            || !verifyApiToken(extractApiToken(undefined, req.url), apiToken)) {
             rejectWebSocketUpgrade(socket)
             return
           }

@@ -12,6 +12,7 @@ import clsx from 'clsx'
 import {
   IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { resolveApiToken } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only: the `plan` projection key merge (the TodoDock posture — the
 // composer reads a host-computed value; the domain owns the key).
 import type {} from '@deepseek-ai/dsh-plan-mode/client'
@@ -549,9 +550,10 @@ export function InputBar({
         showToast(t('file.uploading', { name: file.name }))
         try {
           const query = new URLSearchParams({ session: sessionId ?? '', filename: file.name })
+          const apiToken = resolveApiToken()
           const response = await fetch(`/api/workspace.upload?${query.toString()}`, {
             method: 'POST',
-            headers: { 'content-type': 'application/octet-stream' },
+            headers: { 'content-type': 'application/octet-stream', ...(apiToken === undefined ? {} : { authorization: `Bearer ${apiToken}` }) },
             body: file,
           })
           if (!response.ok) throw new Error(`status ${response.status}`)

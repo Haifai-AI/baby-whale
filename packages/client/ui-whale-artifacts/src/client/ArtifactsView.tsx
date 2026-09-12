@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import { withApiTokenQuery } from '@deepseek-ai/dsh-client-connection/client'
 import type { ArtifactEntry } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { CodeFilePreview, MarkdownFilePreview, ZoomableImage } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -76,10 +77,12 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
     | null
   >(null)
   const cwd = useSessions(list => list.byId[sessionId]?.cwd)
-  // Mutable race guard for the async preview parse below. A ref (not a
-  // closure local) so the linter cannot constant-fold the "still current"
-  // checks away — the cleanup really does flip it after unmounts/reselects.
-  const cancelledRef = useRef(false)
+  // Per-request generation for the async preview parse below. A shared
+  // boolean cannot work here: reselecting clears it for the new request,
+  // which also re-arms an older in-flight response to render stale content.
+  // Each effect run claims a generation and only its own responses may set
+  // state; the cleanup claims one more so unmounts invalidate pendings too.
+  const requestRef = useRef(0)
 
   const load = useCallback(async () => {
     try {
@@ -97,36 +100,38 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
 
   useEffect(() => { void load() }, [load])
 
-  // Reset + parse whenever the selection changes; cancelled-flag guards races.
+  // Reset + parse whenever the selection changes; the generation guards races.
   useEffect(() => {
     if (selected === null) {
       setPreview(null)
       return
     }
-    cancelledRef.current = false
+    const generation = ++requestRef.current
+    const current = (): boolean => requestRef.current === generation
     if (selected.kind === 'pdf' || selected.kind === 'image'
       || selected.kind === 'video' || selected.kind === 'audio') {
       // Browser-native rendering: serve the original bytes directly.
       const query = new URLSearchParams({ session: sessionId, path: selected.path })
-      setPreview({ status: 'raw', url: `/api/artifacts.raw?${query.toString()}` })
+      setPreview({ status: 'raw', url: withApiTokenQuery(`/api/artifacts.raw?${query.toString()}`) })
       return
     }
     setPreview({ status: 'loading' })
     void (async () => {
       try {
         const response = await connection.api.artifacts.preview({ sessionId, path: selected.path })
+        if (!current()) return
         const value = response.result.ok ? response.result.value : undefined
         const parsed = value?.preview as ParsedPreview | undefined
-        if (!cancelledRef.current && parsed !== undefined && typeof parsed.kind === 'string') {
+        if (parsed !== undefined && typeof parsed.kind === 'string') {
           setPreview({ status: 'ready', data: parsed })
-        } else if (!cancelledRef.current) {
+        } else {
           setPreview({ status: 'unsupported' })
         }
       } catch {
-        if (!cancelledRef.current) setPreview({ status: 'unsupported' })
+        if (current()) setPreview({ status: 'unsupported' })
       }
     })()
-    return () => { cancelledRef.current = true }
+    return () => { requestRef.current += 1 }
   }, [connection, selected, sessionId])
 
   const open = (entry: ArtifactEntry): void => {
@@ -190,7 +195,7 @@ export function ArtifactsView({ sessionId, useSessions, connection, t }: Artifac
             {preview?.status === 'ready' && preview.data.kind === 'pdf' && (
               <iframe
                 title={selected.name}
-                src={`/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`}
+                src={withApiTokenQuery(`/api/artifacts.file?path=${encodeURIComponent(preview.data.pdfPath ?? '')}`)}
                 className={css.pdfFrame}
               />
             )}

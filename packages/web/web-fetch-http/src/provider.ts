@@ -1,20 +1,25 @@
 /**
- * Safe HTTP(S) retrieval for `ctx.web`: validates URLs, follows only same-origin redirects,
- * enforces time and size limits, classifies and decodes text, and leaves presentation to
- * `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies or ambient credentials.
- *
- * Private-network and SSRF protection is not implemented; do not enable this provider where
- * it can reach sensitive internal targets.
+ * Safe HTTP(S) retrieval for `ctx.web`: validates URLs, enforces the egress
+ * gate (default-deny for non-public destinations — loopback, private ranges,
+ * link-local, cloud metadata — with DNS-resolve-then-validate and per-hop
+ * re-validation), follows only same-origin redirects, enforces time and size
+ * limits, classifies and decodes text, and leaves presentation to
+ * `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies or ambient
+ * credentials. Residual: adversarial DNS flipping between the gate's lookup
+ * and the fetch (rebinding) is not closed — see `./egress.ts`.
  * @module @deepseek-ai/dsh-web-fetch-http/provider
  */
 
 import { WebError } from '@deepseek-ai/dsh-web'
 import type { WebFetchBody, WebFetchProvider, WebFetchRequest, WebFetchResult } from '@deepseek-ai/dsh-web'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import { assertEgressAllowed } from './egress.ts'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from './policy.ts'
 
 /** Resolved provider limits (the plugin's schemastery Config supplies defaults). */
 export interface HttpFetchLimits {
+  /** Bare-host egress exceptions for private destinations (operator opt-in). */
+  egressAllowHosts: readonly string[]
   /** Maximum accepted request URL length. */
   maxUrlLength: number
   /** Maximum response body size in bytes (read is aborted past this). */
@@ -55,6 +60,7 @@ export class HttpFetchProvider implements WebFetchProvider {
   /** Follow same-origin redirects up to the hop cap, then read the final response. */
   private async followAndRead(initialUrl: string, signal: AbortSignal): Promise<WebFetchResult> {
     let currentUrl = validateFetchUrl(initialUrl, this.limits.maxUrlLength)
+    await assertEgressAllowed(currentUrl, this.limits.egressAllowHosts)
     let redirectsFollowed = 0
 
     for (;;) {
@@ -80,6 +86,9 @@ export class HttpFetchProvider implements WebFetchProvider {
         let validatedTarget: URL
         try {
           validatedTarget = validateFetchUrl(target.toString(), this.limits.maxUrlLength)
+          // Per-hop re-validation: DNS may resolve differently between hops,
+          // so a redirect is never trusted on the initial verdict.
+          await assertEgressAllowed(validatedTarget, this.limits.egressAllowHosts)
           if (!isSameOrigin(validatedTarget, currentUrl)) {
             throw new WebError(
               `cross-origin redirect to ${validatedTarget.origin} is not followed automatically; retry against that URL directly`,

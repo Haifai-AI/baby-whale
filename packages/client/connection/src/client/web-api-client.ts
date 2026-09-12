@@ -2,6 +2,7 @@
 
 import type { ApiProxy, HostFrame, MuxFrame, RpcRequest, ServerRequest } from './api.ts'
 import { AbstractApiClient } from './api.ts'
+import { resolveApiToken } from './api-token.ts'
 import { hostFrameSchema, muxFrameSchema } from '@deepseek-ai/dsh-host-apiproxy/api/events.schema'
 import { serverRequestSchema } from '@deepseek-ai/dsh-host-apiproxy/api/rpc.schema'
 import { HOST_EVENTS_PATH, MUX_EVENTS_PATH } from '../api-path.ts'
@@ -12,7 +13,15 @@ type Parser<F> = { parse(value: unknown): F }
 /** Browser platform subclass: unary/respond use fetch; mux/host use downlink-only WebSockets. */
 export class WebApiClient extends AbstractApiClient {
   protected doFetch(input: URL, init?: RequestInit): Promise<Response> {
-    return globalThis.fetch(input, init)
+    // The per-instance host credential: loopback passes any local process,
+    // so the server fence additionally requires this token on every call.
+    // Without a token the call passes through untouched (fixture transports
+    // and token-less navigations fail the server fence, never send a guess).
+    const token = resolveApiToken()
+    if (token === undefined) return globalThis.fetch(input, init)
+    const headers = new Headers(init?.headers)
+    headers.set('authorization', `Bearer ${token}`)
+    return globalThis.fetch(input, { ...init, headers })
   }
 
   protected override openMux(
@@ -39,6 +48,9 @@ export class WebApiClient extends AbstractApiClient {
   ): AsyncGenerator<RpcRequest<F>> {
     const url = new URL(path, this.resolveBase())
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    // Browsers cannot set WebSocket headers: the token rides the query.
+    const token = resolveApiToken()
+    if (token !== undefined) url.searchParams.set('token', token)
     const socket = new WebSocket(url)
     const inbox: SocketItem<F>[] = []
     let wake: (() => void) | undefined

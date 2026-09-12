@@ -39,7 +39,9 @@ beforeEach(async () => {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(WebRuntime, { searchProvider: WebSearchExa.EXA_PROVIDER_ID, fetchProvider: WebFetchLocal.LOCAL_FETCH_PROVIDER_ID })
-  await ctx.plugin(WebFetchLocal, {})
+  // The loopback fixture server is the operator opt-in case: the egress gate
+  // denies non-public destinations by default, so the fixture allowlists it.
+  await ctx.plugin(WebFetchLocal, { egressAllowHosts: ['127.0.0.1'] })
   await ctx.plugin(WebSearchExa, { apiKey: 'exa-key', baseURL: 'https://api.exa.test' })
   // The shipped deployment shape: the tool-call budget is declared by tool-web
   // config (default 30s, attached as ToolDefinition.timeoutMs) and enforced by
@@ -136,7 +138,8 @@ describe('tool-call timeout returns TOOL_TIMEOUT (deadline wins over a slow fetc
     await tctx.plugin(ToolRuntime)
     await tctx.plugin(WebRuntime, { fetchProvider: WebFetchLocal.LOCAL_FETCH_PROVIDER_ID })
     // Provider backstop well ABOVE the tool-call budget, so the policy wins.
-    await tctx.plugin(WebFetchLocal, { timeoutMs: 30_000 })
+    // The loopback fixture server needs the same egress opt-in as the main one.
+    await tctx.plugin(WebFetchLocal, { timeoutMs: 30_000, egressAllowHosts: ['127.0.0.1'] })
     await tctx.plugin(TimeoutPolicy)
     // The tool-call budget is declared by tool-web config, enforced by the policy.
     tfiber = await tctx.plugin(ToolWeb, { fetchTimeoutMs: 50 })
@@ -168,6 +171,7 @@ describe('tool-call timeout returns TOOL_TIMEOUT (deadline wins over a slow fetc
       timeoutMs: 50,
       maxRedirects: 5,
       userAgent: 'integration-test',
+      egressAllowHosts: ['127.0.0.1'],
     })
     const err = await direct.fetch({ url: slowBase }).then(
       () => undefined,

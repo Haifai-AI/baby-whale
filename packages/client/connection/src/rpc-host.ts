@@ -11,8 +11,8 @@ import {
   type RpcId as RpcIdType,
   type ServerResponse as RpcServerResponse,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
-import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES, RequestMemoryBudget, type FetchHandler } from './http-bridge.ts'
+import { extractApiToken, isTrustedApiRequest, verifyApiToken } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type {
   ConnectionRpcEndpointMatcher,
@@ -47,8 +47,18 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Provide the Host half over the active HTTP server.
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by trusted-host channels.
+   * @param requestBudget - the service-wide in-flight body budget every
+   *   bridged channel (including this service's own registrations) reserves
+   *   against; one instance per service so channels share the ceiling.
+   * @param apiToken - the per-instance token every served request must
+   *   present; the fence verifies it beside the Host authority.
    */
-  constructor(ctx: Context, private readonly trustedHosts: readonly string[]) {
+  constructor(
+    ctx: Context,
+    private readonly trustedHosts: readonly string[],
+    private readonly requestBudget: RequestMemoryBudget,
+    readonly apiToken: string,
+  ) {
     super(ctx, 'connection')
   }
 
@@ -100,12 +110,16 @@ export class HostConnectionService extends Service implements HostConnectionHand
       kind: 'prefix',
       path: channel,
       handler: async (req, res) => {
-        if (!isTrustedApiRequest(req, trustedHosts)) {
+        // The fence binds the authority; the token binds the caller. A route
+        // without the token check would serve any local process that passes
+        // the Host fence.
+        if (!isTrustedApiRequest(req, trustedHosts)
+          || !verifyApiToken(extractApiToken(req.headers.authorization, req.url), this.apiToken)) {
           res.writeHead(403)
           res.end('forbidden')
           return
         }
-        await bridge(req, res, fetchHandler)
+        await bridge(req, res, fetchHandler, DEFAULT_MAX_REQUEST_BODY_BYTES, this.requestBudget)
       },
     }
     return owner.effect(

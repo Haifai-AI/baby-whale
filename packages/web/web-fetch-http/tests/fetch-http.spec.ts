@@ -9,6 +9,10 @@ import * as fetchPlugin from '@deepseek-ai/dsh-web-fetch-http'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from '../src/policy.ts'
 
 const limits: HttpFetchLimits = {
+  // The hermetic server listens on loopback: allowlist it once here so every
+  // transport test below exercises the real stack, not the egress gate (the
+  // gate's own specs construct providers without this entry).
+  egressAllowHosts: ['127.0.0.1'],
   maxUrlLength: 2048,
   maxResponseBytes: 5_000_000,
   maxBodyChars: 100_000,
@@ -327,6 +331,22 @@ describe('HttpFetchProvider invalid URLs and abort', () => {
 
 })
 
+describe('HttpFetchProvider egress gate', () => {
+  it('blocks non-public destinations before any network access', async () => {
+    const fetchSpy = vi.fn(async () => new Response('never'))
+    vi.stubGlobal('fetch', fetchSpy)
+    await expect(provider().fetch({ url: 'http://169.254.169.254/latest/meta-data/' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_BLOCKED_URL' }))
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('fetches allowlisted loopback hosts end to end', async () => {
+    const result = await provider().fetch({ url: `${base}/hello` })
+    expect(result.statusCode).toBe(200)
+    expect(result.body).toMatchObject({ kind: 'text', content: 'default' })
+  })
+})
+
 describe('HttpFetchProvider body cancellation on error paths', () => {
   /** A fake Response whose body.cancel is observable. */
   type FakeInit = { status: number; headers: Record<string, string>; location?: string }
@@ -371,7 +391,9 @@ describe('web-fetch-http plugin registration', () => {
   it('registers the provider into ctx.web (HMR-safe)', async () => {
     const ctx = new Context()
     await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
-    const fiber = await ctx.plugin(fetchPlugin, {})
+    // The hermetic server is loopback: the composition allowlists it, the
+    // same opt-in a deployment uses for internal hosts.
+    const fiber = await ctx.plugin(fetchPlugin, { egressAllowHosts: ['127.0.0.1'] })
     await expect(ctx.web.fetch({ url: `${base}/` }))
       .resolves.toMatchObject({ statusCode: 200 })
     await fiber.dispose()
@@ -388,6 +410,13 @@ describe('web-fetch-http plugin registration', () => {
     await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
     await expect(ctx.plugin(fetchPlugin, { maxResponseBytes: -1 }))
       .rejects.toThrow(/maxResponseBytes must be a positive finite number/)
+  })
+
+  it('rejects a non-bare egressAllowHosts entry at construction', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
+    await expect(ctx.plugin(fetchPlugin, { egressAllowHosts: ['http://internal/'] }))
+      .rejects.toThrow(/egressAllowHosts entries must be bare hosts/)
   })
 
   it('rejects a zero timeout at construction', async () => {
@@ -421,7 +450,7 @@ describe('web-fetch-http plugin registration', () => {
   it('accepts maxRedirects: 0 (follow no redirects) as valid config', async () => {
     const ctx = new Context()
     await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
-    const fiber = await ctx.plugin(fetchPlugin, { maxRedirects: 0 })
+    const fiber = await ctx.plugin(fetchPlugin, { maxRedirects: 0, egressAllowHosts: ['127.0.0.1'] })
     await expect(ctx.web.fetch({ url: `${base}/` }))
       .resolves.toMatchObject({ statusCode: 200 })
     await fiber.dispose()

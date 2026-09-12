@@ -524,6 +524,11 @@
   min-height: 0;
   overflow: auto;
   padding: 10px;
+  /* The studio is a modal surface, so its thumb takes the elevated pair: the l1
+     default is the base-surface thumb and differs only in the dark palette
+     (rebinding contract in ui-theme's scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .filePreviewNote {

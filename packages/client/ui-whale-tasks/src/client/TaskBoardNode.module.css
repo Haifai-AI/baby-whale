@@ -74,7 +74,7 @@
 }
 
 .dot[data-overdue="true"] {
-  background: var(--dsw-warning, #e8a33d);
+  background: var(--dsw-alias-state-warn-primary);
 }
 
 .late {
@@ -83,7 +83,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--dsw-warning-strong, #b06f0a);
+  color: var(--dsw-alias-state-warn-label);
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 0 6px;

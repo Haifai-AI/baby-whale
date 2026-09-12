@@ -36,7 +36,7 @@
 .progressFill {
   height: 100%;
   border-radius: 2px;
-  background: var(--dsw-alias-accent, currentcolor);
+  background: var(--dsw-alias-state-business-primary);
   transition: width 400ms ease;
 }
 
@@ -50,8 +50,8 @@
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
-  background: var(--dsw-alias-accent, #4361ee);
-  color: #ffffff;
+  background: var(--dsw-alias-button-info-fill);
+  color: var(--dsw-alias-label-primary-foreground);
 }
 
 .button:hover {

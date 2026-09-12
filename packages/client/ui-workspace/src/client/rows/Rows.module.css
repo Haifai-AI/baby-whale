@@ -20,8 +20,15 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* Selected is its own state, not a pinned hover: a hover fill is the same
+   value the row takes under the pointer, so a selected row and a hovered row
+   are indistinguishable and the list loses its "where am I" anchor. Selected
+   takes the pressed-interaction step — the next neutral above hover, in both
+   palettes, without the jump to a button fill that reads as a second control
+   inside the list. */
 .sessionRow.selected {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-active);
+  font-weight: 500;
 }
 
 .searchResultRow {
@@ -45,7 +52,7 @@
 }
 
 .searchResultRow.selected {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-active);
 }
 
 .searchResultHeading {

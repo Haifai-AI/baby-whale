@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import base from '../styles/base.css?inline'
 import designPlatform from '../styles/design-platform.css?inline'
 import scrollbar from '../styles/scrollbar.css?inline'
+import surfaces from '../styles/surfaces.css?inline'
 import gradientShadowText from '../styles/gradient-shadow-text.css?inline'
 import shiki from '../styles/shiki.css?inline'
 
@@ -11,6 +12,10 @@ const STYLES = [
   ['base.css', base],
   ['design-platform.css', designPlatform],
   ['scrollbar.css', scrollbar],
+  // After design-platform.css: surfaces.css consumes the --dsw-alias-* layer
+  // that sheet declares, and a custom property resolves against the cascade
+  // position of the rule that reads it, not the sheet order alone.
+  ['surfaces.css', surfaces],
   ['gradient-shadow-text.css', gradientShadowText],
   ['shiki.css', shiki],
 ] as const

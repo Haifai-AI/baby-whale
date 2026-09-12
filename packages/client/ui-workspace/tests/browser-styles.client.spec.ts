@@ -104,8 +104,10 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(rowDeclarations('.sessionRow')?.get('height')).toBe('32px')
     expect(rowDeclarations('.flatSessionRowWithoutStatus .title')?.get('margin-left')).toBe('0')
     expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('48px')
+    // Selected takes the pressed-interaction step, one neutral above the hover
+    // fill so a selected row stays distinguishable from a hovered neighbour.
     expect(rowDeclarations('.sessionRow.selected')?.get('background'))
-      .toBe('var(--dsw-alias-interactive-bg-hover)')
+      .toBe('var(--dsw-alias-interactive-bg-active)')
   })
 
   it('pins both rail controls to the shared left anchor during the column slide', () => {

@@ -65,8 +65,17 @@
   max-width: 45%;
   min-width: 0;
   overflow: hidden;
+  /* A column header, not a row: smaller and tighter than the rows it labels so
+     the eye reads the list first and the heading second. Secondary ink is the
+     lowest step that clears 4.5:1 on the sidebar fill in the light scheme
+     (tertiary measures 3.55:1 there); the header still reads as subordinate to
+     the primary-ink row titles below it. */
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
-  line-height: 20px;
   opacity: 1;
   visibility: visible;
   transition:

@@ -264,6 +264,10 @@
   overflow: auto;
   flex: 1;
   min-height: 0;
+  /* The gallery sits on the elevated module surface, so its thumb takes the
+     elevated pair (rebinding contract in ui-theme's scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .slidePage {

@@ -8,6 +8,10 @@
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --ds-font-family-code: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
     'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
+  /* Alias for feature CSS that asks for the measurement face by role rather
+     than by stack name; one definition keeps code, keys, and metrics on the
+     same face. */
+  --dsw-font-mono: var(--ds-font-family-code);
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ds-transition-duration: 0.2s;
   --ds-transition-duration-fast: 0.1s;

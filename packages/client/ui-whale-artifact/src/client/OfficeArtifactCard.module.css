@@ -284,6 +284,10 @@ tbody tr:nth-child(even) .cell {
   padding: 18px 22px;
   max-height: 340px;
   overflow: auto;
+  /* Document page inside the elevated card: the elevated thumb pair, not the
+     base-surface default (rebinding contract in ui-theme's scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .docTitle {

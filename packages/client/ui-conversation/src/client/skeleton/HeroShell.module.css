@@ -49,15 +49,18 @@
   align-self: start;
   margin-top: 2px;
   margin-left: -3px;
-  padding: 1px 7px 0;
-  border: 1px solid var(--dsw-alias-interactive-bg-hover);
+  /* A quiet status chip, not a second headline: the tinted fill alone marks it
+     as an annotation, with no stroke to compete with the title's weight. */
+  padding: 1px 8px 0;
+  border: none;
   border-radius: 24px;
   background: var(--dsw-alias-state-business-tertiary);
   color: var(--dsw-alias-label-primary-bluish);
   font-family: var(--ds-font-family-code);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 17px;
   font-weight: 500;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 

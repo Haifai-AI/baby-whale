@@ -15,6 +15,7 @@ type ChatActions = {
   setInspect: (draft: ChatStoreState, target: { callId: CallId } | null) => void
   openFilePreview: (draft: ChatStoreState, path: string) => void
   closeFilePreview: (draft: ChatStoreState) => void
+  toggleRun: (draft: ChatStoreState, runKey: string) => void
 }
 
 /**
@@ -44,6 +45,12 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
       setInspect: (d, target: { callId: CallId } | null) => { d.inspect = target },
       openFilePreview: (d, path: string) => { d.filePreview = path },
       closeFilePreview: (d) => { d.filePreview = null },
+      toggleRun: (d, runKey) => {
+        const open = d.expandedRuns ?? []
+        d.expandedRuns = open.includes(runKey)
+          ? open.filter(key => key !== runKey)
+          : [...open, runKey]
+      },
     },
   })
 }

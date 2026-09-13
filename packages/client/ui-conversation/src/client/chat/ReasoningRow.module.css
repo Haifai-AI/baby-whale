@@ -1,3 +1,13 @@
+/* The reasoning row: the same tick as a tool row, one ramp step quieter.
+ *
+ * Thinking is ambient; a tool call is an event. Both rows are the shared
+ * disclosure chrome exactly, and the one deliberate difference between them
+ * is the verb's ink — a tool row's is `label-primary`, this one's is
+ * `label-secondary` — so the thirty-odd reasoning rows in a long turn recede
+ * behind the calls that did the work. The differences that used to separate
+ * the two (14px meta text against 13px, a 2px dot against a 3px one) were two
+ * copies drifting, not two decisions. */
+
 .root {
   display: flex;
   flex-direction: column;
@@ -8,29 +18,32 @@
   overflow: hidden;
 }
 
+/* Running: the same hairline of accent travelling along the row's bottom edge
+   that a running tool row draws. This row previously swept a 300px band of
+   canvas colour across its own glyphs, dimming the very text it was meant to
+   annotate — the treatment the tool row retired for exactly that reason. */
 .root[data-state='running'] .row::after {
   content: '';
   position: absolute;
-  inset-block: 0;
+  right: 0;
+  bottom: 0;
   left: 0;
-  width: 300px;
+  height: 1px;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    var(--dsw-alias-state-business-primary) 50%,
     transparent 100%
   );
-  animation: dsh-reasoning-row-sweep 2.6s ease-out infinite;
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: dsh-reasoning-row-sweep 1.6s var(--ds-ease-in-out) infinite;
   pointer-events: none;
 }
 
 @keyframes dsh-reasoning-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
-}
-
-.leading {
-  flex-shrink: 0;
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 
 .chevron {
@@ -38,16 +51,7 @@
 }
 
 .title {
-  font-weight: 400;
-}
-
-.separator {
-  flex: none;
-  width: 2px;
-  height: 2px;
-  margin: 0 8px;
-  border-radius: 1px;
-  background: var(--dsw-alias-label-caption);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .summary {
@@ -55,8 +59,8 @@
   overflow: hidden;
   flex: 1 1 auto;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -65,8 +69,10 @@
   text-overflow: clip;
 }
 
+/* Aligned to the row title's axis: the leading tile (20px) plus the chrome's
+   8px gap. */
 .thinkBody {
-  padding: 4px 0 4px 22px;
+  padding: 4px 0 4px 28px;
   color: var(--dsw-alias-label-tertiary);
   font-size: 14px;
   line-height: 24px;

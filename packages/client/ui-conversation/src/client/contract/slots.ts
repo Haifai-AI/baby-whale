@@ -448,6 +448,21 @@ export interface ChatNodeOwnerProps {
   /** Render a historical image group through the attachment slot. */
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /**
+   * The turn's process-reading control, supplied only to a Node that can offer
+   * it — in practice the turn footer. Omitted for a Node outside a settled
+   * turn (the live turn has no footer), which is exactly when no control
+   * should render; the pair travels together so neither half can be missed.
+   */
+  processControl?: ProcessControlOwner | undefined
+}
+
+/** The turn footer's process-reading control, as the owner supplies it. */
+export interface ProcessControlOwner {
+  /** Whether this Node's turn currently hides its process rows. */
+  hidden: boolean
+  /** Hide or reveal this Node's turn's process rows. */
+  toggle: () => void
 }
 
 /** Full props of one registered keyed Chat business renderer. */
@@ -800,6 +815,12 @@ export interface ChatViewInjected {
    * reports the gesture, so the fold survives a view switch and a reload.
    */
   toggleToolRun: (runKey: string) => void
+  /**
+   * Hide or reveal one turn's process rows (tool calls and reasoning), leaving
+   * its prose. Per turn because the reader decides on the answer they just
+   * read; the set survives a view switch and a reload.
+   */
+  toggleTurnProcess: (turn: number) => void
   /**
    * Per-session scroll memory surviving view switches (in-memory, never
    * persisted): the view saves on every scroll and restores on remount; a

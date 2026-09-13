@@ -1,5 +1,7 @@
-/* Tool summary row (figma 122:9479): 24px single line —
-   [16 leading] gap6 [title 14/24] gap8 [2x2 dot] gap8 [summary FILL truncate]. */
+/* Tool summary row (figma 122:9479): 24px single line — [20 tile] gap8
+   [title 13/22] gap8 [summary FILL truncate]. The title's medium weight comes
+   from the shared disclosure chrome; this file owns only what a tool row adds
+   to it. */
 
 .root {
   display: flex;
@@ -54,26 +56,12 @@
   font-weight: 500;
 }
 
-.root[data-tool^='cordis_'] .sep {
-  background: var(--dsw-alias-state-business-primary);
+.root[data-tool^='cordis_'] .title {
+  color: var(--dsw-alias-state-business-primary);
 }
 
 .chevron {
   color: var(--dsw-alias-label-secondary);
-}
-
-.title {
-  font-weight: 400;
-}
-
-.sep {
-  flex: none;
-  flex: none;
-  width: 3px;
-  height: 3px;
-  border-radius: var(--dsw-radius-full);
-  margin: 0 8px;
-  background: var(--dsw-alias-label-quaternary);
 }
 
 .summary {
@@ -94,7 +82,6 @@
    which would break the one-line row in the narrow case the slot exists for. */
 .summarySuffix {
   flex: none;
-  margin-left: 4px;
   white-space: nowrap;
   font-size: 13px;
   line-height: 22px;

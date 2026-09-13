@@ -23,6 +23,7 @@
 - paragraph: USER_INVOKE_REPLY acknowledged; following the injected skill.
 - button "Copy":
   - img
+- button "隐藏本轮的调用与思考": 过程
 - button "Good response":
   - img
 - button "Bad response":

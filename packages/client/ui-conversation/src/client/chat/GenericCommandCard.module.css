@@ -8,46 +8,35 @@
   overflow: hidden;
 }
 
+/* Running: the same hairline of accent travelling along the row's bottom edge
+   that a running tool row draws, replacing the 300px band of canvas colour
+   this row used to sweep across its own glyphs. */
 .root[data-state='running'] .row::after {
   content: '';
   position: absolute;
-  inset-block: 0;
+  right: 0;
+  bottom: 0;
   left: 0;
-  width: 300px;
+  height: 1px;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    var(--dsw-alias-state-business-primary) 50%,
     transparent 100%
   );
-  animation: dsh-command-row-sweep 2.6s ease-out infinite;
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: dsh-command-row-sweep 1.6s var(--ds-ease-in-out) infinite;
   pointer-events: none;
 }
 
 @keyframes dsh-command-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
-}
-
-.leading {
-  flex-shrink: 0;
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 
 .chevron {
   color: var(--dsw-alias-label-secondary);
-}
-
-.title {
-  font-weight: 400;
-}
-
-.separator {
-  flex: none;
-  width: 2px;
-  height: 2px;
-  margin: 0 8px;
-  border-radius: 1px;
-  background: var(--dsw-alias-label-caption);
 }
 
 .summary {
@@ -55,8 +44,8 @@
   overflow: hidden;
   flex: 1 1 auto;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

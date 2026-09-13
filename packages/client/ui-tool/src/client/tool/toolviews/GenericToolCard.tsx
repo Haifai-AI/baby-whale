@@ -17,15 +17,15 @@ import { webCardModel } from '../models/web-card-model.ts'
 import { toolRowModel, type ToolRowVariant } from '../models/tool-call-model.ts'
 import { ToolRow } from '../components/ToolRow.tsx'
 
-/** Variant leading icons (figma table); all glyphs render at 14 inside the 16px leading box. */
+/** Variant leading icons (figma table); all glyphs render at 13 inside the 20px leading tile. */
 const VARIANT_ICONS: Record<ToolRowVariant, ReactNode> = {
-  search: <IconSearchOutline16 size={14} />,
-  read: <IconBrowseOutline16 size={14} />,
-  bash: <IconApiOutline14 size={14} />,
-  write: <IconEditOutline16 size={14} />,
-  edit: <IconEditOutline16 size={14} />,
-  code: <IconCodeOutline16 size={14} />,
-  others: <IconSparkle16 size={14} />,
+  search: <IconSearchOutline16 size={13} />,
+  read: <IconBrowseOutline16 size={13} />,
+  bash: <IconApiOutline14 size={13} />,
+  write: <IconEditOutline16 size={13} />,
+  edit: <IconEditOutline16 size={13} />,
+  code: <IconCodeOutline16 size={13} />,
+  others: <IconSparkle16 size={13} />,
 }
 
 /** Card props: the owner payload plus the render site's locale seat (plain prop). */

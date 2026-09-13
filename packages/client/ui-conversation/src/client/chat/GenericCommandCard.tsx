@@ -19,7 +19,7 @@ function stateOf(outcome: CommandRowOwnerProps['node']['outcome']): CommandRowSt
 }
 
 function leadingFor(state: CommandRowState): ReactNode {
-  return state === 'error' ? <StateDot state="error" /> : <IconApiOutline14 size={14} />
+  return state === 'error' ? <StateDot state="error" /> : <IconApiOutline14 size={13} />
 }
 
 /** Card props: the owner payload plus the render site's locale seat (plain prop). */
@@ -49,8 +49,6 @@ export function GenericCommandCard({ node, t, runningSummary }: GenericCommandCa
       {state === 'error' && <span className={a11yCss.visuallyHidden}>{t('row.failed')}</span>}
       <DisclosureRow
         rowClassName={css.row}
-        leadingClassName={css.leading}
-        titleClassName={css.title}
         chevronClassName={css.chevron}
         icon={leadingFor(state)}
         title={title}
@@ -60,10 +58,7 @@ export function GenericCommandCard({ node, t, runningSummary }: GenericCommandCa
         keepContentWhenOpen
         onToggle={() => { setExpanded(value => !value) }}
         collapsedContent={(
-          <>
-            <span className={css.separator} aria-hidden />
-            <span className={css.summary} data-error={state === 'error' || undefined}>{summary}</span>
-          </>
+          <span className={css.summary} data-error={state === 'error' || undefined}>{summary}</span>
         )}
       >
         <pre className={css.body} data-error={state === 'error' || undefined}>{body}</pre>

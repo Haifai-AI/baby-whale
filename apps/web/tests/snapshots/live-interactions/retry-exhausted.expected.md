@@ -21,6 +21,7 @@
 - status:
   - text: This turn failedupstream 503
   - code: SERVER
+- button "隐藏本轮的调用与思考": 过程
 - textbox "Message the agent"
 - button "Commands":
   - img

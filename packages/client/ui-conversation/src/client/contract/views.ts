@@ -49,4 +49,12 @@ export interface ChatStoreState {
    * without it.
    */
   expandedRuns?: string[]
+  /**
+   * Turns whose process rows (tool calls and reasoning) are hidden, leaving
+   * only the prose. A reading control, not a fold: it is per turn because the
+   * reader decides on the answer they just read, and it never hides text.
+   * Read with `?? []` — persisted snapshots from before this field rehydrate
+   * without it.
+   */
+  hiddenProcessTurns?: number[]
 }

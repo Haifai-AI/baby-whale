@@ -192,8 +192,11 @@ describe('dsh web keyless CLI smoke', () => {
     )
     try {
       const readyUrl = await waitForReadyLine(child)
-      expect(readyUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
-      expect((await fetch(readyUrl)).status).toBe(200)
+      // The printed entry URL carries the instance token as its `#token=`
+      // fragment, which a browser captures on load; only the origin is fixed.
+      expect(readyUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+(#token=\S+)?$/)
+      const { baseUrl: origin, apiToken: token } = splitEntryUrl(readyUrl)
+      expect((await fetch(origin, { headers: authHeaders(token) })).status).toBe(200)
     } finally {
       const closed = child.exitCode === null
         ? new Promise<void>((resolveClose) => { child.once('close', () => { resolveClose() }) })

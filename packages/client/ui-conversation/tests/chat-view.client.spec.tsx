@@ -156,6 +156,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const openFilePreview = vi.fn<(path: string) => void>()
   const loadOlder = vi.fn()
   const inspectCall = vi.fn<(callId: string) => void>()
+  const toggleToolRun = vi.fn<(runKey: string) => void>()
   // In-memory scroll memory matching the apply.ts per-session map contract.
   let savedScroll: ReturnType<ChatViewSlotProps['chatScroll']['read']> = null
   const chatScroll: ChatViewSlotProps['chatScroll'] = {
@@ -288,6 +289,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     inspectCall,
+    toggleToolRun,
     chatScroll,
     forkAt,
     // Absent-service default; mention tests override with a real resolver.
@@ -298,7 +300,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
   const setSelection = (next: SelectionTarget | null): void => { chat.actions.select(next) }
   return {
     set, ChatView, props, openDetails, openFile, loadOlder, inspectCall,
-    chatScroll, forkAt, setSelection, toolOwners,
+    toggleToolRun, chatScroll, forkAt, setSelection, toolOwners,
   }
 }
 

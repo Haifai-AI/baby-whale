@@ -322,8 +322,15 @@ Borders are hairlines in three weights: 1px at 6% opacity for a card edge, 10% f
 - **Shape:** a 16px-radius card with the floating shadow, holding a 15px auto-growing textarea above a control row: attach and mode chips on the left, model pop-up and a single accent send button on the right.
 - **States:** the send button is the only accent object in the composer; the attach control and the model trigger are chrome-free until hover, so the trailing controls are the quietest thing in the row.
 
+### Tool Run (the folded transcript)
+
+- **Character:** the process recedes so the answer can be read.
+- **Shape:** a settled, clean run of three or more tool calls collapses to one 22px line — a 16px leading mark, a 13px muted label (`12 tool calls · 34s`), and a chevron that flips on open. Rows return on click, and a reader's expansion survives the run settling.
+- **What never folds:** a run that is still working (live calls stay watchable), a run containing a failure or an interruption, and anything carrying prose — the answer's own text always ends a run.
+- **Why it reads as one object:** the summary's leading mark repeats the row's 16px leading slot, and a negative inline start pulls its label back onto the transcript's text axis, so a folded run sits in the same column as the prose around it rather than one indent step to the right.
+
 ### Tool Row
-- **Character:** a report, not a performance.
+- **Character:** a report, not a performance. Rows appear inside their run; the fold above decides when they show at rest.
 - **Shape:** a 22px single-line row — a 16px leading glyph, a 13px title, a 3px separator dot, and a truncating 13px summary.
 - **Running state:** a 1px accent rule travelling along the row's bottom edge. The previous treatment swept a 300px glare band across the row's own glyphs, dimming the text it was meant to annotate.
 

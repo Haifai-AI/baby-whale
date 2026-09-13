@@ -1,0 +1,73 @@
+/* Folded tool run: one quiet line where a long run's rows used to be.
+ *
+ * The row is a control, but it is deliberately not styled like one at rest —
+ * a bordered or filled button here would put a second kind of chrome into a
+ * transcript whose only other control is the composer. It reads as a line of
+ * muted text that happens to answer a hover and a click, which is what keeps
+ * a folded turn looking like the answer rather than like a collapsed panel. */
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  /* The negative inline start pulls the row's text back onto the transcript's
+     own text axis: the rows it replaces carry a 16px leading glyph plus a 6px
+     gap, and the summary's icon repeats that leading slot, so without this the
+     label would sit one indent step to the right of the prose around it. */
+  margin-left: -6px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.summary:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chevron {
+  flex: none;
+  margin-left: 2px;
+  opacity: 0.7;
+  transition: transform var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.summary:hover .chevron {
+  opacity: 1;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summary,
+  .chevron {
+    transition: none;
+  }
+}

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-14-chat-folds-settled-tool-runs.md
+2026-09-14-chat-folds-settled-tool-runs.md: 81be7a3d5569bb926c70b1bdc942b4a8823e1790
+2026-09-14-chat-folds-settled-tool-runs.zh.md: c1c7d96e6df61f4ca276fe97c36c42d5fa021779

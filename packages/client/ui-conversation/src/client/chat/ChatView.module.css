@@ -62,6 +62,17 @@
   display: none;
 }
 
+/* One run of tool calls. The wrapper is a flow item like any other, so the
+   column's gap still separates it from its neighbours; inside it the rows keep
+   the tight rhythm they have always had, and a trailing margin gives the run
+   the same breathing room from the prose below that a single row had. */
+.toolRun {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .callRow {
   border-radius: 6px;
 }

@@ -71,6 +71,12 @@
     - id: whale-trash
       name: '@deepseek-ai/dsh-whale-trash'
 
+    # Whale MCP manager: mounts one dsh-mcp-client bridge per enabled server
+    # in the `mcp` settings namespace, owns the mcpStatus Remote the Settings
+    # tab reads, and asks before a session's first use of each MCP tool.
+    - id: whale-mcp
+      name: '@deepseek-ai/dsh-whale-mcp'
+
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:
@@ -301,6 +307,12 @@
     # cards. A namespace this deployment does not expose renders nothing.
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
+
+    # MCP servers tab: add/edit/enable/import MCP servers, live per-server
+    # status and tool lists over the mcpStatus Remote. Writes ride the
+    # standard settings RPC to the gateway-owned `mcp` ns.
+    - id: ui-settings-mcp
+      name: '@deepseek-ai/dsh-client-ui-settings-mcp'
 
     # Skills management: enable/disable each discovered skill; writes route
     # through the standard settings RPC to the gateway-owned `skills` ns.

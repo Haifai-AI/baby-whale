@@ -28,7 +28,7 @@ describe('web e2e: rail search click survives its own document-level bubble', ()
   beforeAll(async () => {
     scaffold = await launchWebScaffold({})
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

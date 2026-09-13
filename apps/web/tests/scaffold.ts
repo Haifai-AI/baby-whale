@@ -67,6 +67,16 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
 import { REPO_ROOT, requireDist } from './support.ts'
 
+/**
+ * The instance API token every scaffold host pins. The browser fence requires
+ * it on every `/api` request, so the harness must know it up front; a value
+ * minted per boot would be unknowable. Fixed rather than random because the
+ * harness is the only consumer and a constant keeps page setup free of a
+ * round-trip. It is not a secret: it authorizes nothing outside this
+ * temporary loopback host, which the lane tears down with the run.
+ */
+export const SCAFFOLD_API_TOKEN = 'web-e2e-scaffold-token-0000'
+
 // Host-side web e2e cannot import a browser package: doing so would pull that
 // package's complete TS project into this graph. Mirrored from
 // packages/client/ui-settings-models/src/onboarding-copy.ts; drift makes the
@@ -173,6 +183,8 @@ export interface WebScaffold {
   mode: WebSnapshotMode
   /** Browser-facing origin for the bound test server. */
   baseUrl: string
+  /** The instance API token this host pins; every `/api` request must present it. */
+  apiToken: string
   /** Settled root context (the in-process readiness barrier; headless event subscription is its sanctioned use). */
   ctx: Context
   /** Temp project directory sessions run in (shell/fs tool cwd). */
@@ -473,9 +485,19 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // Preserve the composed surface-context choice because a patch replaces
     // the row's complete config.
     { id: 'web-runtime', config: { openBrowser: false, printUrl: false, surfaceContext } },
-    ...options.remoteAuthority === undefined
-      ? []
-      : [{ id: 'connection', config: { trustedHosts: [options.remoteAuthority] } }],
+    // Pin the instance API token so the harness can present it. The fence
+    // (client-connection's api-request-trust) requires the per-instance token
+    // on every /api request and treats loopback as transport, not
+    // authorization; a minted-per-boot token would be unknowable here. The
+    // patch replaces the row's complete config, so trustedHosts must ride
+    // along whenever the lane supplies a remote authority.
+    {
+      id: 'connection',
+      config: {
+        apiToken: SCAFFOLD_API_TOKEN,
+        ...options.remoteAuthority === undefined ? {} : { trustedHosts: [options.remoteAuthority] },
+      },
+    },
     { id: 'settings', config: { dshHome: harnessHome } },
     { id: 'credentials', config: { dshHome: harnessHome } },
     // The shipped directory-picker row is the -auto chooser, which resolves
@@ -642,6 +664,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     harnessHome,
     mode,
     baseUrl: `http://${browserHost}:${port}`,
+    apiToken: SCAFFOLD_API_TOKEN,
     ctx,
     workspaceCwd,
     persistenceRoot,

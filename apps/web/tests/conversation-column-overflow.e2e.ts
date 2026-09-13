@@ -206,7 +206,7 @@ describe('web e2e: the conversation column scrolls on one axis', () => {
   beforeAll(async () => {
     scaffold = await launchWebScaffold({})
     browser = await chromium.launch()
-    page = await newEnglishPage(browser, 900)
+    page = await newEnglishPage(browser, scaffold.apiToken, 900)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[data-conversation-scroll] [class*="heroGlow"]', { timeout: 30_000 })

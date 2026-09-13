@@ -163,7 +163,7 @@ async function launchScrollWorld(options: ScrollWorldOptions): Promise<ScrollWor
     for (const seed of options.seeds) await seedSession(scaffold, seed.fixture.log, seed.id)
     const events: SessionEvent[] = []
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { events.push(event) })
-    page = await newEnglishPage(browser, 900)
+    page = await newEnglishPage(browser, scaffold.apiToken, 900)
     const tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

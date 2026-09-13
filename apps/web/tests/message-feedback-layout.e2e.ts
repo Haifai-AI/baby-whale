@@ -205,7 +205,7 @@ describe('web e2e: the feedback note editor floats above the column', () => {
     scaffold = await launchWebScaffold({})
     await seedSession(scaffold, await readFile(SEED, 'utf8'), SEED_ID)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser, 900)
+    page = await newEnglishPage(browser, scaffold.apiToken, 900)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

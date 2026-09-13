@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { REPO_ROOT, connectFreshWorkspace, newEnglishPage, probeFreePort, requireDist, saveFailureShot } from './support.ts'
+import { REPO_ROOT, authHeaders, connectFreshWorkspace, probeFreePort, requireDist, saveFailureShot, seedApiToken } from './support.ts'
 
 const WEB_SURFACE_PROMPT = fileURLToPath(new URL('./snapshots/web-runtime-context/web-surface-prompt.expected.md', import.meta.url))
 
@@ -50,10 +50,27 @@ function waitForReadyLine(child: ChildProcess): Promise<string> {
   })
 }
 
-async function rpc<T>(baseUrl: string, method: string, payload: unknown): Promise<T> {
+/**
+ * The token lives in the CLI's printed entry URL as a `#token=` fragment,
+ * which an operator's browser captures on load. A Node-side `fetch` sends no
+ * fragment, so API callers need it split out: the origin addresses the
+ * request and the token authenticates it. Keeping the fragment on the origin
+ * would also make `${baseUrl}/api/...` malformed, since a fragment swallows
+ * everything after it.
+ * @param entryUrl - the printed `dsh web: <url>` value.
+ * @returns the bare origin and the instance token it carried.
+ */
+function splitEntryUrl(entryUrl: string): { baseUrl: string, apiToken: string } {
+  const url = new URL(entryUrl.replace('0.0.0.0', '127.0.0.1'))
+  const apiToken = /[#&]token=([^&#]*)/.exec(url.hash)?.[1] ?? ''
+  url.hash = ''
+  return { baseUrl: url.origin, apiToken }
+}
+
+async function rpc<T>(baseUrl: string, apiToken: string, method: string, payload: unknown): Promise<T> {
   const response = await fetch(`${baseUrl}/api/${method}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...authHeaders(apiToken) },
     body: JSON.stringify({
       type: 'client-request',
       rpcId: `smoke-${method}`,
@@ -100,22 +117,22 @@ function hasAssistantMarker(page: HistoryPage, marker: string): boolean {
   })
 }
 
-async function history(baseUrl: string, sessionId: string): Promise<HistoryPage> {
-  return rpc<HistoryPage>(baseUrl, 'session.history', { sessionId, maxMessages: 10 })
+async function history(baseUrl: string, apiToken: string, sessionId: string): Promise<HistoryPage> {
+  return rpc<HistoryPage>(baseUrl, apiToken, 'session.history', { sessionId, maxMessages: 10 })
 }
 
-async function waitForProviderTitle(baseUrl: string, sessionId: string): Promise<string> {
+async function waitForProviderTitle(baseUrl: string, apiToken: string, sessionId: string): Promise<string> {
   let observed: string | undefined
   await expect.poll(async () => {
-    observed = providerTitle(await history(baseUrl, sessionId))
+    observed = providerTitle(await history(baseUrl, apiToken, sessionId))
     return observed
   }, { timeout: 90_000 }).toEqual(expect.any(String))
   if (observed === undefined) throw new Error('provider-backed session title was not observed')
   return observed
 }
 
-async function waitForAssistantMarker(baseUrl: string, sessionId: string, marker: string): Promise<void> {
-  await expect.poll(async () => hasAssistantMarker(await history(baseUrl, sessionId), marker), {
+async function waitForAssistantMarker(baseUrl: string, apiToken: string, sessionId: string, marker: string): Promise<void> {
+  await expect.poll(async () => hasAssistantMarker(await history(baseUrl, apiToken, sessionId), marker), {
     timeout: 120_000,
   }).toBe(true)
 }
@@ -241,9 +258,9 @@ describe('dsh web keyless CLI smoke', () => {
       },
     )
     try {
-      const baseUrl = await waitForReadyLine(child)
-      const created = await rpc<{ sessionId: string }>(baseUrl, 'session.create', {})
-      await rpc<{ accepted: true }>(baseUrl, 'session.prompt', {
+      const { baseUrl, apiToken } = splitEntryUrl(await waitForReadyLine(child))
+      const created = await rpc<{ sessionId: string }>(baseUrl, apiToken, 'session.create', {})
+      await rpc<{ accepted: true }>(baseUrl, apiToken, 'session.prompt', {
         sessionId: created.sessionId,
         mode: 'queue',
         content: [{ type: 'text', text: 'go' }],
@@ -353,16 +370,16 @@ describe('dsh web keyless CLI smoke', () => {
       },
     )
     try {
-      const baseUrl = await waitForReadyLine(child)
-      const created = await rpc<{ sessionId: string }>(baseUrl, 'session.create', {})
-      await rpc<{ accepted: true }>(baseUrl, 'session.prompt', {
+      const { baseUrl, apiToken } = splitEntryUrl(await waitForReadyLine(child))
+      const created = await rpc<{ sessionId: string }>(baseUrl, apiToken, 'session.create', {})
+      await rpc<{ accepted: true }>(baseUrl, apiToken, 'session.prompt', {
         sessionId: created.sessionId,
         mode: 'queue',
         content: [{ type: 'text', text: promptMarker }],
       })
       let page: HistoryPage | undefined
       await expect.poll(async () => {
-        page = await history(baseUrl, created.sessionId)
+        page = await history(baseUrl, apiToken, created.sessionId)
         return hasAssistantMarker(page, recoveredMarker)
       }, { timeout: 20_000 }).toBe(true)
       if (page === undefined) throw new Error('retry history was not observed')
@@ -437,9 +454,9 @@ describe('dsh web keyless CLI smoke', () => {
       },
     )
     try {
-      const baseUrl = await waitForReadyLine(child)
-      const created = await rpc<{ sessionId: string }>(baseUrl, 'session.create', {})
-      await rpc<{ accepted: true }>(baseUrl, 'session.prompt', {
+      const { baseUrl, apiToken } = splitEntryUrl(await waitForReadyLine(child))
+      const created = await rpc<{ sessionId: string }>(baseUrl, apiToken, 'session.create', {})
+      await rpc<{ accepted: true }>(baseUrl, apiToken, 'session.prompt', {
         sessionId: created.sessionId,
         mode: 'queue',
         content: [{ type: 'text', text: 'go' }],
@@ -470,6 +487,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
   let child: ChildProcess
   let sessionsDir: string
   let baseUrl: string
+  let apiToken: string
   let browser: Browser
   let page: Page
   const pageErrors: string[] = []
@@ -505,9 +523,18 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
-    baseUrl = (await waitForReadyLine(child)).replace('0.0.0.0', '127.0.0.1')
+    // Bound through a named const rather than a leading-paren destructuring
+    // assignment: a statement starting with `(` continues the preceding
+    // `spawn(…)` call expression, and TypeScript reads the pair as calling the
+    // child process.
+    const entry = splitEntryUrl(await waitForReadyLine(child))
+    baseUrl = entry.baseUrl
+    apiToken = entry.apiToken
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    // The real CLI mints its own token and prints it in the entry URL; the
+    // split above removed it from `baseUrl` for the Node-side RPC calls, so the
+    // page is seeded with it the same way the scaffold's pages are.
+    page = await seedApiToken(await browser.newPage(), apiToken)
     page.on('pageerror', e => pageErrors.push(String(e)))
     await page.goto(baseUrl, { waitUntil: 'load' })
   }, 120_000)
@@ -555,13 +582,13 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
       productTitle,
       { timeout: 15_000 },
     )
-    await expect.poll(async () => (await rpc<{ items: { sessionId: string }[] }>(baseUrl, 'session.list', {})).items.length, {
+    await expect.poll(async () => (await rpc<{ items: { sessionId: string }[] }>(baseUrl, apiToken, 'session.list', {})).items.length, {
       timeout: 15_000,
     }).toBe(1)
-    const sessions = await rpc<{ items: { sessionId: string }[] }>(baseUrl, 'session.list', {})
+    const sessions = await rpc<{ items: { sessionId: string }[] }>(baseUrl, apiToken, 'session.list', {})
     const sessionId = sessions.items[0]?.sessionId
     if (sessionId === undefined) throw new Error('created Web session was not listed')
-    const durableTitle = await waitForProviderTitle(baseUrl, sessionId)
+    const durableTitle = await waitForProviderTitle(baseUrl, apiToken, sessionId)
     await page.waitForFunction(
       ({ expected, product }) => document.title === `${expected} — ${product}`,
       { expected: durableTitle, product: productTitle },
@@ -574,7 +601,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
       sessionTree.getByText(durableTitle, { exact: true }).waitFor({ timeout: 10_000 }),
       page.getByRole('navigation').getByText(durableTitle, { exact: true }).waitFor({ timeout: 10_000 }),
     ])
-    await waitForAssistantMarker(baseUrl, sessionId, ROUND_DONE_MARKER)
+    await waitForAssistantMarker(baseUrl, apiToken, sessionId, ROUND_DONE_MARKER)
     await page.locator('p').filter({ hasText: ROUND_DONE_MARKER }).waitFor({ timeout: 10_000 })
     await screen(page, '04-round-complete')
   }, 150_000)

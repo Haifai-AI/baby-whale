@@ -145,7 +145,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     await seedSession(scaffold, sourceSessionFixture(), SOURCE_SESSION_ID)
     await seedSession(scaffold, targetSessionFixture(), TARGET_SESSION_ID)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

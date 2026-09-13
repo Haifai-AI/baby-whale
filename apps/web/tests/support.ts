@@ -18,17 +18,73 @@ export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 export const ZH_BROWSER_LOCALE = 'zh-CN'
 
 /**
+ * Request headers presenting the scaffold's instance API token to a Node-side
+ * `fetch`. Page-context code never needs this ({@link seedApiToken} covers it);
+ * it exists for scenarios that address the `/api` wire directly and therefore
+ * send no browser storage, fragment, or upgrade.
+ * @param apiToken - the scaffold's pinned token.
+ * @returns the header record for a `fetch` init.
+ */
+export function authHeaders(apiToken: string): Record<string, string> {
+  return { Authorization: `Bearer ${apiToken}` }
+}
+
+/**
+ * Seed the scaffold's instance API token into a page before any of its own
+ * script runs.
+ *
+ * The client reads the token from tab storage first and the entry-URL
+ * fragment second; seeding storage directly is equivalent to arriving on a
+ * `#token=` URL, and it is the only channel that covers every transport. A
+ * request header would authenticate `fetch` but not the WebSocket upgrades
+ * that carry the session stream, so the app would load and never connect.
+ * @param page - the page to seed.
+ * @param apiToken - the scaffold's pinned token.
+ * @returns the page, for chaining.
+ */
+export async function seedApiToken(page: Page, apiToken: string): Promise<Page> {
+  await page.addInitScript((token: string) => {
+    try {
+      sessionStorage.setItem('dsh.apiToken', token)
+    } catch {
+      // Storage unavailable: the page then fails the fence loudly, which is
+      // the same outcome an unauthenticated navigation gets.
+    }
+  }, apiToken)
+  return page
+}
+
+/**
+ * Open a page that authenticates against the scaffold's API fence. Prefer this
+ * over `browser.newPage` so the token is never forgotten; the token is seeded
+ * into tab storage rather than the entry URL, which keeps the address bar,
+ * goldens, and `new URL(...)` construction free of credential material.
+ * @param browser - Playwright browser owning the page.
+ * @param apiToken - the scaffold's pinned token.
+ * @param options - context options (viewport, locale) merged over the defaults.
+ * @returns the initialized page.
+ */
+export async function newTestPage(
+  browser: Browser,
+  apiToken: string,
+  options: Parameters<Browser['newPage']>[0] = {},
+): Promise<Page> {
+  return await seedApiToken(await browser.newPage(options), apiToken)
+}
+
+/**
  * Open the standard browser-test page advertising English before client boot.
  * This keeps role locators and goldens deterministic while leaving the Host
  * settings document free to override the provisional browser-derived locale;
  * scenarios asserting the Chinese surface advertise
  * {@link ZH_BROWSER_LOCALE} instead.
  * @param browser - Playwright browser owning the page.
+ * @param apiToken - the scaffold's pinned token.
  * @param height - Viewport height; width is fixed to the lane baseline.
  * @returns the initialized page.
  */
-export async function newEnglishPage(browser: Browser, height = 1000): Promise<Page> {
-  return await browser.newPage({ viewport: { width: 1680, height }, locale: 'en-US' })
+export async function newEnglishPage(browser: Browser, apiToken: string, height = 1000): Promise<Page> {
+  return await newTestPage(browser, apiToken, { viewport: { width: 1680, height }, locale: 'en-US' })
 }
 
 /** Fail loud on a stale checkout instead of testing yesterday's bundle. */

@@ -205,7 +205,7 @@ describe('web e2e: whale office artifact preview cards', () => {
     scaffold = await launchWebScaffold({})
     await seedSession(scaffold, whaleFixture(), SEED_ID)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     page.on('console', (message) => {
       if (message.type() === 'error') console.error('CONSOLE_ERR:', message.text().slice(0, 300))
     })

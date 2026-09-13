@@ -9,6 +9,7 @@ import {
   seedSession,
   type WebScaffold,
 } from './scaffold.ts'
+import { authHeaders } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/message-feedback-protocol', import.meta.url))
 const SESSION_FIXTURE = join(SNAPSHOT_DIR, 'session.jsonl')
@@ -65,7 +66,7 @@ describe('message feedback Host Remote protocol', () => {
       const payload = { args: { request } }
       const response = await fetch(`${scaffold.baseUrl}/api/${endpoint}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...authHeaders(scaffold.apiToken) },
         body: JSON.stringify({
           type: 'client-request',
           rpcId,

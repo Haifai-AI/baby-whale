@@ -393,7 +393,7 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
     browser = await chromium.launch()
     // Shorter than the other scenarios' 1000px so SEED_COUNT rows overflow
     // the list with room to spare.
-    page = await newEnglishPage(browser, 800)
+    page = await newEnglishPage(browser, scaffold.apiToken, 800)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

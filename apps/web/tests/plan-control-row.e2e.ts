@@ -62,7 +62,7 @@ describe('web e2e: plan chip click area at the narrow viewport', () => {
     scaffold = await launchWebScaffold({ replayFixture: FIXTURE, replayProvidersOnly: true })
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { sessionEvents.push(event) })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser, VIEWPORT.height)
+    page = await newEnglishPage(browser, scaffold.apiToken, VIEWPORT.height)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

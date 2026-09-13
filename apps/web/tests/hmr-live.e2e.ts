@@ -115,6 +115,9 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     ))
     const baseUrl = await waitForOutput(host, /dsh web: (http:\/\/[^\s]+)/, 'built dsh web')
     browser = await chromium.launch()
+    // This lane drives the real CLI, not the scaffold: the printed entry URL
+    // already carries the instance token as its `#token=` fragment, and the
+    // page captures it on load exactly as an operator's browser would.
     const page = await browser.newPage()
     const pageErrors: string[] = []
     page.on('pageerror', error => pageErrors.push(String(error)))

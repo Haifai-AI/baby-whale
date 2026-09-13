@@ -81,7 +81,7 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
       paceMs: 25,
     })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname
       if (path.startsWith('/api/')) apiCalls.push(path)

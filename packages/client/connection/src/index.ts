@@ -5,9 +5,11 @@ import type {} from '@deepseek-ai/dsh-attachment'
 // Activates the webServer Context merge used below.
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES, RequestMemoryBudget } from './http-bridge.ts'
-import { assertPinnedApiToken, assertTrustedAuthority, createApiToken, extractApiToken, isTrustedApiRequest, verifyApiToken } from './api-request-trust.ts'
+import { assertPinnedApiToken, assertTrustedAuthority, extractApiToken, isTrustedApiRequest, verifyApiToken } from './api-request-trust.ts'
+import { API_TOKEN_FILE_NAME, loadOrCreateApiToken } from './api-token-file.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
 
@@ -45,6 +47,28 @@ function assertImageBodyCapacity(ctx: Context, maxRequestBodyBytes: number): voi
 
 /** Services required before providing Connection; API Proxy is an optional `/api` fallback. */
 export const inject = ['webServer']
+
+/**
+ * The credential this process verifies against.
+ *
+ * An operator-pinned token wins and is validated. Otherwise the token is this
+ * installation's, stored under the harness home and minted on first use: one
+ * credential across boots, so restarting does not invalidate the pages already
+ * open against it. See {@link loadOrCreateApiToken} for what that trades.
+ * @param config - resolved plugin config; a pinned `apiToken` short-circuits storage.
+ * @returns the token to verify requests against.
+ */
+async function resolveApiToken(config: ConnectionConfig | undefined): Promise<string> {
+  if (config?.apiToken !== undefined && config.apiToken !== '') return assertPinnedApiToken(config.apiToken)
+  const path = dshHomePath(API_TOKEN_FILE_NAME)
+  const resolved = await loadOrCreateApiToken(path)
+  if (!resolved.durable) {
+    // Loud because the consequence is invisible until it bites: every open tab
+    // breaks on the next restart, presenting as an empty app.
+    console.warn(`[client-connection] could not store the API token at ${path}; open tabs will not survive a restart`)
+  }
+  return resolved.token
+}
 
 /** Plugin config: the deployment's non-loopback serving authorities. */
 export interface ConnectionConfig {
@@ -147,7 +171,7 @@ const PRIVILEGED_METHODS = new Set([
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */
-export function apply(ctx: Context, config?: ConnectionConfig): void {
+export async function apply(ctx: Context, config?: ConnectionConfig): Promise<void> {
   // The Loader resolves schema defaults; hand-built test contexts may pass none.
   const trustedHosts = config?.trustedHosts ?? []
   const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
@@ -157,12 +181,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
   if (ctx.get('apiProxy') !== undefined) assertImageBodyCapacity(ctx, maxRequestBodyBytes)
   const maxInflightRequestBytes = config?.maxInflightRequestBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
   const requestBudget = new RequestMemoryBudget(maxInflightRequestBytes)
-  // The per-instance credential other local processes do not have: loopback
-  // passes any local caller, so the fence alone cannot authorize. A pinned
-  // deployment token is honored (validated); otherwise every boot mints one.
-  const apiToken = config?.apiToken !== undefined && config.apiToken !== ''
-    ? assertPinnedApiToken(config.apiToken)
-    : createApiToken()
+  const apiToken = await resolveApiToken(config)
   const connection = new HostConnectionService(ctx, trustedHosts, requestBudget, apiToken)
   const fetchHandler = connection.createSharedFetchHandler(API_PATH, {
     async fetch(request) {

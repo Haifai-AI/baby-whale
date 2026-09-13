@@ -70,10 +70,16 @@ describe('official browser-brand plugin', () => {
     expect(name.container.querySelector('svg')?.getAttribute('viewBox')).toBe('26 0 156 24')
     name.unmount()
 
+    // The mark is the watercolor whale artwork served as an image (square at
+    // any size, decorative alt); width/height carry the requested size.
     const mark = render(<OfficialBrandMark size={34} className="hero-mark" />)
-    expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('34')
-    expect(mark.container.querySelector('svg')?.getAttribute('class')).toBe('hero-mark')
+    const img = () => mark.container.querySelector('img')
+    expect(img()?.getAttribute('width')).toBe('34')
+    expect(img()?.getAttribute('height')).toBe('34')
+    expect(img()?.getAttribute('class')).toBe('hero-mark')
+    expect(img()?.getAttribute('alt')).toBe('')
     mark.rerender(<OfficialBrandMark size={24} />)
-    expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('24')
+    expect(img()?.getAttribute('width')).toBe('24')
+    expect(img()?.getAttribute('height')).toBe('24')
   })
 })

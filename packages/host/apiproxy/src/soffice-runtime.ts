@@ -114,11 +114,13 @@ export function sofficeInstallState(): SofficeInstallState {
  * Kick the managed download+install; single-flight. Safe to call again while
  * running (returns the live state) or after completion (no-op done state).
  * macOS only — other platforms never enter the machine phases.
+ * @param onInstalled - invoked once the runtime lands (wires the re-lookup).
+ * @returns the install lifecycle state snapshot at kickoff.
  */
-export async function beginManagedSofficeInstall(onInstalled?: () => void): Promise<SofficeInstallState> {
+export function beginManagedSofficeInstall(onInstalled?: () => void): Promise<SofficeInstallState> {
   if (managedSofficePath() !== undefined) {
     state = { phase: 'done', progress: 1 }
-    return { ...state }
+    return Promise.resolve({ ...state })
   }
   const support = managedInstallSupport()
   if (!support.supported || support.url === undefined) {
@@ -127,7 +129,7 @@ export async function beginManagedSofficeInstall(onInstalled?: () => void): Prom
       progress: 0,
       error: 'Managed install is available on macOS; use the guided download for this platform.',
     }
-    return { ...state }
+    return Promise.resolve({ ...state })
   }
   // A supported platform without a pinned hash must never fetch: downloading
   // an unverified executable artifact is the failure this gate exists to stop.
@@ -137,13 +139,13 @@ export async function beginManagedSofficeInstall(onInstalled?: () => void): Prom
       progress: 0,
       error: `No pinned checksum for LibreOffice ${LIBREOFFICE_VERSION} on this machine; refusing the unverified download.`,
     }
-    return { ...state }
+    return Promise.resolve({ ...state })
   }
-  if (inflight !== undefined) return { ...state }
+  if (inflight !== undefined) return Promise.resolve({ ...state })
   inflight = runManagedInstall(support.url, support.sha256, onInstalled).finally(() => {
     inflight = undefined
   })
-  return { ...state }
+  return Promise.resolve({ ...state })
 }
 
 /**
@@ -240,7 +242,7 @@ async function downloadToFile(url: string, dest: string, onFraction: (fraction: 
 function run(bin: string, args: string[], timeoutMs = 300_000): void {
   const result = spawnSync(bin, args, { timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] })
   if (result.status !== 0) {
-    const stderr = result.stderr?.toString().trim().slice(0, 300) ?? ''
+    const stderr = result.stderr.toString().trim().slice(0, 300)
     throw new Error(`${path.basename(bin)} ${args[0]} failed${stderr === '' ? '' : `: ${stderr}`}`)
   }
 }

@@ -31,7 +31,7 @@
   justify-content: center;
   gap: 6px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-secondary);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-markdown-code-block-banner);
 }
 

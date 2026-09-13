@@ -36,6 +36,7 @@
 - paragraph: DONE
 - button "Copy":
   - img
+- button "隐藏本轮的调用与思考": 过程
 - button "Good response":
   - img
 - button "Bad response":

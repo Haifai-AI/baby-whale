@@ -24,6 +24,14 @@
   line-height: 24px;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
+  /* The trailing label is the row's only shrinkable part. Its `nowrap` text
+     would otherwise pin the row to its full content width and push the run-time
+     stats past the conversation column once the row carries an extra control
+     (the turn's process toggle) — the row must absorb a narrower column by
+     ellipsizing this label, not by overflowing it. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Separator between the clock and the run-time label (time · Ran for 15s). */

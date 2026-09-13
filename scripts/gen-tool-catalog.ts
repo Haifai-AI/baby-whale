@@ -62,6 +62,7 @@ import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as ToolOffice from '@deepseek-ai/dsh-tool-office'
+import * as ToolDeliver from '@deepseek-ai/dsh-tool-deliver'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
 import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
@@ -585,6 +586,19 @@ const TOOL_PACKAGES: ToolPackage[] = [
       // only the schemas are harvested here.
       await ctx.plugin(LocalFileSystem)
       await ctx.plugin(ToolOffice)
+    },
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-deliver',
+    dir: 'tool-deliver',
+    source: 'packages/whale/tool-deliver/src/index.ts',
+    requires: ['ctx.tools', 'ctx.fs', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Pure claim semantics: deliver never writes; the fs provider is mounted
+      // to satisfy the inject list while schemas are harvested.
+      await ctx.plugin(LocalFileSystem)
+      await ctx.plugin(ToolDeliver)
     },
   },
   {

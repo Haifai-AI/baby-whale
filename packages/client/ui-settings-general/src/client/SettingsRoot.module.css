@@ -4,41 +4,43 @@
    panel is a two-column layout — 188px nav rail + content column with a
    54px header and the 24px-padded options area. */
 
-/* Trigger row: the 42px foot-row box shared with the Cordis footer action. */
+/* Trigger row: the sidebar foot's own row box, at source-list geometry. */
 .trigger {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: calc(100% + 4px);
-  height: 42px;
-  margin: 4px -2px;
-  padding: 0 10px 0 8px;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 6px;
   box-sizing: border-box;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   cursor: pointer;
   overflow: hidden;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-secondary);
   font-family: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .trigger:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
-/* Rail trigger: the same 36x36 circle box as the other rail controls. */
+/* Rail trigger: the same 32x32 box as the other rail controls. */
 .trigger.rail {
-  width: 36px;
-  height: 36px;
-  margin: 8px 0 10px;
+  width: 32px;
+  height: 32px;
+  margin: 0;
   justify-content: center;
   gap: 0;
   padding: 0;
-  border-radius: 50%;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .triggerLabel {
@@ -74,12 +76,13 @@
   position: relative;
   z-index: 1;
   display: flex;
-  width: 800px;
-  height: min(800px, calc(100vh - 48px));
+  width: 820px;
+  height: min(760px, calc(100vh - 48px));
   max-width: calc(100vw - 48px);
-  border-radius: 24px;
+  border-radius: var(--dsw-radius-xl);
   overflow: hidden;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-module-platform);
   box-shadow: var(--dsw-shadow-lv3);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
      Declared on the panel rather than the scrolling `.options` child so the
@@ -90,24 +93,26 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Nav rail (figma .Setting-nav 501:29958): 188 wide, pad (12,22,12,0),
-   gap 18, no own fill — the panel white shows through. */
+/* Nav rail: 184 wide with a 10px gutter. It takes the panel's own grey; the
+   cards beside it are the lighter surface, which is the relationship that
+   makes them read as cards. */
 .nav {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  width: 188px;
-  padding: 22px 12px 0;
+  gap: 12px;
+  width: 184px;
+  padding: 14px 10px 12px;
   box-sizing: border-box;
 }
 
-/* Title row (figma 501:29959): 16/500 lh24, 12px side padding. */
+/* Panel title: macOS large-title weight and tracking. */
 .navTitle {
-  padding: 0 12px;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
+  padding: 0 6px;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--dsw-alias-label-primary);
 }
 
@@ -118,33 +123,37 @@
   gap: 4px;
 }
 
-/* Nav cell (figma .Setting-nav-cell 501:29962): 164x40, r12, pad
-   (12,9,16,9), gap 8; label 14/400 lh22; selected fill #EBEEF2. */
+/* Nav cell: source-list geometry — 28px row, 6px corner, 13px label. The
+   selected cell takes the accent with inverted ink, the same convention the
+   session list uses, so "where am I" is answered identically in both lists. */
 .navCell {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
-  padding: 9px 16px 9px 12px;
+  height: 28px;
+  padding: 0 8px;
   box-sizing: border-box;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
   font-weight: 400;
   color: var(--dsw-alias-label-primary);
   text-align: left;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .navCell:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .navCell.active {
-  background: var(--dsw-specific-sidebar-nav-item-active);
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-weight: 500;
 }
 
 .navIcon {
@@ -167,15 +176,15 @@
   flex-direction: column;
 }
 
-/* Header (figma .Header 501:29981): h54, pad (10,20,14,8), close right. */
+/* Header: the content column's toolbar, aligned to the cards below it. */
 .header {
   flex: none;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  height: 54px;
-  padding: 20px 14px 8px 10px;
+  height: 46px;
+  padding: 12px 16px 8px 20px;
   box-sizing: border-box;
 }
 
@@ -188,30 +197,36 @@
   margin-left: auto;
 }
 
-/* Close button (figma .Icon_container 501:29982): 28x28, r28, 14px glyph. */
+/* Close button: the translucent circular close control macOS uses. */
 .close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
-  border-radius: 28px;
-  background: transparent;
+  border-radius: var(--dsw-radius-full);
+  background: var(--dsw-alias-fill-l2);
   cursor: pointer;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-secondary);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .close:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
 }
 
-/* Options area (figma Options 501:29983): pad (24,0,24,24), scrolls. */
+/* Options area: the scroll region, inset so the group cards align under the
+   header's title. */
 .options {
   flex: 1;
   min-height: 0;
-  padding: 0 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 20px 20px;
   overflow-y: auto;
 }
 

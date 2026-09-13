@@ -450,8 +450,8 @@ function approvedOverwriteReasons(session: unknown): ReadonlySet<string> {
 async function targetState(ctx: Context, exec: ToolExecution, path: string): Promise<{ resolved: string; exists: boolean }> {
   const cwd = exec.agent?.session.header.cwd
   const target = await ctx.fs.resolve(path, cwd !== undefined ? { cwd, signal: exec.signal } : { signal: exec.signal })
-  // The targetKey is the symlink-realified absolute path; the boundary
-  // comparison needs that exact path, not the model-facing spelling.
+  // The fs service resolves to a handle carrying targetKey (absolute,
+  // symlink-realified); the boundary comparison needs that exact path.
   return { resolved: resolve(target.targetKey), exists: (await ctx.fs.stat(target, exec.signal)) !== undefined }
 }
 

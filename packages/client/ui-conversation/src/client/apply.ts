@@ -425,6 +425,8 @@ export function apply(ctx: Context): void {
           actions.setInspect({ callId })
           actions.setView('trajectory')
         },
+        toggleToolRun: (runKey) => { actions.toggleRun(runKey) },
+        toggleTurnProcess: (turn) => { actions.toggleTurnProcess(turn) },
         chatScroll: {
           save: (position) => {
             if (position === null) chatScrollPositions.delete(sessionId)

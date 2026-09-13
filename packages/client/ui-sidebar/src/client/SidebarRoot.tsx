@@ -200,9 +200,7 @@ export function SidebarRoot({
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>
-        {connection !== undefined && (
-          <RuntimeSetupCard connection={connection} wide={wide} t={t} />
-        )}
+        <RuntimeSetupCard connection={connection} wide={wide} t={t} />
         <div className={css.footerActions}>
           {renderSlot('sidebar.footer.action', { wide })}
         </div>

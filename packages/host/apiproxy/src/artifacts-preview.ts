@@ -7,8 +7,9 @@
  */
 
 import ExcelJS from 'exceljs'
-import { unzipSync, zipSync } from 'fflate'
+import { unzipSync } from 'fflate'
 import { execFileSync } from 'node:child_process'
+import { decodeEntities as decodeXmlEntities, loadWorkbookResilient } from '@deepseek-ai/dsh-tool-office'
 import { managedSofficePath } from './soffice-runtime.ts'
 
 export interface PreviewCell {
@@ -302,43 +303,6 @@ function denseCells(row: ExcelJS.Row, width: number): PreviewCell[] {
 }
 
 
-/**
- * exceljs 4.4 crashes in XLSX.reconcile on openpyxl-written workbooks that
- * carry charts/drawings (`drawing.anchors` undefined). Charts carry no text
- * preview value, so on that failure strip drawing/chart/media parts and the
- * sheets' `<drawing>` references, then reload.
- */
-export async function loadWorkbookResilient(bytes: Uint8Array): Promise<ExcelJS.Workbook | undefined> {
-  const workbook = new ExcelJS.Workbook()
-  try {
-    await workbook.xlsx.load(Buffer.from(bytes) as unknown as Parameters<typeof workbook.xlsx.load>[0])
-    return workbook
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (!/drawing|anchor/i.test(message)) return undefined
-  }
-  try {
-    const entries = unzipSync(bytes)
-    // Rebuild rather than delete: strip the parts ExcelJS stumbles on.
-    const kept: Record<string, Uint8Array> = {}
-    for (const [name, payload] of Object.entries(entries)) {
-      if (/^xl\/(drawings|charts|media)\//.test(name)) continue
-      kept[name] = payload
-    }
-    for (const [name, payload] of Object.entries(kept)) {
-      if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(name)) continue
-      const xml = new TextDecoder().decode(payload)
-      if (!xml.includes('<drawing ')) continue
-      kept[name] = new TextEncoder().encode(xml.replace(/<drawing [^>]*\/>/g, ''))
-    }
-    const stripped = zipSync(kept)
-    const retry = new ExcelJS.Workbook()
-    await retry.xlsx.load(Buffer.from(stripped) as unknown as Parameters<typeof retry.xlsx.load>[0])
-    return retry
-  } catch {
-    return undefined
-  }
-}
 
 /** Parse an .xlsx payload into capped worksheet previews. */
 export async function parseXlsxPreview(bytes: Uint8Array, fileName: string): Promise<ParsedPreview | undefined> {
@@ -476,16 +440,6 @@ export function parsePptxPreview(bytes: Uint8Array, fileName: string): ParsedPre
   }
 }
 
-function decodeXmlEntities(value: string): string {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, '\'')
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&amp;/g, '&')
-}
-
 /** Parse a .docx payload into capped block previews off word/document.xml. */
 export function parseDocxPreview(bytes: Uint8Array, fileName: string): ParsedPreview | undefined {
   try {
@@ -571,14 +525,14 @@ function chartSheetNames(entries: Record<string, Uint8Array>): Map<string, strin
   const decode = (payload: Uint8Array): string => new TextDecoder().decode(payload)
   const workbookTargets = new Map<string, string>()
   for (const rel of decode(workbookRels).matchAll(/<Relationship\b[^>]*>/g)) {
-    const { id, target } = relTarget(rel[0] ?? '')
+    const { id, target } = relTarget(rel[0])
     if (id !== undefined && target !== undefined) workbookTargets.set(id, target)
   }
   // Worksheet part path → sheet name.
   const sheetParts = new Map<string, string>()
   for (const sheet of decode(workbookXml).matchAll(/<sheet\b[^>]*>/g)) {
-    const name = /\bname="([^"]+)"/.exec(sheet[0] ?? '')?.[1]
-    const rid = /\br:id="([^"]+)"/.exec(sheet[0] ?? '')?.[1]
+    const name = /\bname="([^"]+)"/.exec(sheet[0])?.[1]
+    const rid = /\br:id="([^"]+)"/.exec(sheet[0])?.[1]
     const target = rid !== undefined ? workbookTargets.get(rid) : undefined
     if (name === undefined || target === undefined) continue
     sheetParts.set(joinTarget('xl/', target), name)
@@ -593,7 +547,7 @@ function chartSheetNames(entries: Record<string, Uint8Array>): Map<string, strin
     if (sheetRels === undefined) continue
     let drawingPath: string | undefined
     for (const rel of decode(sheetRels).matchAll(/<Relationship\b[^>]*>/g)) {
-      const { id, target } = relTarget(rel[0] ?? '')
+      const { id, target } = relTarget(rel[0])
       if (id === drawingRid && target !== undefined) drawingPath = joinTarget(sheetDir, target)
     }
     if (drawingPath === undefined) continue
@@ -601,7 +555,7 @@ function chartSheetNames(entries: Record<string, Uint8Array>): Map<string, strin
     const drawingRels = entries[`${drawingDir}_rels/${basename(drawingPath)}.rels`]
     if (drawingRels === undefined) continue
     for (const rel of decode(drawingRels).matchAll(/<Relationship\b[^>]*>/g)) {
-      const element = rel[0] ?? ''
+      const element = rel[0]
       const { target } = relTarget(element)
       if (target === undefined || !/\/chart\b/.test(/\bType="([^"]+)"/.exec(element)?.[1] ?? '')) continue
       const chartName = basename(joinTarget(drawingDir, target))

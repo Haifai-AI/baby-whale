@@ -5228,6 +5228,9 @@ importers:
       '@deepseek-ai/dsh-subagent':
         specifier: workspace:^
         version: link:../../subagent/subagent
+      '@deepseek-ai/dsh-tool-office':
+        specifier: workspace:^
+        version: link:../../office/tool-office
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools

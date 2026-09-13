@@ -13,6 +13,15 @@ import { applyReadTools } from './read-tools.ts'
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-office'
 
+/**
+ * The exceljs 4.4 openpyxl-workbook workaround (strip drawing/chart/media
+ * parts, reload), shared with the host preview service so the two xlsx
+ * readers cannot drift on which workbooks they can open.
+ */
+export { loadWorkbookResilient } from './read-xlsx.ts'
+/** The OOXML text decoder (`&amp;` last) shared with the host preview service. */
+export { decodeEntities } from './read-docx.ts'
+
 /** Services required by the office read suite. */
 export const inject = ['tools', 'fs', 'systemPrompt']
 

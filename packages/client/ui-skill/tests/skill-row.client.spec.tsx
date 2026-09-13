@@ -57,7 +57,8 @@ describe('SkillRow', () => {
     const row = screen.getByRole('button', { name: 'Skilldsh-manage-issues' })
     expect(row.getAttribute('aria-expanded')).toBe('false')
     expect(view.container.querySelector('[data-tool="skill"]')?.getAttribute('data-state')).toBe('ok')
-    expect(view.container.querySelector('[data-tool="skill"] svg')?.getAttribute('width')).toBe('14')
+    // 13 inside the shared 20px leading tile (see DESIGN.md, Process Row).
+    expect(view.container.querySelector('[data-tool="skill"] svg')?.getAttribute('width')).toBe('13')
     expect(screen.queryByLabelText('说明')).toBeNull()
 
     fireEvent.click(row)

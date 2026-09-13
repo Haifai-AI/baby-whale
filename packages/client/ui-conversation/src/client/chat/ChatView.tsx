@@ -21,7 +21,8 @@ import type { ChatViewSlotProps, RenderMessageImages } from '../contract/slots.t
 import { PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { ToolRunSummary } from './ToolRunGroup.tsx'
-import { foldsByDefault, groupToolRuns, rowsVisible } from './tool-run.ts'
+import type { ChatFlowEntry } from './tool-run.ts'
+import { entryIsProcess, foldsByDefault, groupToolRuns, rowsVisible } from './tool-run.ts'
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 
@@ -161,7 +162,7 @@ function TurnStatus({ startTime, t }: {
 export function ChatView({
   useSession, useSessions, useStore, renderSlot, sessionId, openFile, openFilePreview,
   loadOlder, loadImage, inspectCall, chatScroll, forkAt, fileMentions, openDetails,
-  toggleToolRun, t,
+  toggleToolRun, toggleTurnProcess, t,
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -176,6 +177,7 @@ export function ChatView({
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
   const expandedRuns = useStore(s => s.expandedRuns)
+  const hiddenProcessTurns = useStore(s => s.hiddenProcessTurns)
   const [fileOpenError, setFileOpenError] = useState<{ path: string; message: string } | null>(null)
   const [fileOpenBusy, setFileOpenBusy] = useState(false)
   // Close/retry must ignore a settlement that started before the latest
@@ -217,6 +219,7 @@ export function ChatView({
   )
   const flow = useMemo(() => groupToolRuns(order, nodeStore), [order, nodeStore])
   const expandedRunKeys = useMemo(() => new Set(expandedRuns ?? []), [expandedRuns])
+  const hiddenTurns = useMemo(() => new Set(hiddenProcessTurns ?? []), [hiddenProcessTurns])
   const renderMessageImages = useCallback<RenderMessageImages>(
     owner => renderSlot('conversation.message.images', { ...owner, loadImage }),
     [loadImage, renderSlot],
@@ -421,10 +424,16 @@ export function ChatView({
 
   /** One flow row. Extracted so a run's children and a standalone Node render
    *  through the same seat, with no second mount path to keep in step. */
-  const renderSeat = (nodeKey: string): ReactNode => (
+  const renderSeat = (entry: ChatFlowEntry): ReactNode => (
     <ChatNodeSeat
-      key={nodeKey}
-      nodeKey={nodeKey}
+      key={entry.key}
+      nodeKey={entry.key}
+      {...entry.turn === null ? {} : {
+        processControl: {
+          hidden: hiddenTurns.has(entry.turn),
+          toggle: () => { toggleTurnProcess(entry.turn as number) },
+        },
+      }}
       useSession={useSession}
       openDetails={openDetails}
       selectedCallId={selectedCallId}
@@ -458,7 +467,13 @@ export function ChatView({
             </div>
           )}
           {flow.map((entry) => {
-            if (entry.kind === 'node') return renderSeat(entry.key)
+            // A turn stripped to its prose: process rows and whole runs leave
+            // the flow, so the answer reads continuously. Text is never
+            // process (entryIsProcess), which is what makes this safe.
+            if (entry.turn !== null && hiddenTurns.has(entry.turn) && entryIsProcess(entry, nodeStore)) {
+              return null
+            }
+            if (entry.kind === 'node') return renderSeat(entry)
             // A run carries a summary row exactly when it can fold. A running,
             // failed, or short run renders its rows alone: a summary over rows
             // that are already visible would be a second header for one list.
@@ -474,7 +489,7 @@ export function ChatView({
                     t={t}
                   />
                 )}
-                {open && entry.run.keys.map(renderSeat)}
+                {open && entry.run.keys.map(key => renderSeat({ kind: 'node', key, turn: entry.turn }))}
               </div>
             )
           })}

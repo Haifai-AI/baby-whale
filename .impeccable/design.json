@@ -378,16 +378,16 @@
     {
       "name": "Tool Row",
       "kind": "custom",
-      "description": "A report, not a performance: a 22px line with a leading glyph and a truncating summary.",
-      "html": "<div class=\"ds-tool\"><span class=\"ds-tool-icon\">▤</span><span class=\"ds-tool-title\">Read</span><span class=\"ds-tool-sep\"></span><span class=\"ds-tool-summary\">~/whales/ui-polish/apps/cli/config/skills/design.md</span></div>",
-      "css": ".ds-tool { position: relative; display: flex; align-items: center; height: 22px; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 22px; } .ds-tool-icon { flex: none; width: 16px; color: rgb(110, 110, 115); } .ds-tool-title { flex: none; font-weight: 400; } .ds-tool-sep { flex: none; width: 3px; height: 3px; margin: 0 8px; border-radius: 999px; background: rgb(174, 174, 178); } .ds-tool-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgb(110, 110, 115); }"
+      "description": "The process row: a 24px line with a 20px leading tile, the verb at 13px medium in label-primary, and a truncating 13px summary in label-tertiary. No separator glyph — the weight step is the boundary.",
+      "html": "<div class=\"ds-tool\"><span class=\"ds-tool-tile\">▤</span><span class=\"ds-tool-title\">Read</span><span class=\"ds-tool-summary\">~/whales/ui-polish/apps/cli/config/skills/design.md</span></div>",
+      "css": ".ds-tool { position: relative; display: flex; align-items: center; gap: 8px; height: 24px; border-radius: 6px; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 22px; } .ds-tool-tile { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: rgb(235, 235, 237); color: rgb(88, 88, 93); } .ds-tool-title { flex: none; font-weight: 500; color: rgb(29, 29, 31); } .ds-tool-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgb(110, 110, 115); }"
     },
     {
       "name": "Folded Tool Run",
       "kind": "custom",
-      "description": "One settled, clean run of three or more tool calls, summarised in a single quiet line.",
+      "description": "One settled, clean run of three or more tool calls, summarised in a single quiet line whose label lands on the process rows’ own text axis.",
       "html": "<button class=\"ds-run\" aria-expanded=\"false\"><span class=\"ds-run-icon\">◎</span><span class=\"ds-run-label\">12 tool calls · 34s</span><span class=\"ds-run-chevron\">⌄</span></button>",
-      "css": ".ds-run { display: flex; align-items: center; gap: 6px; width: 100%; height: 22px; padding: 0 6px; margin-left: -6px; border: none; border-radius: 6px; background: transparent; color: rgb(110, 110, 115); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 22px; text-align: left; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-run:hover { background: rgba(0,0,0,0.05); color: rgb(88, 88, 93); } .ds-run-icon { flex: none; width: 16px; height: 16px; } .ds-run-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-run-chevron { flex: none; margin-left: 2px; opacity: 0.7; } .ds-run:hover .ds-run-chevron { opacity: 1; }"
+      "css": ".ds-run { display: flex; align-items: center; gap: 8px; width: 100%; height: 24px; padding: 0 6px; margin-left: -6px; border: none; border-radius: 6px; background: transparent; color: rgb(110, 110, 115); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 22px; text-align: left; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-run:hover { background: rgba(0,0,0,0.05); color: rgb(88, 88, 93); } .ds-run-icon { flex: none; width: 20px; height: 20px; } .ds-run-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-run-chevron { flex: none; margin-left: 2px; opacity: 0.7; } .ds-run:hover .ds-run-chevron { opacity: 1; }"
     }
   ],
   "narrative": {

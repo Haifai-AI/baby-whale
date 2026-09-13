@@ -8,8 +8,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatNodeStore, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatNode } from '../src/client/contract/chat-nodes.ts'
+import type { ChatFlowEntry } from '../src/client/chat/tool-run.ts'
 import {
-  MIN_FOLDABLE_RUN, foldsByDefault, groupToolRuns, rowsVisible,
+  MIN_FOLDABLE_RUN, entryIsProcess, foldsByDefault, groupToolRuns, rowsVisible,
 } from '../src/client/chat/tool-run.ts'
 
 /** A settled call block. */
@@ -243,5 +244,81 @@ describe('rowsVisible', () => {
     const opened = new Set(['r1'])
     expect(rowsVisible(streaming, opened)).toBe(true)
     expect(rowsVisible({ ...streaming, running: false }, opened)).toBe(true)
+  })
+})
+
+describe('turn assignment', () => {
+  /** A turn tail Node — the last Node of its turn, carrying the turn number. */
+  function tail(key: string, turn: number): ChatNode {
+    return { key, kind: 'turn-tail', data: { turn } } as unknown as ChatNode
+  }
+
+  it('labels a turn from its tail, walking backwards', () => {
+    // Two turns. The tail is each turn's LAST Node, so one backward pass has
+    // to label everything behind it — and the two calls of turn 2 arrive as a
+    // single run entry, not two.
+    const nodes = [
+      call('a1', running('a', 1)), call('a2', running('b', 2)), tail('t1', 1),
+      call('b1', running('c', 3)), call('b2', running('d', 4)), tail('t2', 2),
+    ]
+    const flow = groupToolRuns(['a1', 'a2', 't1', 'b1', 'b2', 't2'], store(nodes))
+    expect(flow.map(e => [e.kind, e.turn])).toEqual([
+      ['run', 1], ['node', 1], ['run', 2], ['node', 2],
+    ])
+  })
+
+  it('labels a turn´s user message with that turn, since it leads the exchange', () => {
+    const flow = groupToolRuns(['u1', 'a1', 't1'], store([
+      other('u1', 'user'), call('a1', running('a', 1)), tail('t1', 1),
+    ]))
+    // The user message is content, so the label never changes what is hidden —
+    // it only decides which turn's footer the row reads as belonging to.
+    expect(flow.map(e => [e.kind, e.turn])).toEqual([['node', 1], ['run', 1], ['node', 1]])
+    expect(entryIsProcess(flow[0]!, store([other('u1', 'user')]))).toBe(false)
+  })
+
+  it('leaves the live turn unlabelled, because it has no footer to toggle from', () => {
+    const flow = groupToolRuns(['a1', 't1', 'b1'], store([
+      call('a1', running('a', 1)), tail('t1', 1), call('b1', running('b', 2)),
+    ]))
+    expect(flow.map(e => e.turn)).toEqual([1, 1, null])
+  })
+
+  it('leaves everything unlabelled when no turn has closed', () => {
+    const flow = groupToolRuns(['a1', 'a2'], store([
+      call('a1', running('a', 1)), call('a2', running('b', 2)),
+    ]))
+    expect(flow.map(e => e.turn)).toEqual([null])
+  })
+})
+
+describe('entryIsProcess', () => {
+  it('treats every run as process', () => {
+    const nodes = [call('c1', running('a', 1))]
+    const flow = groupToolRuns(['c1'], store(nodes))
+    expect(flow[0]?.kind).toBe('run')
+    expect(entryIsProcess(flow[0]!, store(nodes))).toBe(true)
+  })
+
+  it('treats a reasoning-only step as process but prose as content', () => {
+    const reasoningNodes = [step('s1', 1, [{ kind: 'reasoning', text: 'x' }])]
+    expect(entryIsProcess(groupToolRuns(['s1'], store(reasoningNodes))[0]!, store(reasoningNodes))).toBe(true)
+
+    const proseNodes = [step('s1', 1, [prose('the answer')])]
+    expect(entryIsProcess(groupToolRuns(['s1'], store(proseNodes))[0]!, store(proseNodes))).toBe(false)
+  })
+
+  it('never treats another row kind as process, so a notice is never hidden', () => {
+    for (const kind of ['user', 'command', 'compaction', 'turn-error', 'turn-tail', 'unknown']) {
+      const nodes = [other('n1', kind)]
+      const entry = groupToolRuns(['n1'], store(nodes))[0]!
+      expect(entryIsProcess(entry, store(nodes)), kind).toBe(false)
+    }
+  })
+
+  it('treats a Node missing from the index as content, so nothing vanishes unread', () => {
+    const nodes = [call('c1', running('a', 1))]
+    const entry: ChatFlowEntry = { kind: 'node', key: 'gone', turn: 1 }
+    expect(entryIsProcess(entry, store(nodes))).toBe(false)
   })
 })

@@ -60,10 +60,17 @@ export interface ToolRun {
   readonly endTime: number | null
 }
 
-/** A flow entry: either a standalone Node key or a run of process Nodes. */
+/**
+ * A flow entry: either a standalone Node key or a run of process Nodes.
+ *
+ * `turn` is the turn the entry renders inside, resolved from the turn-tail
+ * Nodes (see {@link groupToolRuns}); null for anything before the first tail
+ * or after the last one, which is the live turn. A null turn cannot be
+ * collapsed, because a running turn has no footer to offer the control.
+ */
 export type ChatFlowEntry =
-  | { readonly kind: 'node'; readonly key: string }
-  | { readonly kind: 'run'; readonly key: string; readonly run: ToolRun }
+  | { readonly kind: 'node'; readonly key: string; readonly turn: number | null }
+  | { readonly kind: 'run'; readonly key: string; readonly turn: number | null; readonly run: ToolRun }
 
 /**
  * Whether a step's blocks are work rather than content.
@@ -142,6 +149,7 @@ export function groupToolRuns(order: readonly string[], nodes: ChatNodeStore): C
       entries.push({
         kind: 'run',
         key: runKey,
+        turn: null,
         // An unsettled run has no end: settled Nodes earlier in the run carry
         // their own times, and reporting the latest of those would print a
         // duration for work still in flight.
@@ -156,7 +164,7 @@ export function groupToolRuns(order: readonly string[], nodes: ChatNodeStore): C
         },
       })
     } else {
-      for (const key of keys) entries.push({ kind: 'node', key })
+      for (const key of keys) entries.push({ kind: 'node', key, turn: null })
     }
     runKey = null
     keys = []
@@ -169,14 +177,53 @@ export function groupToolRuns(order: readonly string[], nodes: ChatNodeStore): C
     // null), so it ends the run rather than joining it silently.
     if (node === undefined || !foldNode(node, facts)) {
       flush()
-      entries.push({ kind: 'node', key })
+      entries.push({ kind: 'node', key, turn: null })
       continue
     }
     runKey ??= key
     keys.push(key)
   }
   flush()
-  return entries
+  return withTurns(entries, nodes)
+}
+
+/**
+ * Assign each entry the turn it renders inside.
+ *
+ * A turn's tail is its last Node, so walking the entries backwards lets one
+ * pass label a whole turn: the tail sets the current turn, and every entry
+ * behind it inherits that turn until the previous tail. Entries after the last
+ * tail keep null — that is the live turn, which has no footer yet.
+ * @param entries - flow entries in render order, each with a null turn.
+ * @param nodes - the runtime's live per-key Node reader.
+ * @returns the same entries with their turns resolved.
+ */
+function withTurns(entries: readonly ChatFlowEntry[], nodes: ChatNodeStore): ChatFlowEntry[] {
+  let turn: number | null = null
+  const resolved: ChatFlowEntry[] = []
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index] as ChatFlowEntry
+    const node = entry.kind === 'node' ? (nodes.get(entry.key) as ChatNode | undefined) : undefined
+    if (node?.kind === 'turn-tail') turn = node.data.turn
+    resolved.push(entry.turn === turn ? entry : { ...entry, turn })
+  }
+  return resolved.reverse()
+}
+
+/**
+ * Whether an entry is process, and so hidden when its turn hides process.
+ *
+ * Prose is never process: hiding the answer is the failure this control must
+ * not have. A run is process by construction, and a step is process exactly
+ * when it carries no non-empty text.
+ * @param entry - the flow entry to classify.
+ * @param nodes - the runtime's live per-key Node reader.
+ * @returns true when the entry may be hidden by the turn's process control.
+ */
+export function entryIsProcess(entry: ChatFlowEntry, nodes: ChatNodeStore): boolean {
+  if (entry.kind === 'run') return true
+  const node = nodes.get(entry.key) as ChatNode | undefined
+  return node?.kind === 'assistant-step' && stepIsProcess(node)
 }
 
 /**

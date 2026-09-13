@@ -9,13 +9,13 @@
 .summary {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
-  height: 22px;
+  height: 24px;
   padding: 0 6px;
   /* The negative inline start pulls the row's text back onto the transcript's
-     own text axis: the rows it replaces carry a 16px leading glyph plus a 6px
+     own text axis: the rows it replaces carry a 20px leading tile plus an 8px
      gap, and the summary's icon repeats that leading slot, so without this the
      label would sit one indent step to the right of the prose around it. */
   margin-left: -6px;
@@ -36,10 +36,13 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Repeats the row's 20px leading slot exactly — same width, glyph centred —
+   so the folded summary's label lands on the same axis as the row titles it
+   stands in for. */
 .icon {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .label {

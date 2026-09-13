@@ -16,6 +16,7 @@ type ChatActions = {
   openFilePreview: (draft: ChatStoreState, path: string) => void
   closeFilePreview: (draft: ChatStoreState) => void
   toggleRun: (draft: ChatStoreState, runKey: string) => void
+  toggleTurnProcess: (draft: ChatStoreState, turn: number) => void
 }
 
 /**
@@ -50,6 +51,12 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
         d.expandedRuns = open.includes(runKey)
           ? open.filter(key => key !== runKey)
           : [...open, runKey]
+      },
+      toggleTurnProcess: (d, turn) => {
+        const hidden = d.hiddenProcessTurns ?? []
+        d.hiddenProcessTurns = hidden.includes(turn)
+          ? hidden.filter(value => value !== turn)
+          : [...hidden, turn]
       },
     },
   })

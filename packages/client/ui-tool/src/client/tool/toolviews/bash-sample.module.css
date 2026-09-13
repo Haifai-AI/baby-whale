@@ -1,5 +1,7 @@
-/* Bash toolview: same geometry/tokens as ToolRow (figma Bash · description),
-   plus the expand-gated terminal card under the summary line. */
+/* Bash toolview: the shared process-row chrome, plus the expand-gated terminal
+   card under the summary line. This row hand-rolls the chrome rather than
+   composing `ToolRow`, so it repeats the shared values by hand and has to be
+   kept in step with them. */
 
 /* Summary line over the terminal card; the summary row keeps its own 24px
    height, so the card is a column around it rather than a change to it. */
@@ -78,54 +80,67 @@
 }
 
 /* ToolRow's unified expand interaction, replicated per the registrant
-   posture: pointer on the expandable row (the icon→chevron hover preview is
-   the affordance, no row fill). */
+   posture. */
+.root {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  min-width: 0;
+  border-radius: var(--dsw-radius-sm);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
 .root[data-expandable] {
   cursor: pointer;
 }
 
-.root {
-  position: relative; /* sweep-glare overlay anchor */
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  height: 24px;
-  min-width: 0;
+/* The row is one click target; the wash is what says so. */
+.root[data-expandable]:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
-/* Running sweep glare — same deepsuite ShimmerText pattern as ToolRow. */
+/* Running: the same hairline of accent travelling along the row's bottom edge
+   that a running ToolRow draws, replacing the 300px band of canvas colour this
+   row used to sweep across its own glyphs. */
 .root[data-state='running']::after {
   content: '';
   position: absolute;
-  top: 0;
+  right: 0;
   bottom: 0;
   left: 0;
-  width: 300px;
+  height: 1px;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    var(--dsw-alias-state-business-primary) 50%,
     transparent 100%
   );
-  animation: dsh-bash-row-sweep 2.6s ease-out infinite;
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: dsh-bash-row-sweep 1.6s var(--ds-ease-in-out) infinite;
   pointer-events: none;
 }
 
 @keyframes dsh-bash-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 
+/* The 20px leading tile, matching the shared chrome. */
 .leading {
   position: relative; /* .chevronHover overlay anchor */
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
-  color: var(--dsw-alias-label-tertiary);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .chevron {
@@ -137,7 +152,7 @@
 .iconIdle {
   display: inline-flex;
   opacity: 1;
-  transition: opacity 100ms ease;
+  transition: opacity 100ms var(--ds-ease-out);
 }
 
 .chevronHover {
@@ -145,7 +160,7 @@
   inset: 0;
   margin: auto;
   opacity: 0;
-  transition: opacity 100ms ease;
+  transition: opacity 100ms var(--ds-ease-out);
 }
 
 .root:hover .iconIdle {
@@ -158,18 +173,10 @@
 
 .title {
   flex: none;
-  font-size: 14px;
-  line-height: 24px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.sep {
-  flex: none;
-  width: 2px;
-  height: 2px;
-  border-radius: 1px;
-  margin: 0 8px;
-  background: var(--dsw-alias-label-caption);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
 }
 
 .summary {
@@ -178,8 +185,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   color: var(--dsw-alias-label-tertiary);
 }
 

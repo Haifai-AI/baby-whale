@@ -284,7 +284,7 @@ Backdrop blur is treated as a layout decision, not only a visual one, and is the
 
 Corners are assigned by the size of the thing being rounded, from a closed six-step scale: 4px (`xs`) for an inline token, 6px (`sm`) for a control or a row, 8px (`md`) for a button or a field, 12px (`lg`) for a card or a menu, 16px (`xl`) for the composer and a dialog, and fully round for a circular control.
 
-The 6px row corner is the signature detail: session rows, settings nav cells, and pop-up buttons all take it, and its smallness is what makes a dense list look native rather than like a stack of cards. The composer card at 16px is the single softest shape in the product, which is deliberate — it is the one object the user addresses directly.
+The 6px row corner is the signature detail: session rows, settings nav cells, process rows and their leading tiles, and pop-up buttons all take it, and its smallness is what makes a dense list look native rather than like a stack of cards. The composer card at 16px is the single softest shape in the product, which is deliberate — it is the one object the user addresses directly.
 
 Borders are hairlines in three weights: 1px at 6% opacity for a card edge, 10% for a control edge, and 14–20% for a field that has to look editable. Nothing uses a 2px border except a focus ring.
 
@@ -322,17 +322,22 @@ Borders are hairlines in three weights: 1px at 6% opacity for a card edge, 10% f
 - **Shape:** a 16px-radius card with the floating shadow, holding a 15px auto-growing textarea above a control row: attach and mode chips on the left, model pop-up and a single accent send button on the right.
 - **States:** the send button is the only accent object in the composer; the attach control and the model trigger are chrome-free until hover, so the trailing controls are the quietest thing in the row.
 
+### Process Row (the one row every unit of work wears)
+
+- **Character:** evidence, not performance. A tool call, a reasoning block, a slash command, an injected context, and a skill invocation are the same object at different ranks; one row serves all five, and the differences between them are rank, never structure.
+- **Shape:** a 24px single-line row — a 20px leading tile, an 8px gap, the verb at 13px/22px medium in `label-primary`, an 8px gap, and a truncating 13px/22px meta run in `label-tertiary`.
+- **The tile** is a 20px rounded square (`--dsw-radius-sm`) on `--dsw-alias-fill-l2`, carrying a 13px glyph in `label-secondary`. It is what gives every row a definite left edge, so a row reads as an object on the text axis rather than as one more line of grey prose. It is sized from the slot, so a consumer that controls the leading slot controls the tile with it.
+- **Hierarchy is carried by ink and weight, never by a separator glyph.** The verb's 500 over the meta run's 400 is a full weight step; the 3px dot this replaced sat at 1.98:1 on the canvas and carried no meaning. No process row draws a separator.
+- **Rank, the one deliberate axis of difference:** a tool call's verb is `label-primary`, a reasoning row's is `label-secondary`. Thinking is ambient and a call is an event, so the thirty-odd reasoning rows in a long turn recede behind the calls that did the work. Everything else about the two rows is identical.
+- **Hover:** the row washes with `--dsw-alias-interactive-bg-hover` across the text column, and the leading glyph cross-fades to a chevron inside its tile. The wash is what says the whole row is one target.
+- **Running state:** a 1px accent rule travelling along the row's bottom edge, with the state text exposed to assistive technology. The treatment this replaced swept a 300px glare band across the row's own glyphs, dimming the text it was meant to annotate.
+
 ### Tool Run (the folded transcript)
 
 - **Character:** the process recedes so the answer can be read.
-- **Shape:** a settled, clean run of three or more tool calls collapses to one 22px line — a 16px leading mark, a 13px muted label (`12 tool calls · 34s`), and a chevron that flips on open. Rows return on click, and a reader's expansion survives the run settling.
+- **Shape:** a settled, clean run of three or more tool calls collapses to one 24px line — a 20px leading slot, a 13px muted label (`12 tool calls · 34s`), and a chevron that flips on open. Rows return on click, and a reader's expansion survives the run settling.
 - **What never folds:** a run that is still working (live calls stay watchable), a run containing a failure or an interruption, and anything carrying prose — the answer's own text always ends a run.
-- **Why it reads as one object:** the summary's leading mark repeats the row's 16px leading slot, and a negative inline start pulls its label back onto the transcript's text axis, so a folded run sits in the same column as the prose around it rather than one indent step to the right.
-
-### Tool Row
-- **Character:** a report, not a performance. Rows appear inside their run; the fold above decides when they show at rest.
-- **Shape:** a 22px single-line row — a 16px leading glyph, a 13px title, a 3px separator dot, and a truncating 13px summary.
-- **Running state:** a 1px accent rule travelling along the row's bottom edge. The previous treatment swept a 300px glare band across the row's own glyphs, dimming the text it was meant to annotate.
+- **Why it reads as one object:** the summary's leading mark repeats the process row's 20px leading slot at the same glyph centre, and a negative inline start pulls its label back onto the transcript's text axis, so a folded run's label lands exactly on the axis of the row titles it stands in for rather than one indent step to the right.
 
 ## Do's and Don'ts
 
@@ -346,6 +351,7 @@ Borders are hairlines in three weights: 1px at 6% opacity for a card edge, 10% f
 
 ### Don't:
 - **Don't** use `--dsw-alias-label-quaternary`, `--dsw-alias-label-dimmed`, or `--dsw-alias-separator-primary` for text that carries meaning; they are decoration and fall below the contrast floor.
+- **Don't** separate two runs of text inside a row with a glyph. A 2–3px dot composites to roughly 2:1 and reads as neither punctuation nor a boundary; carry the rank in ink and weight instead.
 - **Don't** put a theme selector (`[data-ds-dark-theme]`) in a feature stylesheet; light/dark overrides belong to `ui-theme`.
 - **Don't** write a literal colour in a feature stylesheet, or reach for the raw `--dsw-static-*` palette; each one that remains is a surface that has not migrated yet. The single documented exception is the framework-free boot page (`packages/client/web/src/boot-page.module.css`), which paints before any theme CSS can load and therefore mirrors the palette's values as literals — those must move in the same change that moves the ramp.
 - **Don't** animate `width`, `height`, `padding`, or `margin`; animate `transform`, `opacity`, `background`, or grid tracks.

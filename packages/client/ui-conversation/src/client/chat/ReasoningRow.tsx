@@ -42,20 +42,16 @@ export function ReasoningRow({ text, running, t }: { text: string; running: bool
       {running && <span className={a11yCss.visuallyHidden}>{t('row.running')}</span>}
       <DisclosureRow
         rowClassName={css.row}
-        leadingClassName={css.leading}
         titleClassName={css.title}
         chevronClassName={css.chevron}
-        icon={<IconThinkOutline14 size={14} />}
+        icon={<IconThinkOutline14 size={13} />}
         title="Think"
         open={expanded}
         expandable
         expandOnRowClick
         onToggle={() => { setExpanded(value => !value) }}
         collapsedContent={(
-          <>
-            <span className={css.separator} aria-hidden />
-            <span ref={summaryRef} className={css.summary} data-follow-end={running || undefined}>{summary}</span>
-          </>
+          <span ref={summaryRef} className={css.summary} data-follow-end={running || undefined}>{summary}</span>
         )}
       >
         <div className={css.thinkBody}>{text}</div>

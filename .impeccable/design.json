@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-13T00:00:00.000Z",
+  "title": "Design System: Baby Whale",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "System Blue",
+        "canonical": "rgb(0, 113, 227)",
+        "tonalRamp": [
+          "#001b3d",
+          "#00306b",
+          "#00489c",
+          "#0060cf",
+          "#0071e3",
+          "#3d8ff0",
+          "#7fb3f7",
+          "#c2d9fc"
+        ]
+      },
+      "state-error": {
+        "role": "tertiary",
+        "displayName": "Signal Red",
+        "canonical": "rgb(215, 0, 21)",
+        "tonalRamp": [
+          "#3d0006",
+          "#6b000b",
+          "#990010",
+          "#c70015",
+          "#d70015",
+          "#ef4a5c",
+          "#f78f9a",
+          "#fcd2d6"
+        ]
+      },
+      "state-success": {
+        "role": "tertiary",
+        "displayName": "Signal Green",
+        "canonical": "rgb(36, 138, 61)",
+        "tonalRamp": [
+          "#04240f",
+          "#0a401c",
+          "#105c28",
+          "#187a36",
+          "#248a3d",
+          "#4fae66",
+          "#8fd09f",
+          "#d0ecd8"
+        ]
+      },
+      "state-warn": {
+        "role": "tertiary",
+        "displayName": "Signal Orange",
+        "canonical": "rgb(201, 52, 0)",
+        "tonalRamp": [
+          "#3a0d00",
+          "#5c1800",
+          "#802400",
+          "#a62f00",
+          "#c93400",
+          "#e3642f",
+          "#f0a077",
+          "#fad8c4"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Window Canvas",
+        "canonical": "rgb(255, 255, 255)",
+        "tonalRamp": [
+          "#1c1c1e",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#8e8e93",
+          "#c7c7cc",
+          "#e5e5ea",
+          "#ffffff"
+        ]
+      },
+      "chrome": {
+        "role": "neutral",
+        "displayName": "Sidebar Chrome",
+        "canonical": "rgb(245, 245, 247)",
+        "tonalRamp": [
+          "#1c1c1e",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#8e8e93",
+          "#c7c7cc",
+          "#e5e5ea",
+          "#f5f5f7"
+        ]
+      },
+      "elevated": {
+        "role": "neutral",
+        "displayName": "Raised Control Face",
+        "canonical": "rgb(235, 235, 237)",
+        "tonalRamp": [
+          "#1c1c1e",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#8e8e93",
+          "#c7c7cc",
+          "#d1d1d6",
+          "#ebebed"
+        ]
+      },
+      "label-primary": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "rgb(29, 29, 31)",
+        "tonalRamp": [
+          "#1d1d1f",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#58585d",
+          "#6e6e73",
+          "#aeaeb2",
+          "#d1d1d6"
+        ]
+      },
+      "label-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Ink",
+        "canonical": "rgb(88, 88, 93)",
+        "tonalRamp": [
+          "#1d1d1f",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#58585d",
+          "#6e6e73",
+          "#aeaeb2",
+          "#d1d1d6"
+        ]
+      },
+      "label-tertiary": {
+        "role": "neutral",
+        "displayName": "Tertiary Ink",
+        "canonical": "rgb(110, 110, 115)",
+        "tonalRamp": [
+          "#1d1d1f",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#58585d",
+          "#6e6e73",
+          "#aeaeb2",
+          "#d1d1d6"
+        ]
+      },
+      "label-quaternary": {
+        "role": "neutral",
+        "displayName": "Decoration Grey",
+        "canonical": "rgb(174, 174, 178)",
+        "tonalRamp": [
+          "#1d1d1f",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#58585d",
+          "#6e6e73",
+          "#aeaeb2",
+          "#d1d1d6"
+        ]
+      },
+      "selection-wash": {
+        "role": "secondary",
+        "displayName": "Selection Wash",
+        "canonical": "rgb(204, 226, 255)",
+        "tonalRamp": [
+          "#001b3d",
+          "#00306b",
+          "#00489c",
+          "#0060cf",
+          "#3d8ff0",
+          "#7fb3f7",
+          "#b8d6fb",
+          "#cce2ff"
+        ]
+      },
+      "scrim": {
+        "role": "neutral",
+        "displayName": "Dialog Scrim",
+        "canonical": "rgba(0, 0, 0, 0.24)",
+        "tonalRamp": [
+          "#000000",
+          "#1c1c1e",
+          "#3a3a3c",
+          "#48484a",
+          "#8e8e93",
+          "#c7c7cc",
+          "#e5e5ea",
+          "#ffffff"
+        ]
+      },
+      "inverse-plate": {
+        "role": "neutral",
+        "displayName": "Inverse Plate",
+        "canonical": "rgba(28, 28, 30, 0.82)",
+        "tonalRamp": [
+          "#1c1c1e",
+          "#2c2c2e",
+          "#3a3a3c",
+          "#48484a",
+          "#8e8e93",
+          "#c7c7cc",
+          "#e5e5ea",
+          "#ffffff"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The empty-state title, and nothing else."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Settings panel heading and the product wordmark."
+      },
+      "body": {
+        "displayName": "Prose",
+        "purpose": "Assistant answers and user messages — text that is read."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Every button, row, tab, menu item, and field — text that is scanned."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Group labels, settings descriptions, the session stats line."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code blocks, terminal output, and diff lines."
+      },
+      "doc-title": {
+        "displayName": "Document Title",
+        "purpose": "A title painted inside a document preview; sized to the document, not the UI."
+      },
+      "doc-subtitle": {
+        "displayName": "Document Subtitle",
+        "purpose": "A subhead inside a document preview."
+      },
+      "doc-body": {
+        "displayName": "Document Body",
+        "purpose": "Body text inside a document preview, at the document's own reading size."
+      }
+    },
+    "shadows": [
+      {
+        "name": "resting",
+        "value": "0 0 0 0.5px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.06), 0 2px 6px rgba(0,0,0,0.04)",
+        "purpose": "A button sitting on a surface; a segmented control's lifted segment."
+      },
+      {
+        "name": "floating",
+        "value": "0 0 0 0.5px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.07), 0 10px 24px rgba(0,0,0,0.07)",
+        "purpose": "The composer card, a tooltip, a back-to-bottom control."
+      },
+      {
+        "name": "overlay",
+        "value": "0 0 0 0.5px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.1), 0 28px 64px rgba(0,0,0,0.14)",
+        "purpose": "Menus and dialogs."
+      },
+      {
+        "name": "resting-dark",
+        "value": "0 0 0 1px rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35)",
+        "purpose": "The same step over the dark canvas, with a light hairline and a deeper cast."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Every enter and expand. Covers most of its distance immediately and settles."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "The two cases needing symmetry: a column sliding shut, a chip collapsing."
+      },
+      {
+        "name": "duration-fast",
+        "value": "0.12s",
+        "purpose": "Hover and press fills."
+      },
+      {
+        "name": "duration",
+        "value": "0.2s",
+        "purpose": "Default state transitions."
+      },
+      {
+        "name": "duration-slow",
+        "value": "0.32s",
+        "purpose": "Column collapse and expand."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sidebar-rail",
+        "value": "900px",
+        "purpose": "Below this the sidebar collapses to a 52px icon rail."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one accent fill in the system; one per view.",
+      "html": "<button class=\"ds-btn-primary\">Send</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: none; border-radius: 8px; background: rgb(0, 113, 227); color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; font-weight: 500; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-primary:hover { background: rgb(0, 119, 237); } .ds-btn-primary:active { background: rgb(0, 104, 209); } .ds-btn-primary:focus-visible { outline: 2px solid rgb(0, 113, 227); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The default AppKit button: a white face, a hairline edge, and a resting shadow.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; background: #fff; color: rgb(29, 29, 31); box-shadow: 0 0 0 0.5px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.06), 0 2px 6px rgba(0,0,0,0.04); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; font-weight: 500; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-secondary:hover { background: rgb(245, 245, 247); } .ds-btn-secondary:active { background: rgba(0,0,0,0.08); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "A chrome-free control that fills only under the pointer.",
+      "html": "<button class=\"ds-btn-ghost\">Models</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: none; border-radius: 8px; background: transparent; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; font-weight: 500; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-ghost:hover { background: rgba(0,0,0,0.05); } .ds-btn-ghost:active { background: rgba(0,0,0,0.08); }"
+    },
+    {
+      "name": "Composer",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "The object the user addresses directly, and the softest shape in the product.",
+      "html": "<div class=\"ds-composer\"><div class=\"ds-composer-field\">Describe what you want to build</div><div class=\"ds-composer-row\"><span class=\"ds-composer-chip\">Coworker mode</span><span class=\"ds-composer-model\">deepseek/deepseek-v4.1-flash <b>Max</b></span><button class=\"ds-composer-send\" aria-label=\"Send\">↑</button></div></div>",
+      "css": ".ds-composer { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 752px; padding: 10px 0 6px; border: 1px solid rgba(0,0,0,0.08); border-radius: 16px; background: #fff; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.07), 0 10px 24px rgba(0,0,0,0.07); } .ds-composer-field { padding: 2px 12px 0 16px; color: rgb(174, 174, 178); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 22px; } .ds-composer-row { display: flex; align-items: center; gap: 8px; padding: 0 8px; } .ds-composer-chip, .ds-composer-model { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 6px; border-radius: 6px; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; font-weight: 500; } .ds-composer-model { color: rgb(29, 29, 31); margin-left: auto; } .ds-composer-model b { color: rgb(110, 110, 115); font-weight: 500; } .ds-composer-send { display: grid; place-items: center; width: 30px; height: 30px; border: none; border-radius: 999px; background: rgb(0, 113, 227); color: #fff; font-size: 15px; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-composer-send:hover { background: rgb(0, 119, 237); }"
+    },
+    {
+      "name": "Source List Row",
+      "kind": "nav",
+      "refersTo": "sidebar-row",
+      "description": "The session list row; its 6px corner is the system's signature detail.",
+      "html": "<div class=\"ds-list\"><div class=\"ds-row\"><span class=\"ds-row-dot\"></span><span class=\"ds-row-title\">Flappy Bird design with extras</span><span class=\"ds-row-time\">2h</span></div><div class=\"ds-row ds-row-selected\"><span class=\"ds-row-dot\"></span><span class=\"ds-row-title\">History of AI Presentation Design</span><span class=\"ds-row-time\">1h</span></div></div>",
+      "css": ".ds-list { display: flex; flex-direction: column; gap: 2px; width: 260px; padding: 8px; background: rgb(245, 245, 247); } .ds-row { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px; border-radius: 6px; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; cursor: pointer; transition: background 0.12s cubic-bezier(0.22, 1, 0.36, 1); } .ds-row:hover { background: rgba(0,0,0,0.05); } .ds-row-selected { background: rgb(0, 113, 227); color: #fff; font-weight: 500; } .ds-row-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; opacity: 0.35; } .ds-row-selected .ds-row-dot { opacity: 0.85; } .ds-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-row-time { font-size: 11px; color: rgb(110, 110, 115); font-variant-numeric: tabular-nums; } .ds-row-selected .ds-row-time { color: #fff; opacity: 0.75; }"
+    },
+    {
+      "name": "Settings Group",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The macOS inset group: rows in a white card on a grey panel, with separators inset from the card edge.",
+      "html": "<div class=\"ds-group\"><div class=\"ds-group-row\"><div class=\"ds-group-text\"><span class=\"ds-group-title\">Agent preset</span><span class=\"ds-group-desc\">Applies to sessions you start from now on.</span></div><button class=\"ds-popup\">Coworker mode <span class=\"ds-popup-chevron\">⌄</span></button></div><div class=\"ds-group-row\"><div class=\"ds-group-text\"><span class=\"ds-group-title\">Permission</span><span class=\"ds-group-desc\">Choose the default permission mode.</span></div><button class=\"ds-popup\">Workspace Write <span class=\"ds-popup-chevron\">⌄</span></button></div></div>",
+      "css": ".ds-group { width: 480px; padding: 0 14px; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; background: #fff; } .ds-group-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 0; } .ds-group-row + .ds-group-row::after { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 1px; background: rgba(0,0,0,0.06); } .ds-group-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; } .ds-group-title { color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; } .ds-group-desc { color: rgb(88, 88, 93); font-size: 11px; line-height: 15px; } .ds-popup { display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px 0 10px; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; background: #fff; color: rgb(29, 29, 31); box-shadow: 0 0 0 0.5px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.06); font-family: inherit; font-size: 13px; line-height: 18px; cursor: pointer; } .ds-popup:hover { background: rgb(245, 245, 247); } .ds-popup-chevron { opacity: 0.55; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A white face with a hairline edge; focus is an accent ring plus a glow.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search sessions\" />",
+      "css": ".ds-input { height: 30px; padding: 0 8px; border: 1px solid rgba(0,0,0,0.14); border-radius: 8px; background: #fff; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; outline: none; transition: border-color 0.12s, box-shadow 0.12s; } .ds-input::placeholder { color: rgb(174, 174, 178); } .ds-input:focus { border-color: rgb(0, 113, 227); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1); }"
+    },
+    {
+      "name": "Stacked Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "The selected tab is the darkest ink plus a 1.5px rule — position, not a second colour.",
+      "html": "<div class=\"ds-tabs\"><span class=\"ds-tab ds-tab-active\">Chat</span><span class=\"ds-tab\">Trajectory</span><span class=\"ds-tab\">Artifacts</span></div>",
+      "css": ".ds-tabs { display: flex; gap: 24px; padding: 0 6px; border-bottom: 1px solid rgba(0,0,0,0.1); } .ds-tab { position: relative; padding: 0 0 9px; color: rgb(110, 110, 115); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 18px; font-weight: 500; cursor: pointer; transition: color 0.12s; } .ds-tab:hover { color: rgb(29, 29, 31); } .ds-tab-active { color: rgb(29, 29, 31); } .ds-tab-active::after { content: ''; position: absolute; right: 0; bottom: -1px; left: 0; height: 1.5px; border-radius: 999px; background: rgb(29, 29, 31); }"
+    },
+    {
+      "name": "Tool Row",
+      "kind": "custom",
+      "description": "A report, not a performance: a 22px line with a leading glyph and a truncating summary.",
+      "html": "<div class=\"ds-tool\"><span class=\"ds-tool-icon\">▤</span><span class=\"ds-tool-title\">Read</span><span class=\"ds-tool-sep\"></span><span class=\"ds-tool-summary\">~/whales/ui-polish/apps/cli/config/skills/design.md</span></div>",
+      "css": ".ds-tool { position: relative; display: flex; align-items: center; height: 22px; color: rgb(29, 29, 31); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; line-height: 22px; } .ds-tool-icon { flex: none; width: 16px; color: rgb(110, 110, 115); } .ds-tool-title { flex: none; font-weight: 400; } .ds-tool-sep { flex: none; width: 3px; height: 3px; margin: 0 8px; border-radius: 999px; background: rgb(174, 174, 178); } .ds-tool-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgb(110, 110, 115); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Window",
+    "overview": "Baby Whale looks like a native macOS window that happens to run in a browser. The user is not visiting a product; they are working in a tool they opened this morning and will still have open this afternoon. Everything follows from that: the interface has one canvas, a small number of materials, and a strict rule about where the accent colour is allowed to appear.\n\nThe system is built on a closed neutral ramp rather than on a palette of greys. Every surface role — canvas, chrome, card, elevated control — is assigned a named step of that ramp, and a component that needs a tone picks a role instead of mixing a new value. There is exactly one accent, and it means \"you can press this\" or \"this is where you are\". It never marks decoration, and it never marks two things in the same column at the same time.\n\nDensity is set for the sixth hour of use rather than the first screenshot. Controls are 13px, prose is 15px, and rows are 28px tall, because a source list that fits eight sessions without scrolling is worth more than a list that looks airy in a marketing still. Depth comes from a three-step elevation ladder where each step is a hairline plus a contact and an ambient shadow, never from a single blurred smudge.",
+    "keyCharacteristics": [
+      "One accent, spent only on things that can be pressed and on the current selection.",
+      "A closed neutral ramp; components consume roles, never raw greys.",
+      "macOS control geometry: 13px labels, 26–30px controls, 4/6/8/12/16px corners assigned by the size of the thing rounded.",
+      "Depth as a hairline plus a two-part shadow; translucency only where something real is behind the surface.",
+      "The deliverable outranks the process: tool rows report, they do not perform."
+    ],
+    "rules": [
+      {
+        "name": "The One Blue Rule",
+        "body": "The accent appears at most once per column at rest. A sidebar shows one selected row; a settings panel shows one selected nav cell and one primary button, never both at once. Two accent objects in one column means the hierarchy has failed, and the fix is to remove one, not to add a third.",
+        "section": "colors"
+      },
+      {
+        "name": "The Selection Inverts Rule",
+        "body": "A selected item takes the accent as its fill with inverted ink, never as a coloured edge or a tinted label. Every descendant that draws in currentColor — a state dot, a chevron, an icon — inverts with it, so a selected row reads as one object instead of a blue box with coloured confetti on it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Contrast Floor Rule",
+        "body": "No text uses a step below tertiary, and in the light palette tertiary and caption are the same value. This is a floor, not a preference: on the sidebar's own fill, a neutral must sit at or under ~112 to clear 4.5:1, so the light ramp has room for exactly two steps below primary. quaternary exists for decoration and must never be the only thing carrying a meaning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Step-Apart Rule",
+        "body": "Adjacent steps in the scale differ by at least 2px of size or one weight step. A 13px label and a 13px description in the same row are separated by ink, not by size, and a description never appears below its own title without one of the two.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do assign a surface a role from the closed ramp (--dsw-gray-* via an alias) rather than writing a new grey.",
+      "Do keep the accent to one object per column at rest, and prefer removing one over adding a third.",
+      "Do give a selected item the accent fill with inverted ink, and set color: var(--dsw-alias-label-primary-foreground) on it so its descendants invert with it.",
+      "Do pair a font size with a line height from the scale, and keep a settings row's separator inset from the card edge.",
+      "Do check any new text colour against 4.5:1 on its real backdrop — the translucent fills composite, so a token that passes on white may fail on the sidebar.",
+      "Do keep backdrop-filter off any element that contains a portaled menu."
+    ],
+    "donts": [
+      "Don't use --dsw-alias-label-quaternary, --dsw-alias-label-dimmed, or --dsw-alias-separator-primary for text that carries meaning; they are decoration and fall below the contrast floor.",
+      "Don't put a theme selector ([data-ds-dark-theme]) in a feature stylesheet; light/dark overrides belong to ui-theme.",
+      "Don't write a literal colour in a feature stylesheet, or reach for the raw --dsw-static-* palette; each one that remains is a surface that has not migrated yet. The single documented exception is the framework-free boot page, which paints before any theme CSS can load and therefore mirrors the palette values as literals.",
+      "Don't animate width, height, padding, or margin; animate transform, opacity, background, or grid tracks.",
+      "Don't use an overshoot or elastic easing curve. A macOS control answers a press by darkening, not by moving.",
+      "Don't reach for a capsule (border-radius: 999px) on a rectangular control; the capsule is the iOS button and reads as a marketing CTA, not as a window control."
+    ]
+  }
+}

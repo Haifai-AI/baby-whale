@@ -11,30 +11,32 @@
   overflow: hidden;
 }
 
-/* Running sweep (deepsuite ShimmerText pattern): a fixed-width glare band —
-   theme background at 60% — glides over the row content from off-left to
-   off-right, washing glyphs and icon toward the background as it passes.
-   ease-out with a 10% end hold gives each pass a beat before the next. */
+/* Running state: a hairline of accent travelling along the row's bottom edge.
+   The row previously swept a 300px glare band across its own glyphs, which
+   dimmed the very text it was meant to annotate; a progress rule states the
+   same fact without touching the content. */
 .root[data-state='running'] .row::after {
   content: '';
   position: absolute;
-  top: 0;
+  right: 0;
   bottom: 0;
   left: 0;
-  width: 300px;
+  height: 1px;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    var(--dsw-alias-state-business-primary) 50%,
     transparent 100%
   );
-  animation: dsh-tool-row-sweep 2.6s ease-out infinite;
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: dsh-tool-row-sweep 1.6s var(--ds-ease-in-out) infinite;
   pointer-events: none;
 }
 
 @keyframes dsh-tool-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 
 .leading {
@@ -66,11 +68,12 @@
 
 .sep {
   flex: none;
-  width: 2px;
-  height: 2px;
-  border-radius: 1px;
+  flex: none;
+  width: 3px;
+  height: 3px;
+  border-radius: var(--dsw-radius-full);
   margin: 0 8px;
-  background: var(--dsw-alias-label-caption);
+  background: var(--dsw-alias-label-quaternary);
 }
 
 .summary {
@@ -79,8 +82,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -93,8 +96,8 @@
   flex: none;
   margin-left: 4px;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -111,8 +114,8 @@
   background: none;
   font: inherit;
   text-align: left;
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   color: var(--dsw-alias-label-secondary);
   text-decoration: underline;
   text-decoration-color: var(--dsw-alias-label-quaternary);
@@ -188,7 +191,7 @@
   flex-direction: column;
   margin: 4px 0 4px 4px;
   border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-markdown-code-block);
   font: var(--dsw-font-markdown-code-block-small);
 }
@@ -200,7 +203,7 @@
   grid-template-columns: max-content 1fr;
   column-gap: 14px;
   align-items: baseline;
-  padding: 12px 16px;
+  padding: 10px 14px;
   max-height: 150px;
   overflow-y: auto;
 }
@@ -211,7 +214,7 @@
 .ioSection::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 /* Track end-margins keep the thumb's travel out of the rounded corners. */

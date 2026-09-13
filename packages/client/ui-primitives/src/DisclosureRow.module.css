@@ -1,4 +1,5 @@
-/* Shared disclosure header: [16px leading] gap 6 [title 14/24]. */
+/* Shared disclosure header: [16px leading] gap 6, title on the 13px control
+   step so a disclosure row and a tool row sit on the same baseline grid. */
 
 .root {
   display: flex;
@@ -12,7 +13,7 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  height: 24px;
+  height: 22px;
   min-width: 0;
 }
 

@@ -1,5 +1,12 @@
-/* Session stats row: 12/20 tertiary text under the flow, aligned to the
-   shared message column axis (--dsh-chat-content-width). */
+/* Session stats row: one quiet line under the composer, aligned to the shared
+ * message column axis (--dsh-chat-content-width).
+ *
+ * The figures are reference, not content: a reader looks one up occasionally
+ * and never reads the line front to back. The line recedes by SIZE — 11px
+ * against the 16px body — rather than by ink, because at this size the palette
+ * has no step below `secondary` that still clears 4.5:1 on the base surface in
+ * the light scheme (tertiary measures 3.55:1 there). Every numeral is tabular
+ * so the line does not reflow as counts tick. */
 
 .root {
   /* Block, not flex: text-overflow only elides a block's inline content, so
@@ -10,16 +17,21 @@
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
-  padding: 4px calc(var(--dsh-composer-side-clearance) + 16px) 0px;
-  font-size: 12px;
-  line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  padding: 2px calc(var(--dsh-composer-side-clearance) + 16px) 0;
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Group separator: a mid-dot at the separator ink, spaced by the ordinary word
+   space on either side rather than by a margin — one value to keep centered,
+   and the row then reads as prose instead of a table with pipes. Decorative
+   (aria-hidden), so its lower contrast against the figures is the point. */
 .sep {
   color: var(--dsw-alias-separator-primary);
-  margin: 0 10px; /* carries the former flex gap */
 }

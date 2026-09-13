@@ -8,8 +8,31 @@
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --ds-font-family-code: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
     'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
+  /* Alias for feature CSS that asks for the measurement face by role rather
+     than by stack name; one definition keeps code, keys, and metrics on the
+     same face. */
+  --dsw-font-mono: var(--ds-font-family-code);
+
+  /* Corner scale. Six steps, assigned by the size of the thing being rounded:
+     a control is `md`, a row is `sm`/`md`, a card is `lg`, a panel or dialog is
+     `xl`. A radius that is not on this scale is a component inventing geometry,
+     not a component needing a value. */
+  --dsw-radius-xs: 4px;
+  --dsw-radius-sm: 6px;
+  --dsw-radius-md: 8px;
+  --dsw-radius-lg: 12px;
+  --dsw-radius-xl: 16px;
+  --dsw-radius-full: 999px;
+
+  /* Motion. `out` is the curve every enter and expand rides: it covers most of
+     its distance immediately and settles, which is what makes a panel feel
+     attached to the press rather than easing toward it. `in-out` stays for the
+     two cases that need symmetry (a column sliding shut, a chip collapsing).
+     There is no spring: an overshoot reads as elastic, and a macOS control
+     answers a press by darkening, not by moving. */
+  --ds-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-transition-duration-fast: 0.12s;
   --ds-transition-duration: 0.2s;
-  --ds-transition-duration-fast: 0.1s;
-  --ds-transition-duration-slow: 0.3s;
+  --ds-transition-duration-slow: 0.32s;
 }

@@ -14,11 +14,14 @@
 // lifecycle updates replace only their own row without remounting it.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { Button, IconChevronDownOutline14, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, RenderMessageImages } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
+import { ToolRunSummary } from './ToolRunGroup.tsx'
+import { foldsByDefault, groupToolRuns, rowsVisible } from './tool-run.ts'
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 
@@ -157,7 +160,8 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatView({
   useSession, useSessions, useStore, renderSlot, sessionId, openFile, openFilePreview,
-  loadOlder, loadImage, inspectCall, chatScroll, forkAt, fileMentions, openDetails, t,
+  loadOlder, loadImage, inspectCall, chatScroll, forkAt, fileMentions, openDetails,
+  toggleToolRun, t,
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -171,6 +175,7 @@ export function ChatView({
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
+  const expandedRuns = useStore(s => s.expandedRuns)
   const [fileOpenError, setFileOpenError] = useState<{ path: string; message: string } | null>(null)
   const [fileOpenBusy, setFileOpenBusy] = useState(false)
   // Close/retry must ignore a settlement that started before the latest
@@ -210,6 +215,8 @@ export function ChatView({
     () => inbox.filter(item => item.placement === 'steering'),
     [inbox],
   )
+  const flow = useMemo(() => groupToolRuns(order, nodeStore), [order, nodeStore])
+  const expandedRunKeys = useMemo(() => new Set(expandedRuns ?? []), [expandedRuns])
   const renderMessageImages = useCallback<RenderMessageImages>(
     owner => renderSlot('conversation.message.images', { ...owner, loadImage }),
     [loadImage, renderSlot],
@@ -412,6 +419,27 @@ export function ChatView({
     loadOlder()
   }
 
+  /** One flow row. Extracted so a run's children and a standalone Node render
+   *  through the same seat, with no second mount path to keep in step. */
+  const renderSeat = (nodeKey: string): ReactNode => (
+    <ChatNodeSeat
+      key={nodeKey}
+      nodeKey={nodeKey}
+      useSession={useSession}
+      openDetails={openDetails}
+      selectedCallId={selectedCallId}
+      cwd={cwd}
+      openFile={requestOpenFile}
+      openFilePreview={openFilePreview}
+      inspectCall={inspectCall}
+      forkAt={forkAt}
+      renderMessageImages={renderMessageImages}
+      fileMentions={fileMentions}
+      renderSlot={renderSlot}
+      t={t}
+    />
+  )
+
   return (
     <div className={css.root}>
       <div ref={listRef} className={css.scroll}>
@@ -429,24 +457,27 @@ export function ChatView({
               </button>
             </div>
           )}
-          {order.map(nodeKey => (
-            <ChatNodeSeat
-              key={nodeKey}
-              nodeKey={nodeKey}
-              useSession={useSession}
-              openDetails={openDetails}
-              selectedCallId={selectedCallId}
-              cwd={cwd}
-              openFile={requestOpenFile}
-              openFilePreview={openFilePreview}
-              inspectCall={inspectCall}
-              forkAt={forkAt}
-              renderMessageImages={renderMessageImages}
-              fileMentions={fileMentions}
-              renderSlot={renderSlot}
-              t={t}
-            />
-          ))}
+          {flow.map((entry) => {
+            if (entry.kind === 'node') return renderSeat(entry.key)
+            // A run carries a summary row exactly when it can fold. A running,
+            // failed, or short run renders its rows alone: a summary over rows
+            // that are already visible would be a second header for one list.
+            const foldable = foldsByDefault(entry.run)
+            const open = rowsVisible(entry.run, expandedRunKeys)
+            return (
+              <div key={entry.key} className={css.toolRun} data-tool-run={entry.key}>
+                {foldable && (
+                  <ToolRunSummary
+                    run={entry.run}
+                    rowsVisible={open}
+                    onToggle={() => { toggleToolRun(entry.key) }}
+                    t={t}
+                  />
+                )}
+                {open && entry.run.keys.map(renderSeat)}
+              </div>
+            )
+          })}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would
               double-render the same wait. */}

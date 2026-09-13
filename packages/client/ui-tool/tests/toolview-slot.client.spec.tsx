@@ -10,7 +10,7 @@
 // the declaration then land through slots.inject when the chat entry appears.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, fireEvent } from '@testing-library/react'
 import type { ISession, SessionId, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
@@ -92,6 +92,23 @@ async function bench(nodes: ToolResultNode[]) {
   return { runtime, slots: runtime.slots, layout }
 }
 
+/**
+ * Expand every folded tool run in the rendered transcript.
+ *
+ * ui-conversation folds a settled, clean run of three or more calls into one
+ * summary row, so a fixture with several tool results renders the summary
+ * instead of the rows. Suites that assert on the rows themselves open the run
+ * first; the fold's own boundaries are covered by ui-conversation's tool-run
+ * spec, not here.
+ * @param container - rendered transcript root.
+ */
+function expandToolRuns(container: HTMLElement): void {
+  for (const run of container.querySelectorAll('[data-tool-run]')) {
+    const toggle = run.querySelector('button[aria-expanded="false"]')
+    if (toggle !== null) fireEvent.click(toggle)
+  }
+}
+
 describe('keyed toolview hole through the real machinery', () => {
   it('dispatches registered rows by entryKey and unregistered tools to the GenericToolCard fallback', async () => {
     const b = await bench([
@@ -117,6 +134,7 @@ describe('keyed toolview hole through the real machinery', () => {
       toolResult(6, 'cordis-4', 'cordis_undefine', '{"id":"dyn-2"}'),
     ])
     const view = b.runtime.renderRoot()
+    expandToolRuns(view.container)
 
     // Every one of these rows is user-visible on each model define/run, so each
     // names its act and carries the package id rather than falling back to the

@@ -795,6 +795,12 @@ export interface ChatViewInjected {
   /** Hand a call off to the trajectory view: write the one-shot inspect target and switch tabs. */
   inspectCall: (callId: CallId) => void
   /**
+   * Open or close one tool run's rows against their default (run key = the
+   * run's first Node key). The transcript store owns the set; the view only
+   * reports the gesture, so the fold survives a view switch and a reload.
+   */
+  toggleToolRun: (runKey: string) => void
+  /**
    * Per-session scroll memory surviving view switches (in-memory, never
    * persisted): the view saves on every scroll and restores on remount; a
    * fresh page load starts empty and keeps the open-jump-to-bottom default.

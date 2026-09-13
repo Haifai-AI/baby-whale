@@ -1,6 +1,6 @@
 .card {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-base);
   padding: 10px 12px;
   margin: 6px 0;
@@ -37,21 +37,21 @@
 .dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--dsw-radius-full);
   margin-top: 4px;
   flex: none;
 }
 
 .active {
-  background: var(--dsw-static-green-500);
+  background: var(--dsw-alias-state-success-primary);
 }
 
 .paused {
-  background: var(--dsw-static-amber-500);
+  background: var(--dsw-alias-state-warn-primary);
 }
 
 .done {
-  background: var(--dsw-static-neutral-bluish-400);
+  background: var(--dsw-alias-label-quaternary);
 }
 
 .body {
@@ -59,7 +59,7 @@
 }
 
 .name {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--dsw-alias-brand-text);
 }
@@ -79,12 +79,12 @@
 
 .late {
   margin-left: 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--dsw-alias-state-warn-label);
   border: 1px solid currentColor;
-  border-radius: 999px;
+  border-radius: var(--dsw-radius-full);
   padding: 0 6px;
 }

@@ -1,4 +1,13 @@
-/* Full-viewport layer (figma Mask + Dialog 451:18655): mask + centered card. */
+/* Dialog layer: a scrim over the shell and a centered panel.
+ *
+ * The scrim is a flat wash rather than a blur. Blurring the shell costs a full
+ * backdrop composite every frame the dialog animates, and macOS dims its
+ * windows behind a sheet rather than defocusing them — the depth cue the user
+ * reads is the wash plus the panel's own edge.
+ *
+ * Panel geometry is AppKit alert/sheet scale: 16px corners, a title bar the
+ * eye can rest on, and a footer that right-aligns its buttons. */
+
 .root {
   position: fixed;
   inset: 0;
@@ -9,27 +18,23 @@
   padding: 24px;
 }
 
-/* User/spec mask: rgba(0,0,0,0.24) + blur(2px) via --dsw-alias-bg-mask-1 /
-   --dsw-mask-blur (light); dark theme raises mask opacity. */
 .mask {
   position: absolute;
   inset: 0;
-  background: var(--dsw-alias-bg-mask-1);
-  backdrop-filter: var(--dsw-mask-blur);
+  background: var(--dsw-material-scrim);
 }
 
-/* Dialog card: r24, shadow-lv3, layer-2 fill, inverted border, pb 24. */
 .dialog {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   width: min(380px, 100%);
-  padding: 0 0 24px;
+  padding: 0 0 20px;
   overflow: hidden;
-  border: 1px solid var(--dsw-alias-border-inverted);
-  border-radius: 24px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-shadow-lv3);
 }
@@ -40,21 +45,23 @@
   width: 100%;
 }
 
-/* Header row (figma Title row): pad l24/t22/r14/b12, SPACE_BETWEEN —
- * title left, close button right. */
+/* Header row: title left, close button right. The close control is a 22px
+ * circular hit box rather than a square one — at this size a rounded target
+ * reads as a control and a square one reads as a region. */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 22px 14px 12px 24px;
+  padding: 18px 12px 10px 20px;
 }
 
 .title {
   margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500; /* figma wt510, rendered 500 */
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--dsw-alias-label-primary);
 }
 
@@ -63,35 +70,36 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: var(--dsw-radius-full);
+  background: var(--dsw-alias-fill-l2);
   cursor: pointer;
   color: var(--dsw-alias-label-secondary);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .close:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
 }
 
-/* Description and body share the 332px content column (24px side pads). */
 .description {
   margin: 0;
-  padding: 0 24px;
-  font-size: 14px;
-  line-height: 22px;
+  padding: 0 20px;
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 400;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .body {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  margin-top: 20px;
-  padding: 0 24px;
+  margin-top: 16px;
+  padding: 0 20px;
 }
 
 .footer {
@@ -99,5 +107,5 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 0 24px;
+  padding: 0 20px;
 }

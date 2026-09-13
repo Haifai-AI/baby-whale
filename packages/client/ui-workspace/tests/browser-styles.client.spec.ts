@@ -45,7 +45,7 @@ describe('WorkspaceBrowser.module.css list', () => {
 
   it('counts the themed scrollbar inside the shell trailing inset', () => {
     expect(root?.get('--dsh-session-list-edge-inset')).toBe('var(--dsh-sidebar-inline-padding)')
-    expect(root?.get('--dsh-session-list-scrollbar-width')).toBe('8px')
+    expect(root?.get('--dsh-session-list-scrollbar-width')).toBe('11px')
     expect(root?.get('--dsh-session-list-scrollbar-offset')).toBe('2px')
     expect(root?.get('padding-right')).toBe('var(--dsh-session-list-edge-inset)')
     expect(listArea?.get('margin-left')).toBe('-4px')
@@ -98,16 +98,18 @@ describe('WorkspaceBrowser.module.css list', () => {
 
   it('keeps the compact fade, overflow control, search field, and row heights', () => {
     expect(declarations('.fade')?.get('height')).toBe('24px')
-    expect(declarations('.sessionOverflowButton')?.get('height')).toBe('28px')
-    expect(declarations('.searchExpanded')?.get('height')).toBe('30px')
-    expect(rowDeclarations('.projectRow')?.get('height')).toBe('34px')
-    expect(rowDeclarations('.sessionRow')?.get('height')).toBe('32px')
+    expect(declarations('.sessionOverflowButton')?.get('height')).toBe('26px')
+    expect(declarations('.searchExpanded')?.get('height')).toBe('26px')
+    expect(rowDeclarations('.projectRow')?.get('height')).toBe('30px')
+    expect(rowDeclarations('.sessionRow')?.get('height')).toBe('28px')
     expect(rowDeclarations('.flatSessionRowWithoutStatus .title')?.get('margin-left')).toBe('0')
-    expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('48px')
-    // Selected takes the pressed-interaction step, one neutral above the hover
-    // fill so a selected row stays distinguishable from a hovered neighbour.
+    expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('44px')
+    // Selected takes the accent fill with inverted ink: one blue object in the
+    // column, indistinguishable from hover by construction.
     expect(rowDeclarations('.sessionRow.selected')?.get('background'))
-      .toBe('var(--dsw-alias-interactive-bg-active)')
+      .toBe('var(--dsw-alias-state-business-primary)')
+    expect(rowDeclarations('.sessionRow.selected')?.get('color'))
+      .toBe('var(--dsw-alias-label-primary-foreground)')
   })
 
   it('pins both rail controls to the shared left anchor during the column slide', () => {

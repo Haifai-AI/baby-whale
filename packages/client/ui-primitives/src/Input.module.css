@@ -2,15 +2,21 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: 30px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-base);
+  transition:
+    border-color var(--ds-transition-duration-fast) var(--ds-ease-out),
+    box-shadow var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
+/* Focus is the accent ring the rest of the system uses, not a border-colour
+   swap: a 1px border change is easy to miss on a dense form. */
 .wrap:focus-within {
-  border-color: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 3px var(--dsw-alias-interactive-bg-hover-accent);
 }
 
 .icon {
@@ -28,11 +34,11 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dsw-alias-label-primary);
 }
 
 .input::placeholder {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--dsw-alias-label-quaternary);
 }

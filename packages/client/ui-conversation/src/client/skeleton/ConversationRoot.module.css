@@ -19,7 +19,7 @@
      the input card clears the bare clearance, so the input card stays exactly
      content + 32px at every width. Declared on the root because the
      transcript and the composer seat are sibling subtrees. */
-  --dsh-chat-content-width: 748px;
+  --dsh-chat-content-width: 720px;
   --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
   --dsh-composer-side-clearance: 16px;
   --dsh-composer-dock-inset: 8px;
@@ -28,7 +28,7 @@
 .header {
   position: relative;
   flex: none;
-  padding: 12px 28px 0 20px;
+  padding: 10px 28px 0 20px;
   border-bottom: 1px solid transparent;
 }
 
@@ -84,19 +84,19 @@
 .crumbSep {
   /* figma: "/" separators are 14px caption gray (75:7903), one tint lighter than crumb text. */
   color: var(--dsw-alias-label-caption);
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .crumb {
   max-width: 220px;
   overflow: hidden;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -105,7 +105,7 @@
 
 .crumbSubagent {
   font-size: 12px;
-  line-height: 18px;
+  line-height: 16px;
 }
 
 .crumb:hover:not(:disabled) {
@@ -137,27 +137,32 @@
   display: none;
 }
 
-/* figma Tab_Group 34:11441: 35px strip, gap 36, pad-left 8, tabs bottom-aligned. */
+/* Tab strip. Gap is generous — these are few and each is a destination, so
+   they read as separate places rather than as a segmented control. */
 .tabs {
   position: relative;
   z-index: 1;
   display: flex;
-  gap: 36px;
-  margin-top: 4px;
-  padding-left: 8px;
+  gap: 24px;
+  margin-top: 2px;
+  padding-left: 6px;
 }
 
-/* figma .Tab 34:11442: 13/16 text (figma wt510, rendered 500), gap 8 to the 2px bar. */
 .tab {
   position: relative;
-  padding: 0 0 11px;
+  padding: 0 0 9px;
   border: none;
   background: transparent;
   font-size: 13px;
-  line-height: 16px;
+  line-height: 18px;
   font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
+  transition: color var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.tab:hover {
+  color: var(--dsw-alias-label-primary);
 }
 
 .tab::after {
@@ -166,20 +171,20 @@
   right: 0;
   bottom: 1px;
   left: 0;
-  height: 2px;
-  border-radius: 2px;
+  height: 1.5px;
+  border-radius: var(--dsw-radius-full);
   background: transparent;
 }
 
-/* Selected tab is blue, not ink: brand-primary resolves to neutral black in
-   this token sheet, so the selected state rides the business blue — the
-   nearest semantic token that stays blue in both themes. */
+/* The selected tab is the darkest thing in the strip plus a short rule —
+   position carried by ink weight, not by a second colour. The accent is spent
+   on things you can press, and a tab is a place, not an action. */
 .tabActive {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary);
 }
 
 .tabActive::after {
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-label-primary);
 }
 
 .viewArea {
@@ -344,6 +349,8 @@
   aspect-ratio: 1051 / 468;
   transform: translate(-50%, 50%);
   pointer-events: none;
+  /* The wash follows the palette's accent rather than a baked brand blue. */
+  color: var(--dsw-alias-state-business-primary);
 }
 
 .heroWorkspaceRow {

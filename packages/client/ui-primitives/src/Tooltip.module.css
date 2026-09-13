@@ -16,7 +16,14 @@
   padding: 5px 9px;
   border-radius: 8px;
   background: var(--dsw-alias-tooltip-bg);
-  color: var(--dsw-static-neutral-bluish-00);
+  color: var(--dsw-alias-tooltip-fg);
+  /* No backdrop-filter here. A tooltip is 100px wide and lives for two
+     seconds; blurring the page behind it costs a composite of everything
+     underneath and — measured in Chromium — renders the drop shadow through
+     the filter as a smear trailing off the bubble's edge. The 0.82 plate is
+     already translucent enough to pick up the surface under it. */
+  border: 1px solid var(--dsw-alias-border-inverted);
+  font-weight: 500;
   font-size: 13px;
   line-height: 18px;
   /* The plate is dark in both themes, so its elevation has to come from the

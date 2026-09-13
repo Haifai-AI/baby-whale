@@ -85,7 +85,9 @@ export function RuntimeSetupCard({ connection, wide, t }: RuntimeSetupCardProps)
       {phase !== 'error' && <p className={css.note}>{t('runtime.body')}</p>}
       {running && (
         <div className={css.progress} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-          <div className={css.progressFill} style={{ width: `${pct}%` }} />
+          {/* Scaled rather than resized: a percentage width relayouts the bar on
+              every progress frame, and the fill is a single solid block. */}
+          <div className={css.progressFill} style={{ transform: `scaleX(${pct / 100})` }} />
         </div>
       )}
       {running && <p className={css.note}>{status.install.message ?? `${pct}%`}</p>}

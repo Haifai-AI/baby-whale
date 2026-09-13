@@ -3,9 +3,9 @@
 .card {
   margin: 0 10px 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.08));
-  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.16));
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-fill-secondary);
+  border: 1px solid var(--dsw-alias-border-l2);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -22,22 +22,26 @@
   margin: 0;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--dsw-alias-label-secondary, inherit);
+  color: var(--dsw-alias-label-secondary);
   overflow-wrap: anywhere;
 }
 
 .progress {
   height: 4px;
-  border-radius: 2px;
-  background: var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.2));
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-border-l2);
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  border-radius: 2px;
+  width: 100%;
+  border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-state-business-primary);
-  transition: width 400ms ease;
+  /* The fill is scaled, not resized: a `width` transition relayouts the bar on
+     every progress frame, and the bar sits inside the sidebar's own layout. */
+  transform-origin: left center;
+  transition: transform 400ms var(--ds-ease-out);
 }
 
 .button {
@@ -45,8 +49,8 @@
   margin-top: 2px;
   padding: 5px 12px;
   border: none;
-  border-radius: 8px;
-  font-size: 11.5px;
+  border-radius: var(--dsw-radius-md);
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;

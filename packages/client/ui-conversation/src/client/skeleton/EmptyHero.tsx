@@ -92,7 +92,10 @@ export function HeroGlow({ className }: { className?: string | undefined }) {
         </filter>
       </defs>
       <g filter={`url(#${glowFilterId})`}>
-        <ellipse cx="525.5" cy="234" rx="425.5" ry="134" fill="#6187D8" fillOpacity="0.08" />
+        {/* fill="currentColor" with the ink supplied by the owner's class: the
+            wash has to follow the palette's accent, and the literal hex this
+            replaces pinned one blue across both themes. */}
+        <ellipse cx="525.5" cy="234" rx="425.5" ry="134" fill="currentColor" fillOpacity="var(--dsw-hero-glow-opacity, 0.07)" />
       </g>
     </svg>
   )

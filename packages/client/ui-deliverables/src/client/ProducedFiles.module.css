@@ -42,7 +42,7 @@
   margin: 0;
   padding: 0 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
   font: inherit;
@@ -74,7 +74,7 @@
   margin: 0;
   padding: 0 2px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--dsw-radius-xs);
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   font: inherit;
@@ -120,7 +120,7 @@
   gap: 14px;
   width: 100%;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 14px;
+  border-radius: var(--dsw-radius-xl);
   padding: 13px 16px;
   background: var(--dsw-alias-bg-layer-1);
   transition: border-color 140ms ease, box-shadow 140ms ease;
@@ -128,7 +128,7 @@
 
 .deliveredCard:hover {
   border-color: var(--dsw-alias-border-l3);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--dsw-shadow-lv2);
 }
 
 /* Kind icon tile: tinted app-style square with the document glyph. */
@@ -136,7 +136,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
+  color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsw-alias-bg-layer-2);
 }
 
@@ -147,7 +147,7 @@
   height: 48px;
   flex: none;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: linear-gradient(180deg, var(--dsw-alias-bg-layer-2), transparent);
   display: inline-flex;
   align-items: center;
@@ -161,7 +161,7 @@
   position: absolute;
   width: 22px;
   height: 28px;
-  border-radius: 4px;
+  border-radius: var(--dsw-radius-xs);
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2);
   transform: translate(-4px, -2px) rotate(-7deg);
@@ -171,7 +171,7 @@
   position: relative;
   width: 26px;
   height: 32px;
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-xs);
   border: 1px solid var(--dsw-alias-border-l3);
   background: var(--dsw-alias-bg-layer-1);
   display: inline-flex;
@@ -184,11 +184,15 @@
 .thumb:hover { border-color: var(--dsw-alias-border-l3); }
 .thumb:hover .thumbPaper { color: var(--dsw-alias-label-primary); }
 
-.tile_xlsx, .tile_csv { background: linear-gradient(145deg, #21a366, #185c37); }
-.tile_docx { background: linear-gradient(145deg, #3b7dd8, #2b579a); }
-.tile_pptx { background: linear-gradient(145deg, #ed6c47, #c43e1c); }
-.tile_pdf { background: linear-gradient(145deg, #e35d5d, #b30b00); }
-.tile_py { background: linear-gradient(145deg, #4b8bbe, #3572a5); }
+/* File-kind tiles. The hue is the file type's identity, not a theme colour —
+   a spreadsheet is green in every app the user already owns — so each tile
+   reads its kind's token and derives the deeper gradient stop by mixing the
+   same token toward black. One token per kind, two stops. */
+.tile_xlsx, .tile_csv { background: linear-gradient(145deg, var(--dsw-alias-file-sheet), color-mix(in srgb, var(--dsw-alias-file-sheet) 70%, black)); }
+.tile_docx { background: linear-gradient(145deg, var(--dsw-alias-file-doc), color-mix(in srgb, var(--dsw-alias-file-doc) 70%, black)); }
+.tile_pptx { background: linear-gradient(145deg, var(--dsw-alias-file-slides), color-mix(in srgb, var(--dsw-alias-file-slides) 70%, black)); }
+.tile_pdf { background: linear-gradient(145deg, var(--dsw-alias-file-pdf), color-mix(in srgb, var(--dsw-alias-file-pdf) 70%, black)); }
+.tile_py { background: linear-gradient(145deg, var(--dsw-alias-file-text), color-mix(in srgb, var(--dsw-alias-file-text) 70%, black)); }
 
 .cardTexts {
   display: flex;
@@ -214,7 +218,7 @@
   width: 18px;
   height: 18px;
   flex: none;
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-xs);
   margin-right: 9px;
   display: inline-flex;
   align-items: center;
@@ -230,26 +234,26 @@
   letter-spacing: 0.05em;
   color: var(--dsw-alias-label-tertiary);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-xs);
   padding: 2px 6px;
 }
 
 .badge {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.04em;
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-xs);
   padding: 3px 5px;
-  color: #fff;
-  background: #5b7db1;
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-file-other);
 }
 
-.badge_xlsx { background: #1f6f43; }
-.badge_docx { background: #2f6fb2; }
-.badge_pptx { background: #c25e2c; }
-.badge_csv { background: #4c9f70; }
-.badge_pdf { background: #b04a5a; }
-.badge_py { background: #3572a5; }
+.badge_xlsx { background: var(--dsw-alias-file-sheet); }
+.badge_docx { background: var(--dsw-alias-file-doc); }
+.badge_pptx { background: var(--dsw-alias-file-slides); }
+.badge_csv { background: var(--dsw-alias-file-table); }
+.badge_pdf { background: var(--dsw-alias-file-pdf); }
+.badge_py { background: var(--dsw-alias-file-text); }
 
 .cardName {
   border: none;
@@ -273,7 +277,7 @@
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
   font-size: 11.5px;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   padding: 3px 8px;
   cursor: pointer;
   color: var(--dsw-alias-label-primary);
@@ -291,7 +295,7 @@
 .splitMain {
   border: 1px solid var(--dsw-alias-border-l2);
   border-right: none;
-  border-radius: 9px 0 0 9px;
+  border-radius: var(--dsw-radius-md) 0 0 var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-2);
   font-size: 13px;
   line-height: 18px;
@@ -307,7 +311,7 @@
 
 .splitChevron {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 0 9px 9px 0;
+  border-radius: 0 var(--dsw-radius-md) var(--dsw-radius-md) 0;
   background: var(--dsw-alias-bg-layer-2);
   padding: 0 9px;
   cursor: pointer;
@@ -329,9 +333,9 @@
   padding: 4px;
   gap: 2px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--dsw-shadow-lv3);
 }
 
 .menuItem {
@@ -341,7 +345,7 @@
   font-size: 12px;
   color: var(--dsw-alias-label-primary);
   padding: 6px 10px;
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-xs);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -354,7 +358,7 @@
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--dsw-alias-bg-mask-3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -367,9 +371,9 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-bg-layer-1);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--dsw-shadow-lv3);
   overflow: hidden;
 }
 
@@ -402,7 +406,7 @@
 
 .modalAction {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-bg-layer-1);
   font-size: 11.5px;
   padding: 4px 10px;
@@ -416,7 +420,7 @@
 .modalClose {
   border: none;
   background: transparent;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
@@ -471,7 +475,7 @@
 .sofficeNotice {
   margin: 0 0 8px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-fill-secondary);
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;

@@ -50,7 +50,7 @@
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   padding: 4px 10px;
   cursor: pointer;
 }
@@ -69,7 +69,7 @@
   align-items: center;
   gap: 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   padding: 10px 14px;
   background: var(--dsw-alias-bg-layer-1);
 }
@@ -80,26 +80,26 @@
 }
 
 .icon {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.04em;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   padding: 6px 7px;
   min-width: 40px;
   text-align: center;
-  color: #fff;
-  background: #5b7db1;
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-file-other);
 }
 
-.icon_xlsx { background: #1f6f43; }
-.icon_docx { background: #2f6fb2; }
-.icon_pptx { background: #c25e2c; }
-.icon_csv { background: #4c9f70; }
-.icon_pdf { background: #b04a5a; }
-.icon_image { background: #7a5fb0; }
-.icon_video { background: #b03a5b; }
-.icon_audio { background: #2c8ca2; }
-.icon_text { background: #6b7a8d; }
+.icon_xlsx { background: var(--dsw-alias-file-sheet); }
+.icon_docx { background: var(--dsw-alias-file-doc); }
+.icon_pptx { background: var(--dsw-alias-file-slides); }
+.icon_csv { background: var(--dsw-alias-file-table); }
+.icon_pdf { background: var(--dsw-alias-file-pdf); }
+.icon_image { background: var(--dsw-alias-file-image); }
+.icon_video { background: var(--dsw-alias-file-video); }
+.icon_audio { background: var(--dsw-alias-file-audio); }
+.icon_text { background: var(--dsw-alias-file-text); }
 
 .text {
   display: flex;
@@ -128,7 +128,7 @@
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   font-size: 12.5px;
-  border-radius: 7px;
+  border-radius: var(--dsw-radius-sm);
   padding: 6px 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -217,7 +217,7 @@
   font-size: 12px;
   padding: 7px 12px;
   cursor: pointer;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--dsw-radius-sm) 6px 0 0;
   border-bottom: 2px solid transparent;
 }
 
@@ -229,17 +229,17 @@
 .wbTabActive {
   color: var(--dsw-alias-label-primary);
   font-weight: 600;
-  border-bottom-color: var(--dsw-static-blue-500);
+  border-bottom-color: var(--dsw-alias-file-doc);
 }
 
 .wbBadge {
   min-width: 18px;
   height: 18px;
-  border-radius: 9px;
-  background: var(--dsw-static-blue-500);
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 700;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-file-doc);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-size: 11px;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -283,7 +283,7 @@
   max-width: 240px;
   padding: 7px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 9px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
   cursor: pointer;
   text-align: left;
@@ -324,7 +324,7 @@
 
 .chartCard {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
   padding: 12px 14px;
   flex: none;
@@ -371,7 +371,7 @@
 .legendSwatch {
   width: 14px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: var(--dsw-radius-xs);
   flex: none;
 }
 
@@ -384,7 +384,7 @@
 .closePane {
   border: none;
   background: transparent;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;

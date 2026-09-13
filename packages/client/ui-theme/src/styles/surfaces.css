@@ -1,0 +1,58 @@
+/* Browser-owned surfaces: the parts of the page the UA draws, which no
+ * component styles and which therefore keep their default appearance unless a
+ * sheet claims them. Text selection, the caret, and the keyboard-focus ring
+ * are the visible ones; left unthemed they render a stock blue that belongs to
+ * no palette here.
+ *
+ * Tokens resolve on `body`, never `:root`: design-platform.css declares the
+ * --dsw-alias-* layer there (dark overrides on `body[data-ds-dark-theme]`), and
+ * custom properties only inherit downward, so a `:root` rule would substitute
+ * the guaranteed-invalid value. Same reason scrollbar.css binds its
+ * indirection pair on `body`. */
+
+body {
+  /* Keyboard focus. One ring for the whole product, drawn from the business
+     blue so it reads as the same affordance as the send button and the active
+     tab. Element-level rings in feature CSS stay; this is the default for
+     every control that does not draw its own. `:focus-visible` keeps a pointer
+     click from painting a ring. */
+  --dsh-focus-ring-width: 2px;
+  --dsh-focus-ring-offset: 2px;
+  --dsh-focus-ring-color: var(--dsw-alias-button-info-fill);
+
+  /* The caret is the only glyph the composer's transparent textarea paints
+     itself (its visible text is the backdrop layer), so it carries the input's
+     active color. */
+  caret-color: var(--dsw-alias-state-business-primary);
+}
+
+/* Selection: the business-blue tertiary wash under primary ink. Chosen so
+   selected text keeps its contrast ratio in both palettes — the UA default
+   renders the same blue over a dark surface and washes the glyphs out. */
+::selection {
+  background: var(--dsw-specific-bubble-highlight);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Form controls the UA paints itself (checkbox, radio, range, progress) take
+   the accent from the same blue rather than the platform default. */
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'],
+progress {
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+
+/* Default keyboard-focus ring. Scoped to the interactive elements that carry
+   no component ring of their own; a component that draws one sets its own
+   `outline` and wins on specificity or order. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: var(--dsh-focus-ring-width) solid var(--dsh-focus-ring-color);
+  outline-offset: var(--dsh-focus-ring-offset);
+}
+
+/* A text field focuses in place: an offset ring around an input that sits
+   inside a bordered card reads as a second box. Inset instead. */
+:where(input, textarea, select):focus-visible {
+  outline-offset: -1px;
+}

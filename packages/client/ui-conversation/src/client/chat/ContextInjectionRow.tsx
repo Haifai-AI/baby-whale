@@ -40,21 +40,18 @@ export function ContextInjectionRow({ content, source, provenance, form, t }: Co
       className={css.root}
       icon={provenance.role === 'recall'
         ? <span data-context-recall-icon><ReferenceIcon kind="session" /></span>
-        : <IconBrowseOutline16 size={14} />}
+        : <IconBrowseOutline16 size={13} />}
       chevronClassName={css.chevron}
       title={t(provenance.role === 'recall' ? 'message.contextRecall' : 'message.contextInjection')}
       collapsedContent={provenance.label === null ? undefined : (
-        /* ToolRow's separator shape: an aria-hidden dot, so the accessible name
-           stays the two readable parts and the two disclosure rows expose one
-           name shape. A source that names no producer drops the dot with it. */
+        /* The producer is the row's second-strongest note: medium weight at
+           `secondary`, so `title  source  summary` reads as three ranked
+           parts. The aria-hidden dots this replaces separated them by
+           decoration while contributing nothing to the accessible name. */
         <>
-          <span className={css.sep} aria-hidden />
           <span className={css.source} data-context-source>{provenance.label}</span>
           {summary !== null && (
-            <>
-              <span className={css.sep} aria-hidden />
-              <span className={css.summary} data-context-summary>{summary}</span>
-            </>
+            <span className={css.summary} data-context-summary>{summary}</span>
           )}
         </>
       )}

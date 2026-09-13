@@ -10,6 +10,9 @@
     - button "插件":
       - img
       - text: 插件
+    - button "技能":
+      - img
+      - text: 技能
     - button "Agent 预设":
       - img
       - text: Agent 预设
@@ -39,6 +42,16 @@
         - img
         - text: 查看
       - 'button "复制: PTC 模式"':
+        - img
+        - text: 复制
+    - listitem:
+      - 'button "设为默认: 同事模式"':
+        - text: 同事模式 内置 同事模式：面向知识工作的 Agent，生成办公文档、执行长期目标，默认不开放 Shell，所有文件写入需确认。
+        - code: coworker
+      - 'button "查看: 同事模式"':
+        - img
+        - text: 查看
+      - 'button "复制: 同事模式"':
         - img
         - text: 复制
     - listitem:

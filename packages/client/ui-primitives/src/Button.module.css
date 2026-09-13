@@ -1,38 +1,47 @@
-/* Capsule geometry from the figma Button component (1:155 instances:
- * h36, pad 14/7, gap 4, r18; the wide New Session form is r24 at h38 —
- * owners with the wide form set their own radius/width). */
+/* Push buttons, macOS AppKit geometry: a 13px/500 label in a rounded rect,
+ * 30px tall (24px compact), corner radius from the shared scale. The shape is
+ * a rounded rect rather than the capsule the previous system used — a capsule
+ * is the iOS control and reads as a marketing CTA, not as a window control.
+ *
+ * Every variant states its own resting fill, hover, and press. Press is a
+ * darker fill rather than a translate: a macOS button does not move when
+ * clicked, it darkens. */
+
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   border: none;
-  border-radius: 18px;
+  border-radius: var(--dsw-radius-md);
   cursor: pointer;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
   background: transparent;
-  padding: 0 14px;
+  padding: 0 12px;
+  transition:
+    background var(--ds-transition-duration-fast) var(--ds-ease-out),
+    opacity var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .button:disabled {
   cursor: not-allowed;
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 .md {
-  height: 36px;
+  height: 30px;
 }
 
-/* Compact height for dense rows; no dedicated figma node (Icon_container
- * 28x28 is the icon-only form) — geometry is ours. */
+/* Compact height for dense rows and toolbars. */
 .sm {
-  height: 28px;
+  height: 24px;
   font-size: 12px;
-  line-height: 18px;
-  padding: 0 10px;
-  border-radius: 14px;
+  line-height: 16px;
+  padding: 0 9px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .primary {
@@ -44,6 +53,10 @@
   background: var(--dsw-alias-button-primary-hover);
 }
 
+.primary:active:not(:disabled) {
+  background: var(--dsw-accent-press);
+}
+
 .ghost:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
@@ -52,14 +65,21 @@
   background: var(--dsw-alias-interactive-bg-active);
 }
 
-/* Dialog Cancel (figma 451:18655): bordered capsule on transparent fill. */
+/* The default AppKit button: a white face, a hairline edge, and a one-pixel
+ * contact shadow. The shadow is what separates it from a bordered div — it is
+ * the only variant that sits on the surface rather than in it. */
 .outline {
   border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
+  background: var(--dsw-alias-button-elevated-fill);
+  box-shadow: var(--dsw-shadow-lv1);
 }
 
 .outline:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-button-floating-hover);
+}
+
+.outline:active:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-active);
 }
 
 .toolbar {

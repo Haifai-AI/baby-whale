@@ -1,5 +1,10 @@
-/* User bubble: right-aligned column (bubble + IconActions). Figma
-   User_Bubble/message_container 659:38813 — r22 fill, actions gap 6 below. */
+/* User message: right-aligned bubble over the neutral wash.
+   The user's own words are the only thing in the transcript that gets a
+   container; the assistant's answer is plain text on the page. That asymmetry
+   is the whole hierarchy — it says "this was said" versus "this was written",
+   and it removes a box from around the content the user actually came to read.
+   No accent fill: the user's bubble is not an action and should not be the
+   loudest blue object in the column. */
 
 .userRow {
   display: flex;
@@ -14,24 +19,23 @@
   align-items: flex-end;
   gap: 8px;
   min-width: 0;
-  max-width: min(525px, 82%);
+  max-width: min(560px, 82%);
 }
 .bubble {
   /* 525px cap inside the 736 column; percentage keeps narrow windows sane. */
   max-width: 100%;
   background: var(--dsw-specific-bubble);
-  border-radius: 22px;
-  /* 44px single-line bubble: 24 line + 10 vertical padding each side. */
-  padding: 10px 16px;
-  font-size: 16px;
-  line-height: 24px;
+  border-radius: var(--dsw-radius-xl);
+  padding: 9px 14px;
+  font-size: 15px;
+  line-height: 22px;
   color: var(--dsw-alias-label-primary);
 }
 
 .referenceSummary {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
-  line-height: 18px;
+  line-height: 16px;
 }
 .contextRow {
   padding: 2px 0;

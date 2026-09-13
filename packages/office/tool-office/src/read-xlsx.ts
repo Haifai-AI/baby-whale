@@ -46,9 +46,11 @@ export interface ReadWorkbook {
  * exceljs 4.4 crashes in XLSX.reconcile on openpyxl workbooks with charts
  * (`drawing.anchors` undefined). Charts are irrelevant to text extraction,
  * so on that failure strip drawing/chart/media parts plus the sheets'
- * `<drawing>` references and reload.
+ * `<drawing>` references and reload. Shared with the host preview service.
+ * @param bytes - the .xlsx payload.
+ * @returns the loaded workbook, or undefined when the payload never loads.
  */
-async function loadWorkbookResilient(bytes: Uint8Array): Promise<ExcelJS.Workbook | undefined> {
+export async function loadWorkbookResilient(bytes: Uint8Array): Promise<ExcelJS.Workbook | undefined> {
   const workbook = new ExcelJS.Workbook()
   try {
     await workbook.xlsx.load(Buffer.from(bytes) as unknown as Parameters<typeof workbook.xlsx.load>[0])
@@ -58,10 +60,11 @@ async function loadWorkbookResilient(bytes: Uint8Array): Promise<ExcelJS.Workboo
     if (!/drawing|anchor/i.test(message)) return undefined
   }
   try {
-    const entries = unzipSync(bytes)
-    for (const name of Object.keys(entries)) {
-      if (/^xl\/(drawings|charts|media)\//.test(name)) delete entries[name]
-    }
+    // Filter rather than delete: rebuilding the entry map keeps the zip parts
+    // out of dictionary-mode property deletion.
+    const entries = Object.fromEntries(
+      Object.entries(unzipSync(bytes)).filter(([name]) => !/^xl\/(drawings|charts|media)\//.test(name)),
+    )
     for (const [name, payload] of Object.entries(entries)) {
       if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(name)) continue
       const xml = new TextDecoder().decode(payload)

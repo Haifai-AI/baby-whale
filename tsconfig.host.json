@@ -80,6 +80,7 @@
     "apps/web/tests/turn-tail-actions.e2e.ts",
     "apps/web/tests/goal-multi-turn-actions.e2e.ts",
     "apps/web/tests/whale-office-artifacts.e2e.ts",
+    "apps/web/tests/whale-play-seed.ts", // Dev seeder boots the host spine (SessionStore + JSONL persistence) — host plane like the e2e above.
     "apps/web/tests/chat-scroll-fixture.ts",
     "apps/web/tests/chat-scroll-contract.e2e.ts",
     "apps/web/tests/chat-long-interactions.e2e.ts",

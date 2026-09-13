@@ -1,11 +1,23 @@
-/* Composer Enter preference row: title/description plus selector pill. */
+/* Composer Enter preference row. Sits in the same settings card as the other
+ * rows and follows their inset-group rhythm, so it owns only its own spacing
+ * and the separator below it. */
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.row::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: var(--dsw-alias-border-l1);
 }
 
 .rowText {
@@ -13,44 +25,51 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-right: 48px;
+  gap: 1px;
+  padding-right: 40px;
 }
 
 .title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 22px;
+  line-height: 18px;
   color: var(--dsw-alias-label-primary);
 }
 
 .desc {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  line-height: 15px;
+  /* Secondary, not tertiary: at 11px on the card fill, tertiary measures
+     4.46:1 in the dark palette — under AA by a margin small enough to look
+     fine and large enough to fail. */
+  color: var(--dsw-alias-label-secondary);
 }
 
 .selector {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  height: 36px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 18px;
-  background: var(--dsw-alias-bg-module-platform);
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-button-elevated-fill);
+  box-shadow: var(--dsw-shadow-lv1);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .selector:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-button-floating-hover);
 }
 
 .chevron {
   flex: none;
+  opacity: 0.55;
 }

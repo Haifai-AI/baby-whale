@@ -70,8 +70,9 @@
 
 # ── office artifacts ───────────────────────────────────────────────────────
 
-# tool-office stays in the HOST composition (one plane per row); this preset
-# consumes its readers through the host plane.
+# Agent-scoped readers: the session's own catalog, never the global plane.
+- id: tool-office
+  name: '@deepseek-ai/dsh-tool-office'
 
 # ── background jobs ────────────────────────────────────────────────────────
 

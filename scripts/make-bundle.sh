@@ -98,7 +98,11 @@ README
 echo "==> packing"
 mkdir -p dist
 OUT="dist/baby-whale-$PLATFORM-$ARCH-$VERSION.zip"
-rm -f "$OUT"
+rm -f "$OUT" "$OUT.sha256"
 (cd "$STAGE_ROOT" && zip -qry "$OLDPWD/$OUT" "$(basename "$STAGE")")
-ls -lh "$OUT"
+# Checksum sidecar the bwhale launcher requires before executing a fresh
+# download (GNU shasum text format: "<hex>  <basename>"). Fail-closed: no
+# sidecar, no verified install.
+(cd dist && shasum -a 256 "$(basename "$OUT")" > "$(basename "$OUT").sha256")
+ls -lh "$OUT" "$OUT.sha256"
 echo "==> bundle ready: $OUT"

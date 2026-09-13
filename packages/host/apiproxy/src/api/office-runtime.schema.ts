@@ -25,7 +25,7 @@ export const officeRuntimeStatusValueSchema = z.object({
     error: z.string().optional(),
   }),
   managedSupported: z.boolean(),
-  guideUrl: z.string().url().optional(),
+  guideUrl: z.url().optional(),
 }) satisfies z.ZodType<Wire<ResponseValue<'officeRuntime.status'>>>
 
 /** officeRuntime.install request payload (empty). */

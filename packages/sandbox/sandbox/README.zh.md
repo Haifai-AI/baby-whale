@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-进程沙箱 Service Definition。负责定义 `ctx.sandbox` 服务约定（[`SandboxProvider`](src/index.ts)）与 harness 共享的限制词汇：`SandboxMode`（`read-only`／`workspace-write`／`danger-full-access`，仅限文件操作）、`SandboxEnforcement`（`full`／`partial`，针对每种内核 ABI）、`SandboxExecutionPolicy`（每次调用的完整模式及工作区根目录）、`SandboxPolicy`（其中受限制的子集），以及故障时拒绝放行的 `SANDBOX_UNAVAILABLE` 错误。作为[能力 seam 拆分](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)中的 Service Definition 角色，它只依赖 cordis（及 harness 错误基类），绝不依赖后端。
+进程沙箱 Service Definition。负责定义 `ctx.sandbox` 服务约定（[`SandboxProvider`](src/index.ts)）与 harness 共享的限制词汇：`SandboxMode`（`read-only`／`workspace-write`／`danger-full-access`，仅限文件操作）、`SandboxEgress`（`deny`／`allow`，网络出口策略，默认为拒绝）、`SandboxEnforcement`（`full`／`partial`，针对每种内核 ABI）、`SandboxExecutionPolicy`（每次调用的完整模式、出口策略及工作区根目录）、`SandboxPolicy`（其中受限制的子集），以及故障时拒绝放行的 `SANDBOX_UNAVAILABLE` 错误。作为[能力 seam 拆分](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)中的 Service Definition 角色，它只依赖 cordis（及 harness 错误基类），绝不依赖后端。
 
 用一句话概括约定：`ctx.sandbox.confine(argv, policy)` 返回用于 spawn、应当取代调用方原始 argv 的 argv。返回值经过包装，使进程及其派生的所有进程都在限制下运行；还会附带所选后端达到的强制执行完整度、拒绝方言（`denialSignatures`）和结构化 runner 失败证据（`runnerFailureRules`）。没有可用后端时，它会抛出异常，绝不会原样传递 argv 使其不受限制地运行。[核心类型目录](../../../docs/subsystems/sandbox.zh.md#wrapped-argv-and-classification-dialects)负责定义分类器的精确结构。
 
@@ -38,7 +38,7 @@ sandbox mode "<mode>" is requested but no sandbox backend is usable on this host
 
 ## 已知限制与暂缓事项
 
-- **文件操作是完整的策略词汇**：该 seam 不表达网络、进程、系统调用、设备或凭据限制。
+- **文件操作加一项网络策略构成完整策略词汇**：该 seam 表达 `SandboxMode`（文件操作）与 `SandboxEgress`（`deny`／`allow`，默认为拒绝），不表达进程、系统调用、设备或凭据限制。
 - **只支持与宿主共享文件系统和内核的限制**：容器、microVM 与远程执行需要替换能力实现，而不是在此处增加提供方。
 - **拒绝报告是一种 stderr 方言**：该 seam 返回后端签名，而非类型化运行时拒绝通道，因此需要分类的消费方必须从子进程输出推断。
 - **Runner 诊断使用带内通道**：退出状态与 stderr 证据无法证明匹配行由哪个进程写入，因此受限子进程若故意模仿 runner，就可能造成可用性或诊断误归因。这无法绕过约束；带外 runner 状态通道暂缓实现。

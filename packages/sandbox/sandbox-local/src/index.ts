@@ -35,7 +35,7 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { assertNever } from '@deepseek-ai/dsh-llm'
 import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
-import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import type { ConfinedArgv, RunnerFailureRule, SandboxEgress, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
@@ -66,7 +66,7 @@ export interface Config {
 
 /** Probe whether `bwrap` can create the profile; the provider caches the bounded result. */
 function defaultProbeBwrap(timeoutMs: number): boolean {
-  const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], {
+  const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', egress: 'deny', workspaceRoot: '/' }), '--', 'true'], {
     timeout: timeoutMs,
     stdio: 'ignore',
   })
@@ -83,7 +83,7 @@ function defaultProbeBwrap(timeoutMs: number): boolean {
  * every macOS; if it ever disappears, this probe is what fails closed.
  */
 function defaultProbeSeatbelt(seatbeltExec: string, timeoutMs: number): boolean {
-  const probe = spawnSync(seatbeltExec, [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], {
+  const probe = spawnSync(seatbeltExec, [...seatbeltProfileArgs({ mode: 'read-only', egress: 'deny', workspaceRoot: '/' }), '--', 'true'], {
     timeout: timeoutMs,
     stdio: 'ignore',
   })
@@ -139,6 +139,14 @@ export interface SandboxInternals {
 
 /** The chain's verdict: which runner confines, and how completely it enforces. */
 type SelectedRunner = { runner: 'bwrap' | 'landlock' | 'seatbelt' | 'windows-acl'; enforcement: SandboxEnforcement }
+
+/**
+ * Rungs whose profiles confine network egress under a deny policy (bwrap's
+ * unshared network namespace, Seatbelt's network denial). Every other rung
+ * is skipped for deny policies — failing closed instead of leaving the
+ * network silently open.
+ */
+const EGRESS_CONFINING_RUNNERS: ReadonlySet<SelectedRunner['runner']> = new Set(['bwrap', 'seatbelt'])
 
 /** One live session/workspace pair's private temp directory and capability. */
 interface AclTempCapability {
@@ -261,8 +269,13 @@ export class LocalSandboxProvider extends SandboxProvider {
   private readonly runnerCommand: string[] | undefined
   private readonly configuredRunnerFailureSignatures: string[]
   private readonly probeTimeoutMs: number
-  /** Cached chain verdict; undefined until the first confined wrap needs it. */
-  private selectedRunner: SelectedRunner | 'unavailable' | undefined
+  /**
+   * One-time functional probe verdicts per rung. Probes spawn processes, so
+   * they run at most once per provider lifetime; the egress filter reapplies
+   * per call, letting one provider serve deny and allow policies without
+   * reprobing.
+   */
+  private readonly probeVerdicts = new Map<SelectedRunner['runner'], SandboxEnforcement | 'unusable'>()
   /**
    * Server-lifetime write grants (windows-acl rung): the STANDING
    * workspace-root grant per workspace (its ACE is the cross-session reuse
@@ -304,8 +317,10 @@ export class LocalSandboxProvider extends SandboxProvider {
 
   /**
    * Wrap `argv` in the selected runner's invocation for `policy` — the configured
-   * `runnerCommand` when present (the operator's assertion, no probe), else the platform
-   * chain's runner speaking its own profile dialect.
+   * `runnerCommand` when present (the operator's assertion, no probe — it
+   * covers the policy's egress posture too, since only bwrap-profile
+   * arguments are appended), else the platform chain's runner speaking its
+   * own profile dialect.
    *
    * @param argv - the exact argv the caller is about to spawn.
    * @param policy - the file-effect policy this execution runs under.
@@ -322,7 +337,7 @@ export class LocalSandboxProvider extends SandboxProvider {
         runnerFailureRules: [{ fatalSignatures: this.configuredRunnerFailureSignatures }],
       }
     }
-    const selected = this.selectRunner(policy.mode)
+    const selected = this.selectRunner(policy)
     const runnerArgv = this.runnerArgv(selected.runner, policy)
     return {
       argv: [...runnerArgv, '--', ...argv],
@@ -483,34 +498,49 @@ export class LocalSandboxProvider extends SandboxProvider {
   }
 
   /**
-   * Resolve which runner confines commands, once, for the provider's
-   * lifetime: this platform's chain ({@link PLATFORM_CHAINS}), its sole
-   * candidate selected directly, multiple candidates arbitrated by
-   * functional probes in chain order. Fail closed when the platform has no
-   * chain or no candidate passes — the command never runs.
+   * Resolve which runner confines commands under one policy: this platform's
+   * chain ({@link PLATFORM_CHAINS}) filtered to the rungs that can confine
+   * the policy's egress, its sole candidate selected directly, multiple
+   * candidates arbitrated by the cached functional probes in chain order.
+   * Fail closed when no candidate remains — the command never runs.
    */
-  private selectRunner(mode: ConfinedSandboxMode): SelectedRunner {
-    this.selectedRunner ??= this.chainVerdict()
-    if (this.selectedRunner === 'unavailable') throw new SandboxUnavailableError(mode)
-    return this.selectedRunner
+  private selectRunner(policy: SandboxPolicy): SelectedRunner {
+    const verdict = this.chainVerdict(policy.egress)
+    if (verdict === 'unavailable') throw new SandboxUnavailableError(policy.mode)
+    return verdict
   }
 
   /** Walk this platform's chain: sole candidate unprobed, several probed in order, none usable → unavailable. */
-  private chainVerdict(): SelectedRunner | 'unavailable' {
+  private chainVerdict(egress: SandboxEgress): SelectedRunner | 'unavailable' {
     const chain = this.internals.chain ?? PLATFORM_CHAINS[this.internals.platform ?? process.platform] ?? []
-    const [first, ...rest] = chain
-    if (first === undefined) return 'unavailable'
+    // A deny policy drops every rung whose profile cannot confine egress
+    // (Landlock has no network primitive; the windows-acl runner governs
+    // files only) instead of silently leaving the network open.
+    const eligible = chain.filter(runner => egress === 'allow' || EGRESS_CONFINING_RUNNERS.has(runner))
+    const [candidate] = eligible
+    if (candidate === undefined) return 'unavailable'
     // A sole candidate needs no arbitration; its execution-time refusal still fails closed.
-    if (rest.length === 0) return { runner: first, enforcement: STATIC_ENFORCEMENT[first] }
-    for (const runner of chain) {
+    // Sole is judged on the PLATFORM chain, not the filtered one: filtering a
+    // multi-candidate chain down to one rung must not skip its probe.
+    if (chain.length === 1) return { runner: candidate, enforcement: STATIC_ENFORCEMENT[candidate] }
+    for (const runner of eligible) {
       const enforcement = this.probeRunner(runner)
       if (enforcement !== 'unusable') return { runner, enforcement }
     }
     return 'unavailable'
   }
 
-  /** One rung's functional probe (each at most once, via the chain walk). */
+  /** One rung's functional probe (each at most once, via the verdict cache). */
   private probeRunner(runner: SelectedRunner['runner']): SandboxEnforcement | 'unusable' {
+    const cached = this.probeVerdicts.get(runner)
+    if (cached !== undefined) return cached
+    const verdict = this.runProbe(runner)
+    this.probeVerdicts.set(runner, verdict)
+    return verdict
+  }
+
+  /** Execute one rung's functional probe. */
+  private runProbe(runner: SelectedRunner['runner']): SandboxEnforcement | 'unusable' {
     // bwrap's mount profile and Seatbelt's deny-file-write* profile govern
     // every promised file effect by construction, so their passing probes
     // are always full enforcement; the Landlock launcher's probe report

@@ -39,7 +39,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
-| `@deepseek-ai/dsh-tool-office` | `docx_create`, `pptx_create`, `xlsx_create` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | - |
+| `@deepseek-ai/dsh-tool-office` | `csv_read`, `docx_text`, `xlsx_read` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | - |
+| `@deepseek-ai/dsh-tool-deliver` | `deliver` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
 
@@ -2079,66 +2080,9 @@ todo_write is session-owned state; UIs render the latest todo/write event as a c
 
 ## `@deepseek-ai/dsh-tool-office`
 
-### `docx_create`
+### `csv_read`
 
-Create a styled .docx document (title, headings, paragraphs, quotes, bullets, numbered lists).
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "file_path": {
-      "type": "string",
-      "description": "Path to write the .docx file, resolved under the session workspace."
-    },
-    "title": {
-      "type": "string",
-      "description": "Optional document title."
-    },
-    "blocks": {
-      "type": "array",
-      "description": "Document blocks in order.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "Block style: paragraph body, heading 1-3, quote, bullet, or numbered item.",
-            "enum": [
-              "paragraph",
-              "heading1",
-              "heading2",
-              "heading3",
-              "quote",
-              "bullet",
-              "number"
-            ]
-          },
-          "text": {
-            "type": "string",
-            "description": "The text content of the block."
-          }
-        },
-        "required": [
-          "type",
-          "text"
-        ]
-      }
-    }
-  },
-  "required": [
-    "file_path",
-    "blocks"
-  ]
-}
-```
-
-Source: [`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts)
-
-### `pptx_create`
-
-Create a styled .pptx presentation deck (title slide, content slides with bullets).
+Read a delimited text file (csv/tsv): delimiter sniffing, quoted fields, numeric coercion, bounded sample.
 
 ```json
 {
@@ -2146,73 +2090,24 @@ Create a styled .pptx presentation deck (title slide, content slides with bullet
   "properties": {
     "file_path": {
       "type": "string",
-      "description": "Path to write the .pptx file, resolved under the session workspace."
+      "description": "Workspace-relative path of the file."
     },
-    "title": {
-      "type": "string",
-      "description": "Deck title shown on the title slide."
-    },
-    "subtitle": {
-      "type": "string",
-      "description": "Optional subtitle under the deck title."
-    },
-    "slides": {
-      "type": "array",
-      "description": "Content slides; at least one.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "Slide title."
-          },
-          "subtitle": {
-            "type": "string",
-            "description": "Optional subtitle under the title."
-          },
-          "bullets": {
-            "type": "array",
-            "description": "Optional bullet lines (plain text, no markup).",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "title"
-        ]
-      }
-    },
-    "theme": {
-      "type": "object",
-      "description": "Optional theme colors.",
-      "additionalProperties": false,
-      "properties": {
-        "primary": {
-          "type": "string",
-          "description": "Primary brand color as #RRGGBB."
-        },
-        "accent": {
-          "type": "string",
-          "description": "Accent color as #RRGGBB."
-        }
-      }
+    "max_rows": {
+      "type": "number",
+      "description": "Data rows returned (default 200, hard cap 400)."
     }
   },
   "required": [
-    "file_path",
-    "title",
-    "slides"
+    "file_path"
   ]
 }
 ```
 
 Source: [`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts)
 
-### `xlsx_create`
+### `docx_text`
 
-Create a styled .xlsx workbook file (header row, frozen panes, fitted columns).
+Extract structured text from a .docx document: headings, paragraphs, list items, and table cell rows as markdown-like lines.
 
 ```json
 {
@@ -2220,61 +2115,69 @@ Create a styled .xlsx workbook file (header row, frozen panes, fitted columns).
   "properties": {
     "file_path": {
       "type": "string",
-      "description": "Path to write the .xlsx file, resolved under the session workspace."
-    },
-    "sheets": {
-      "type": "array",
-      "description": "Worksheets to generate; at least one.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Optional worksheet name (defaults to Sheet1, Sheet2, …)."
-          },
-          "header": {
-            "type": "array",
-            "description": "Optional column labels shown as the styled first row.",
-            "items": {
-              "type": "string"
-            }
-          },
-          "rows": {
-            "type": "array",
-            "description": "Data rows, aligned with the header columns; numbers stay numbers.",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  }
-                }
-              ]
-            }
-          }
-        },
-        "required": [
-          "rows"
-        ]
-      }
+      "description": "Workspace-relative path of the document."
     }
   },
   "required": [
-    "file_path",
-    "sheets"
+    "file_path"
   ]
 }
 ```
 
 Source: [`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts)
+
+### `xlsx_read`
+
+Read an uploaded .xlsx workbook: sheet names, headers, up to N sampled rows as JSON-safe cells (formulas preserved), per-column type hints, merged ranges.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "Workspace-relative path of the workbook."
+    },
+    "max_rows": {
+      "type": "number",
+      "description": "Data rows returned per sheet (default 100, hard cap 400)."
+    }
+  },
+  "required": [
+    "file_path"
+  ]
+}
+```
+
+Source: [`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts)
+
+<a id="deepseek-aidsh-tool-deliver"></a>
+
+## `@deepseek-ai/dsh-tool-deliver`
+
+### `deliver`
+
+Surface finished workspace files as deliverable cards for the user. Call once per finished file, after verifying it exists.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "paths": {
+      "type": "array",
+      "description": "Workspace-relative paths of finished files (e.g. \"deliverables/q2-revenue.xlsx\"). One to ten entries.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "paths"
+  ]
+}
+```
+
+Source: [`packages/whale/tool-deliver/src/index.ts`](../packages/whale/tool-deliver/src/index.ts)
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 

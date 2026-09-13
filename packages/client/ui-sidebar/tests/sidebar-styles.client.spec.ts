@@ -28,8 +28,8 @@ function declarations(selector: string): Map<string, string> | undefined {
 describe('SidebarRoot.module.css', () => {
   it('shares and cancels the wide shell trailing padding structurally', () => {
     const root = declarations('.root')
-    expect(root?.get('--dsh-sidebar-inline-padding')).toBe('12px')
-    expect(root?.get('padding')).toBe('6px var(--dsh-sidebar-inline-padding)')
+    expect(root?.get('--dsh-sidebar-inline-padding')).toBe('10px')
+    expect(root?.get('padding')).toBe('8px var(--dsh-sidebar-inline-padding)')
     expect(declarations('.regionArea')?.get('margin-left')).toBe('-4px')
     expect(declarations('.regionArea')?.get('padding-left')).toBe('4px')
     expect(declarations('.regionArea')?.get('margin-right')).toBe(
@@ -41,7 +41,7 @@ describe('SidebarRoot.module.css', () => {
   })
 
   it('moves the four upper controls while the settings seat only fades', () => {
-    const animation = 'rail-in 150ms var(--ds-ease-in-out) backwards'
+    const animation = 'rail-in 150ms var(--ds-ease-out) backwards'
     for (const selector of [
       '.railIn .iconButton',
       '.railIn .newSession',
@@ -50,10 +50,10 @@ describe('SidebarRoot.module.css', () => {
       expect(declarations(selector)?.get('animation')).toBe(animation)
     }
     expect(declarations('.railIn .footArea')?.get('animation')).toBe(
-      'rail-fade-in 150ms var(--ds-ease-in-out) backwards',
+      'rail-fade-in 150ms var(--ds-ease-out) backwards',
     )
     expect(css).toMatch(
-      /@keyframes rail-in\s*\{\s*from\s*\{\s*opacity: 0;\s*transform: translateX\(49px\);\s*}\s*}/,
+      /@keyframes rail-in\s*\{\s*from\s*\{\s*opacity: 0;\s*transform: translateX\(45px\);\s*}\s*}/,
     )
     expect(css).toMatch(/@keyframes rail-fade-in\s*\{\s*from\s*\{\s*opacity: 0;\s*}\s*}/)
   })
@@ -61,15 +61,15 @@ describe('SidebarRoot.module.css', () => {
   it('gives shell rail controls the same base anchor for their shared translation', () => {
     expect(declarations('.collapsed .logoRow')?.get('justify-content')).toBe('flex-start')
     expect(declarations('.collapsed .newSession')?.get('align-self')).toBe('flex-start')
-    expect(declarations('.collapsed .newSession')?.get('width')).toBe('36px')
+    expect(declarations('.collapsed .newSession')?.get('width')).toBe('32px')
   })
 
   it('keeps the slotted brand row at the full artwork height', () => {
-    expect(declarations('.brandIdentity')?.get('height')).toBe('24px')
-    expect(declarations('.brandName')?.get('height')).toBe('24px')
-    expect(declarations('.brandName')?.get('line-height')).toBe('24px')
-    expect(declarations('.brandName')?.get('font-size')).toBe('18px')
-    expect(declarations('.fallbackBrandName')?.get('font-size')).toBe('17px')
+    expect(declarations('.brandIdentity')?.get('height')).toBe('20px')
+    expect(declarations('.brandName')?.get('height')).toBe('20px')
+    expect(declarations('.brandName')?.get('line-height')).toBe('20px')
+    expect(declarations('.brandName')?.get('font-size')).toBe('15px')
+    expect(declarations('.fallbackBrandName')?.get('font-size')).toBe('15px')
     expect(declarations('.fallbackBrandName')?.get('white-space')).toBe('nowrap')
   })
 })

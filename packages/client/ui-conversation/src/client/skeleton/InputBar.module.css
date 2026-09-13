@@ -49,15 +49,12 @@
   width: 100%;
   max-width: var(--dsh-composer-card-max-width);
   padding-top: 10px;
-  /* Input stroke: black/0.10 light, white/0.06 dark (figma darkmode note says
-     the input border is one notch weaker than buttons) — exactly the
-     l2-darkmode-thin pair. Fill: the input surface token (elevated in dark). */
   border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  border-radius: 22px;
+  border-radius: var(--dsw-radius-xl);
   background: var(--dsw-specific-input-major);
   box-shadow: var(--dsw-shadow-lv2);
-  font-size: 16px;
-  line-height: 24px;
+  font-size: 15px;
+  line-height: 22px;
   /* Elevated surface in dark, same as the menus: the draft scrollport inside
      scrolls once the composer hits its height cap, so the thumb takes the l2
      pair. Declared on the card because the elevation belongs to the surface,
@@ -66,6 +63,7 @@
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
+
 
 /* No-workspace trigger state: dashed l4 stroke marks the card as a pick-a-
    workspace affordance rather than a live composer; hover answers in the
@@ -82,10 +80,10 @@
   content: '';
   position: absolute;
   inset: -1px;
-  border-radius: 22px;
+  border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-border-l4);
   transition: background-color 100ms ease;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='100%25' height='100%25' fill='none' rx='22' ry='22' stroke='black' stroke-width='2' stroke-dasharray='4 4'/%3E%3C/svg%3E");
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='100%25' height='100%25' fill='none' rx='16' ry='16' stroke='black' stroke-width='2' stroke-dasharray='4 4'/%3E%3C/svg%3E");
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='100%25' height='100%25' fill='none' rx='22' ry='22' stroke='black' stroke-width='2' stroke-dasharray='4 4'/%3E%3C/svg%3E");
   pointer-events: none;
 }
@@ -260,7 +258,7 @@
 /* Hero (centered empty-state) keeps the 2-line floor (figma min-h 52 = ~2 × 24
    line + 4pt); the docked composer collapses to the content height. */
 .hero .mirror {
-  min-height: 52px;
+  min-height: 48px;
 }
 
 /* Toolbar: attach + Plan + Read-only on the left; model + send on the right
@@ -274,7 +272,7 @@
   /* 2px moved from the bottom pad to the top: the whole control row sits 2px
      lower in the card (it read too high against the textarea) while the card
      height and the controls' own centering stay untouched. */
-  padding: 2px 8px 6px;
+  padding: 0 8px 6px;
   min-width: 0;
   /* Size container so the chips inside can collapse to icon-only when the
      card runs out of row width (PermissionSelect @container rule). Anonymous
@@ -295,11 +293,11 @@
    Read-only; the chip gap widened to 12 so the pill chips read as separate
    controls. */
 .tools {
-  gap: 16px;
+  gap: 10px;
 }
 
 .modes {
-  gap: 12px;
+  gap: 10px;
 }
 
 .trailing {
@@ -310,25 +308,29 @@
      model trigger (external:107). The auto margin re-anchors it right on the
      wrapped line; on a single line space-between already pins it right. */
   margin-left: auto;
-  gap: 12px;
+  gap: 8px;
 }
 
-/* Attach circle (figma + control): 28px, selector fill, primary glyph. */
+/* Attach control: a quiet 26px rounded square. It is the least important
+   thing in the row and is styled to say so — a filled circle here competed
+   with the send button for the eye. */
 .add {
   display: grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border: none;
-  border-radius: 999px;
-  background: var(--dsw-specific-selector);
-  color: var(--dsw-alias-label-primary);
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .add:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-solid);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
 .add:disabled {
@@ -340,23 +342,30 @@
    (figma ToggleButton: 13/20 medium secondary, 12px chevron). */
 .select {
   max-width: 220px;
-  height: 28px;
-  padding: 0 20px 0 8px;
+  height: 26px;
+  padding: 0 22px 0 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   outline: none;
   background-color: transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  /* The chevron is drawn from `currentColor` rather than a baked data-URI:
+     a data URI cannot carry `currentColor`, so the previous glyph pinned one
+     grey that was correct in light and wrong in dark. Two diagonal gradient
+     halves form the V and inherit whatever ink the control already has. */
+  background-image:
+    linear-gradient(135deg, currentColor 50%, transparent 50%),
+    linear-gradient(45deg, transparent 50%, currentColor 50%);
   background-repeat: no-repeat;
-  background-position: right 4px center;
-  background-size: 12px 12px;
+  background-position: right 10px center, right 6px center;
+  background-size: 4px 4px, 4px 4px;
   color: var(--dsw-alias-label-secondary);
   font-size: 13px;
-  line-height: 20px;
+  line-height: 18px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   appearance: none;
+  transition: background-color var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .select:hover:not(:disabled) {
@@ -368,27 +377,25 @@
   cursor: default;
 }
 
-/* Primary send (figma IconButton 34:10465): 34px circle, #3964FE light /
-   #679EFE dark — the info-fill pair (500→400), NOT button-primary (ink);
-   white glyph; empty text = 0.4 opacity. */
+/* Primary send: the one accent fill in the composer, which is what makes it
+   the obvious next action without a label. 30px matches the shared button
+   height so the row reads as one control strip. */
 .primary {
   display: grid;
   place-items: center;
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--dsw-radius-full);
   background: var(--dsw-alias-button-info-fill);
-  /* Static white, not the foreground token: the arrow stays white on the blue
-     fill in both themes (design 34:10465). */
-  color: #fff;
+  color: var(--dsw-alias-label-primary-foreground);
   cursor: pointer;
-  transition: background-color 100ms ease;
-  /* Opts out of the row's 2px downward shift (.row top pad): the send circle
-     keeps its original seat while the smaller chips sit lower. Transform, not
-     margin, so flex centering math is untouched. */
-  transform: translateY(-2px);
+  transition: background-color var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--dsw-accent-press);
 }
 
 .primary:hover:not(:disabled) {

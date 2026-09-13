@@ -77,16 +77,24 @@ body {
 /* An overlay bar: the thumb is the full 11px hit box inset to a 7px pill by a
    transparent border, so the pointer target stays comfortable while the ink
    stays slim. Padding-box clipping is what makes the border read as space
-   rather than as a ring. */
+   rather than as a ring.
+
+   Colour arrives as `background-color`, never the `background` shorthand. A
+   shorthand carrying `var()` followed by any background longhand in the same
+   rule is expanded by the CSSOM into longhands that serialize as empty, so the
+   declaration stops being readable through `rule.style` — which is how the
+   scrollbar scenario inspects these rules, and how it caught this. The two
+   forms compute identically here, because nothing else in this sheet sets a
+   background longhand on the thumb. */
 ::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: var(--dsw-radius-full);
-  background: var(--dsh-scrollbar-thumb);
+  background-color: var(--dsh-scrollbar-thumb);
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--dsh-scrollbar-thumb-hover);
+  background-color: var(--dsh-scrollbar-thumb-hover);
   background-clip: padding-box;
 }
 

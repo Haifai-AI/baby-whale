@@ -24,13 +24,24 @@ export { sessionCwd, sessionResolveOptions, type SessionCwdExecution } from './s
 /**
  * File-effect policy for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace and a
- * backend-defined temp area; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * backend-defined temp area; `danger-full-access` bypasses confinement.
+ * Process visibility is outside this vocabulary; network egress is governed by
+ * {@link SandboxEgress} beside the mode.
  */
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 
 /** A confining (non-`danger-full-access`) mode — the modes a {@link SandboxPolicy} can carry. */
 export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
+
+/**
+ * Network-egress posture for one confined execution. `deny` confines the
+ * command without network access (the default: a file sandbox must not become
+ * an exfiltration channel); `allow` leaves egress to the host. Backends that
+ * cannot confine egress refuse a `deny` policy instead of silently allowing
+ * it. Only a deployment opt-in or an unconfined (`danger-full-access`)
+ * execution selects `allow` — never a per-call model request.
+ */
+export type SandboxEgress = 'deny' | 'allow'
 
 /**
  * The complete file-effect policy resolved for one capability call. The root
@@ -40,6 +51,8 @@ export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
 export interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
+  /** Network-egress posture this execution runs under (default-deny). */
+  egress: SandboxEgress
   /** Absolute root directory `workspace-write` may write under. */
   workspaceRoot: string
   /**

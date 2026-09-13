@@ -2,6 +2,8 @@
 import { EventEmitter, once } from 'node:events'
 import { createServer, request as httpRequest } from 'node:http'
 import { PassThrough, Readable } from 'node:stream'
+import { URL } from 'node:url'
+import WebSocket from 'ws'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import type { AddressInfo } from 'node:net'
@@ -35,8 +37,21 @@ function fakeHttpServer(
   }
 }
 
+/** The pinned instance token every mounted tree in this suite enforces. */
+const TEST_TOKEN = 'test-instance-token-0123456789abcdef'
+
+/** The Authorization header a legitimate caller presents. */
+const TOKEN_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` }
+
 /** Bodyless GET carrying the given headers (enough for the trust fence + bridge). */
 function fakeRequest(headers: Record<string, string>, url = `${API_PATH}/session.list`): IncomingMessage {
+  const request = Readable.from([]) as unknown as IncomingMessage
+  Object.assign(request, { url, method: 'GET', headers: { ...TOKEN_HEADERS, ...headers } })
+  return request
+}
+
+/** The same GET without any credential: the token gate must refuse it. */
+function bareRequest(headers: Record<string, string>, url = `${API_PATH}/session.list`): IncomingMessage {
   const request = Readable.from([]) as unknown as IncomingMessage
   Object.assign(request, { url, method: 'GET', headers })
   return request
@@ -45,14 +60,14 @@ function fakeRequest(headers: Record<string, string>, url = `${API_PATH}/session
 /** JSON POST carrying a complete client-request envelope. */
 function fakePost(headers: Record<string, string>, url: string, body: unknown): IncomingMessage {
   const request = Readable.from([Buffer.from(JSON.stringify(body))]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'POST', headers: { 'content-type': 'application/json', ...headers } })
+  Object.assign(request, { url, method: 'POST', headers: { 'content-type': 'application/json', ...TOKEN_HEADERS, ...headers } })
   return request
 }
 
 /** Raw POST for malformed-body and media-type boundary cases. */
 function fakeRawPost(headers: Record<string, string>, url: string, body: string): IncomingMessage {
   const request = Readable.from([Buffer.from(body)]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'POST', headers })
+  Object.assign(request, { url, method: 'POST', headers: { ...TOKEN_HEADERS, ...headers } })
   return request
 }
 
@@ -85,7 +100,7 @@ async function mounted(config?: { trustedHosts?: string[] }): Promise<{
   const upgrades: WebUpgradeRoute[] = []
   ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
   ctx.provide('apiProxy', {} as unknown as ApiProxy)
-  const fiber = ctx.plugin({ inject: [...inject], apply }, config)
+  const fiber = ctx.plugin({ inject: [...inject], apply }, { ...config, apiToken: TEST_TOKEN })
   await fiber.await()
   return { routes, upgrades, dispose: () => fiber.dispose() }
 }
@@ -167,6 +182,137 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('refuses a loopback request without the instance token before the bridge runs', async () => {
+    // Loopback alone proves nothing once the UI is a web page: any site the
+    // user visits can make the browser send loopback requests, so the fence
+    // passes and only the per-instance token stops a stranger's page from
+    // driving the host.
+    const { routes, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(bareRequest({ host: '127.0.0.1:3080' }), response)
+    expect(state.status).toBe(403)
+    expect(state.body).toBe('forbidden')
+    await dispose()
+  })
+
+  it('mints a fresh instance token when none is pinned', async () => {
+    // Unpinned boots mint per start: the minted credential authorizes, and
+    // nothing else does — loopback alone stays refused.
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    try {
+      const connection = ctx.get('connection') as HostConnectionHandle
+      expect(connection.apiToken).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      const authed = fakeResponse()
+      await routes[0]!.handler(bareRequest({
+        host: '127.0.0.1:3080', authorization: `Bearer ${connection.apiToken}`,
+      }), authed.response)
+      expect(authed.state.status).toBe(404)
+      const stranger = fakeResponse()
+      await routes[0]!.handler(bareRequest({ host: '127.0.0.1:3080' }), stranger.response)
+      expect(stranger.state.status).toBe(403)
+    } finally {
+      await fiber.dispose()
+    }
+  })
+
+  it('fails the load on a weak pinned instance token', async () => {
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: 'short' })
+    await expect(fiber).rejects.toThrow(/at least 16 URL-safe/)
+    expect(routes).toHaveLength(0)
+    expect(upgrades).toHaveLength(0)
+  })
+
+  it('refuses a forged instance token', async () => {
+    const { routes, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(bareRequest({
+      host: '127.0.0.1:3080',
+      authorization: 'Bearer 0123456789abcdef0123456789abcdef',
+    }), response)
+    expect(state.status).toBe(403)
+    expect(state.body).toBe('forbidden')
+    await dispose()
+  })
+
+  it('accepts the instance token as a query parameter for headerless transports', async () => {
+    // Some transports cannot set headers; the fence passes and the carrier
+    // answers 404 for a GET unary path — proof the bridge ran on a query
+    // credential.
+    const { routes, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(
+      bareRequest({ host: '127.0.0.1:3080' }, `${API_PATH}/session.list?token=${TEST_TOKEN}`),
+      response,
+    )
+    expect(state.status).toBe(404)
+    await dispose()
+  })
+
+  it('rejects a tokenless WebSocket upgrade on loopback before protocol negotiation', async () => {
+    const { upgrades, dispose } = await mounted()
+    const socket = new PassThrough()
+    const chunks: Buffer[] = []
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+    const ended = once(socket, 'end')
+    await upgrades[0]!.handler(bareRequest({ host: '127.0.0.1:3080' }, MUX_EVENTS_PATH), socket, Buffer.alloc(0))
+    await ended
+    expect(Buffer.concat(chunks).toString()).toContain('HTTP/1.1 403 Forbidden')
+    await dispose()
+  })
+
+  it('upgrades a WebSocket presenting the instance token as a query parameter', async () => {
+    // Browsers cannot set WebSocket headers, so the downlink token travels
+    // as `?token=`. The upgrade runs over a real server and client: `ws`
+    // negotiates on a live socket, which a stream fake cannot stand in for.
+    async function * idle(signal: AbortSignal): AsyncGenerator<never> {
+      if (!signal.aborted) {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => { resolve() }, { once: true })
+        })
+      }
+    }
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {
+      events: {
+        mux: (_request: unknown, signal: AbortSignal) => idle(signal),
+        host: (_request: unknown, signal: AbortSignal) => idle(signal),
+      },
+    } as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: TEST_TOKEN })
+    await fiber.await()
+    const server = createServer()
+    server.on('upgrade', (request, socket, head) => {
+      const pathname = new URL(request.url ?? '/', 'http://dsh.internal').pathname
+      if (pathname === MUX_EVENTS_PATH) void upgrades[0]!.handler(request, socket, head)
+      else socket.destroy()
+    })
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+    const port = (server.address() as AddressInfo).port
+    try {
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${MUX_EVENTS_PATH}?token=${TEST_TOKEN}`)
+      await once(socket, 'open')
+      socket.close()
+      await once(socket, 'close')
+    } finally {
+      await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
+      await fiber.dispose()
+    }
+  })
+
   it('pins privileged methods to loopback even for a declared trusted authority', async () => {
     const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
     // The privileged set: native dialogs plus the whole settings/credential
@@ -223,7 +369,7 @@ describe('connection node half', () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
-    const fiber = ctx.plugin({ inject: [...inject], apply })
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: TEST_TOKEN })
     await fiber.await()
     expect(routes).toHaveLength(1)
     expect(routes[0]).toMatchObject({ kind: 'prefix', path: API_PATH })
@@ -270,7 +416,7 @@ describe('connection node half', () => {
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
     ctx.provide('apiProxy', {} as unknown as ApiProxy)
-    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'] })
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'], apiToken: TEST_TOKEN })
     await fiber.await()
     const connection = ctx.get('connection') as HostConnectionHandle
     const calls: unknown[] = []
@@ -347,7 +493,7 @@ describe('connection node half', () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
-    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'] })
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'], apiToken: TEST_TOKEN })
     await fiber.await()
     const connection = ctx.get('connection') as HostConnectionHandle
     const remove = connection.rpc.handle('/rpc', async (endpoint) => {
@@ -448,7 +594,10 @@ describe('connection node half over a real HTTP server', () => {
   function call(port: number, method: string, host: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const request = httpRequest(
-        { host: '127.0.0.1', port, path: `${API_PATH}/${method}`, method: 'GET', headers: { host } },
+        {
+          host: '127.0.0.1', port, path: `${API_PATH}/${method}`, method: 'GET',
+          headers: { host, authorization: `Bearer ${TEST_TOKEN}` },
+        },
         (response) => {
           response.resume()
           response.on('end', () => { resolve(response.statusCode ?? 0) })

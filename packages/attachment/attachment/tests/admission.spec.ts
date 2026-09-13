@@ -1,13 +1,26 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { admitEncodedImages } from '@deepseek-ai/dsh-attachment'
-import type { ImageAttachmentRef, SaveImageAttachment } from '@deepseek-ai/dsh-attachment/types'
+import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment } from '@deepseek-ai/dsh-attachment/types'
 
 const PNG = 'AAAA' // canonical base64, 3 bytes
 
-/** Delegation double: records the exact saveImages batch and answers ordered refs. */
-function storeOf() {
+/**
+ * Delegation double: records the exact saveImages batch and answers ordered
+ * refs. The byte caps sit exactly on the tiny fixture payload (3 decoded
+ * bytes, 4 encoded chars) so boundary behavior is pinned, not incidental.
+ */
+function storeOf(limits?: Partial<ImageAttachmentLimits>) {
   const store = {
+    imageLimits: {
+      maxImageBytes: 3,
+      maxImagesPerMessage: 10,
+      maxMessageImageBytes: 6,
+      maxImagePixels: 100,
+      maxImageDimension: 10,
+      mediaTypes: ['image/png', 'image/jpeg', 'image/webp'],
+      ...limits,
+    },
     saveImages: vi.fn((inputs: readonly SaveImageAttachment[]) => Promise.resolve(inputs.map((input, index): ImageAttachmentRef => ({
       attachmentId: `att-${index + 1}` as ImageAttachmentRef['attachmentId'],
       mediaType: input.mediaType,
@@ -55,6 +68,42 @@ describe('admitEncodedImages', () => {
         .rejects.toMatchObject({ name: 'AttachmentError', code: 'INVALID_IMAGE_BASE64' })
     }
     expect(mocks.saveImages).not.toHaveBeenCalled()
+  })
+
+  it('rejects an over-cap encoded image before decoding (no store call)', async () => {
+    const { store, mocks } = storeOf()
+    // 8 encoded chars decode to 6 bytes past the 3-byte per-image cap.
+    await expect(admitEncodedImages(store, [{ mediaType: 'image/png', data: 'AAAAAAAA' }]))
+      .rejects.toMatchObject({ name: 'AttachmentError', code: 'IMAGE_TOO_LARGE' })
+    expect(mocks.saveImages).not.toHaveBeenCalled()
+  })
+
+  it('rejects an over-cap encoded batch before decoding (no store call)', async () => {
+    // Loose per-image cap with a tight aggregate: each member fits alone at
+    // the 16-char per-image bound, but the 32-char total exceeds the
+    // aggregate bound (8 chars plus one padding quantum per member).
+    const { store, mocks } = storeOf({ maxImageBytes: 12 })
+    const batch: { mediaType: 'image/png'; data: string }[] = [
+      { mediaType: 'image/png', data: 'AAAAAAAAAAAAAAAA' },
+      { mediaType: 'image/png', data: 'AAAAAAAAAAAAAAAA' },
+    ]
+    await expect(admitEncodedImages(store, batch))
+      .rejects.toMatchObject({ name: 'AttachmentError', code: 'IMAGES_TOO_LARGE' })
+    expect(mocks.saveImages).not.toHaveBeenCalled()
+  })
+
+  it('admits separately padded members a naive summed bound would refuse', async () => {
+    const { store, mocks } = storeOf()
+    // 12 chars total past the 8-char single-string bound, but three separate
+    // paddings decode to 3 bytes inside the 6-byte aggregate cap — the batch
+    // reaches the store, where count and byte limits stay authoritative.
+    const batch: { mediaType: 'image/png'; data: string }[] = [
+      { mediaType: 'image/png', data: 'AQ==' },
+      { mediaType: 'image/png', data: 'AQ==' },
+      { mediaType: 'image/png', data: 'AQ==' },
+    ]
+    await expect(admitEncodedImages(store, batch)).resolves.toHaveLength(3)
+    expect(mocks.saveImages).toHaveBeenCalledTimes(1)
   })
 
   it('propagates the store batch rejection unchanged', async () => {

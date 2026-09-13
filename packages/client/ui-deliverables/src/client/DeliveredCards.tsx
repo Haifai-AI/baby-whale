@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import { withApiTokenQuery } from '@deepseek-ai/dsh-client-connection/client'
 import type { HostDescriptionSource } from '@deepseek-ai/dsh-client-connection/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -171,7 +172,7 @@ export type DeliveredCardsProps = Pick<TurnTailOwnerProps, 'openFile' | 'openFil
 function download(path: string, sessionId: string): void {
   const query = new URLSearchParams({ session: sessionId, path: artifactPath(path), download: '1' })
   const anchor = document.createElement('a')
-  anchor.href = `/api/artifacts.raw?${query.toString()}`
+  anchor.href = withApiTokenQuery(`/api/artifacts.raw?${query.toString()}`)
   anchor.download = basename(path)
   document.body.appendChild(anchor)
   anchor.click()

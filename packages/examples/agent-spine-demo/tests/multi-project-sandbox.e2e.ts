@@ -18,10 +18,10 @@ import type { ToolResult } from '@deepseek-ai/dsh-tools'
 import { launcherPath } from '@deepseek-ai/node-addon-landlock-run'
 import * as agentSpine from '../src/index.ts'
 
-const bwrapUsable = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' }).status === 0
+const bwrapUsable = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', egress: 'deny', workspaceRoot: '/' }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' }).status === 0
 const landlockUsable = spawnSync(launcherPath(), ['--probe'], { timeout: 5_000, stdio: 'ignore' }).status === 0
 const seatbeltUsable = process.platform === 'darwin'
-  && spawnSync('sandbox-exec', [...seatbeltProfileArgs({ mode: 'workspace-write', workspaceRoot: homedir() }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' }).status === 0
+  && spawnSync('sandbox-exec', [...seatbeltProfileArgs({ mode: 'workspace-write', egress: 'deny', workspaceRoot: homedir() }), '--', 'true'], { timeout: 5_000, stdio: 'ignore' }).status === 0
 const processSandboxUsable = bwrapUsable || landlockUsable || seatbeltUsable
 
 let ctx: Context | undefined

@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import type { JSX } from 'react'
+import { withApiTokenQuery } from '@deepseek-ai/dsh-client-connection/client'
 import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
 import type { WhaleArtifactsKey } from './locales.ts'
 import { WorkbookCharts, type WorkbookChart } from './WorkbookCharts.tsx'
@@ -92,7 +93,7 @@ export function WorkbookPreview({ data, t }: {
         {tab === 'original' && hasOriginal && (
           <iframe
             title={data.file_name}
-            src={`/api/artifacts.file?path=${encodeURIComponent(data.pdfPath ?? '')}`}
+            src={withApiTokenQuery(`/api/artifacts.file?path=${encodeURIComponent(data.pdfPath ?? '')}`)}
             className={css.pdfFrame}
           />
         )}

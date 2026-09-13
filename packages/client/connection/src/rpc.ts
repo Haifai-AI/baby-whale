@@ -56,6 +56,13 @@ export interface HostConnectionRpc {
 export interface HostConnectionHandle {
   /** Generic RPC channel registry. */
   readonly rpc: HostConnectionRpc
+  /**
+   * The per-instance host API token every /api, RPC-channel, and downlink
+   * request must present. Minted at server start (or pinned by deployment
+   * config); sibling plugins read it to compose entry URLs, never to bypass
+   * the fence.
+   */
+  readonly apiToken: string
 }
 
 /** Client caller for logical RPC channels carried by the current transport. */

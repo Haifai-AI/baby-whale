@@ -247,6 +247,12 @@ Everything stays on this machine - files, sessions, and the workspace.
   # real files, so no symlink/junction semantics are involved.
   tar.exe -a --options "zip:compression-level=1" -cf $OUT -C $STAGE_ROOT (Split-Path $STAGE -Leaf)
   if ($LASTEXITCODE -ne 0) { throw "tar pack failed" }
+  # Checksum sidecar the bwhale launcher requires before executing a fresh
+  # download ("<hex>  <basename>", UTF-8 without BOM). Fail-closed: no
+  # sidecar, no verified install.
+  if (Test-Path "${OUT}.sha256") { Remove-Item -Force "${OUT}.sha256" }
+  $zipHash = (Get-FileHash $OUT -Algorithm SHA256).Hash.ToLower()
+  [IO.File]::WriteAllText("${OUT}.sha256", "$zipHash  " + (Split-Path $OUT -Leaf) + "`n")
   Get-Item $OUT | ForEach-Object { Write-Host ("==> bundle ready: {0} ({1:N0} MB)" -f $_.FullName, ($_.Length / 1MB)) }
 } finally {
   Remove-Item -Recurse -Force $STAGE_ROOT -ErrorAction SilentlyContinue

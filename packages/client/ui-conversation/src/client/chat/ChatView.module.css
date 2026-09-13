@@ -17,7 +17,7 @@
   overflow-y: auto;
   /* Sides = composer clearance + 16px: on narrow viewports the transcript
      stays exactly 32px narrower than the input card (the shared width rule). */
-  padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
+  padding: 20px calc(var(--dsh-composer-side-clearance) + 16px);
   /* Inline-size query container: wide markdown tables size their breakout
      against this box's content width (100cqw in AssistantMarkdown's
      md-table-wide rule) — the CSS stand-in for deepsuite chat's JS-measured
@@ -46,7 +46,7 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 /* Settled-flow identity boundary. It is neutral today and becomes the natural
@@ -69,60 +69,60 @@
 /* Selection still sets data-selected for details linkage; no outline —
    tool rows match Think chrome (no selected ring). */
 
-/* Turn activity keeps the former loader's one-line footprint. A pale
-   brand-blue band sweeps from left to right; reduced-motion keeps it static. */
+/* Turn activity. The previous treatment swept a colour band through the
+   label's own glyphs, which made the status the loudest object on the screen
+   during exactly the moments the user is reading the answer above it. Here the
+   text is ordinary secondary ink and a small dot carries the motion: the state
+   still reads as alive, and nothing competes with the content. */
 .turnStatus {
   align-self: flex-start;
   flex: none;
   display: inline-flex;
   align-items: center;
-  height: 26px;
-  font: var(--dsw-font-s-strong-14);
+  gap: 8px;
+  height: 22px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
-  background: linear-gradient(
-    90deg,
-    var(--dsw-static-deepseek-500) 0%,
-    var(--dsw-static-deepseek-500) 40%,
-    var(--dsw-static-deepseek-200) 50%,
-    var(--dsw-static-deepseek-500) 60%,
-    var(--dsw-static-deepseek-500) 100%
-  );
-  background-position: 100% 0;
-  background-size: 250% 100%;
-  background-clip: text;
-  color: transparent;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: dsh-turn-status-shimmer 1.8s linear infinite;
+}
+
+.turnStatus::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--dsw-radius-full);
+  background: var(--dsw-alias-state-business-primary);
+  animation: dsh-turn-status-pulse 1.1s var(--ds-ease-in-out) infinite alternate;
+}
+
+@keyframes dsh-turn-status-pulse {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
 }
 
 .turnStatusClock {
   margin-left: 8px;
-  font: var(--dsw-font-xs-13);
+  margin-left: 2px;
+  font-size: 12px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-caption);
-  -webkit-text-fill-color: var(--dsw-alias-label-caption);
-}
-
-@keyframes dsh-turn-status-shimmer {
-  to {
-    background-position: 0 0;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turnStatus {
-    background-position: 0 0;
-    background-size: 100% 100%;
+  .turnStatus::before {
     animation: none;
+    opacity: 0.7;
   }
 }
 
 .hint {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
-  line-height: 18px;
+  line-height: 16px;
 }
 
 .openError {
@@ -138,12 +138,20 @@
 
 .older button {
   border: none;
-  border-radius: 14px;
-  padding: 4px 12px;
+  border-radius: var(--dsw-radius-full);
+  padding: 5px 14px;
   font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-interactive-bg-hover-solid);
+  background: var(--dsw-alias-fill-secondary);
   cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.older button:hover:not(:disabled) {
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-label-primary);
 }
 
 .older button:disabled {
@@ -179,12 +187,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  margin-top: -34px;
+  width: 32px;
+  height: 32px;
+  margin-top: -32px;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 100px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-full);
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-button-floating-fill);
   box-shadow: var(--dsw-shadow-lv2);

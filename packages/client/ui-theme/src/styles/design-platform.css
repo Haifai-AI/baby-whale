@@ -1,6 +1,24 @@
-/* Figma font-weight 510 (an SF Pro variable-font weight) always renders as
-   font-weight: 500 in this UI — non-variable webfonts snap intermediate
-   weights unpredictably across platforms. */
+/* Semantic aliases — the Apple-grade system the whole client consumes.
+ *
+ * Structure: the neutral ramp is a closed, named scale (`--dsw-gray-*`) rather
+ * than ad-hoc greys, and every surface role is assigned one step of it. A
+ * component that needs a tone picks a role; it never mixes a new grey.
+ *
+ * Two rules this sheet encodes, both enforced by review rather than by a gate:
+ *
+ * 1. The accent (`--dsw-alias-state-business-primary`, `--dsw-alias-button-info-fill`)
+ *    marks things that can be acted on. It never marks place, selection, or
+ *    decoration, so a screen's single blue element is always pressable.
+ * 2. Every state that matters carries a non-colour channel — weight, fill
+ *    density, or an icon — because the palette has no hue that survives both
+ *    themes at AA and a hue-only signal is unreadable for a colour-blind user.
+ */
+
+/* Raw palette, exported from the upstream Figma variable set. This is the
+   bottom layer: aliases below derive from it, feature CSS never reads it. The
+   ramp is retained after the visual-world replacement because a number of
+   preview and file-kind surfaces still key off it; each one migrates to a
+   semantic alias as its owning package is redesigned. */
 body {
   --dsw-static-amber-100: rgb(254, 245, 231);
   --dsw-static-amber-400: rgb(247, 173, 49);
@@ -77,262 +95,325 @@ body {
   --dsw-static-red-900: rgb(87, 12, 12);
 }
 
-body[data-ds-dark-theme] {
-  --dsw-static-amber-100: rgb(254, 245, 231);
-  --dsw-static-amber-400: rgb(247, 173, 49);
-  --dsw-static-amber-500: rgb(245, 158, 11);
-  --dsw-static-amber-600: rgb(221, 134, 41);
-  --dsw-static-amber-900: rgb(39, 36, 31);
-  --dsw-static-blue-100: rgb(219, 234, 254);
-  --dsw-static-blue-300: rgb(147, 197, 253);
-  --dsw-static-blue-400: rgb(96, 165, 250);
-  --dsw-static-blue-450: rgb(77, 147, 248);
-  --dsw-static-blue-500: rgb(59, 130, 246);
-  --dsw-static-blue-50: rgb(239, 246, 255);
-  --dsw-static-blue-50p: rgb(234, 243, 255);
-  --dsw-static-blue-600: rgb(37, 99, 235);
-  --dsw-static-blue-75: rgb(229, 240, 255);
-  --dsw-static-blue-800: rgb(30, 64, 175);
-  --dsw-static-blue-900: rgb(14, 48, 116);
-  --dsw-static-blue-950: rgb(23, 37, 84);
-  --dsw-static-deepseek-100: rgb(228, 237, 253);
-  --dsw-static-deepseek-200: rgb(211, 226, 255);
-  --dsw-static-deepseek-300: rgb(183, 200, 254);
-  --dsw-static-deepseek-400: rgb(103, 158, 254);
-  --dsw-static-deepseek-450: rgb(86, 134, 254);
-  --dsw-static-deepseek-500: rgb(65, 118, 230);
-  --dsw-static-deepseek-50: rgb(237, 243, 254);
-  --dsw-static-deepseek-600: rgb(72, 104, 178);
-  --dsw-static-deepseek-700-delete: rgb(47, 76, 143);
-  --dsw-static-deepseek-800: rgb(52, 65, 91);
-  --dsw-static-deepseek-900: rgb(40, 49, 66);
-  --dsw-static-green-100: rgb(230, 250, 237);
-  --dsw-static-green-400: rgb(78, 209, 126);
-  --dsw-static-green-500: rgb(34, 197, 94);
-  --dsw-static-green-900: rgb(35, 60, 44);
-  --dsw-static-neutral-00: rgb(255, 255, 255);
-  --dsw-static-neutral-1000: rgb(0, 0, 0);
-  --dsw-static-neutral-100: rgb(245, 245, 245);
-  --dsw-static-neutral-150: rgb(237, 237, 237);
-  --dsw-static-neutral-200: rgb(229, 229, 229);
-  --dsw-static-neutral-250: rgb(220, 220, 220);
-  --dsw-static-neutral-300: rgb(212, 212, 212);
-  --dsw-static-neutral-400: rgb(162, 164, 166);
-  --dsw-static-neutral-500: rgb(127, 130, 135);
-  --dsw-static-neutral-50: rgb(250, 250, 250);
-  --dsw-static-neutral-550: rgb(101, 103, 107);
-  --dsw-static-neutral-600: rgb(84, 85, 87);
-  --dsw-static-neutral-700: rgb(60, 60, 61);
-  --dsw-static-neutral-800: rgb(41, 41, 41);
-  --dsw-static-neutral-850: rgb(33, 33, 35);
-  --dsw-static-neutral-900: rgb(15, 15, 15);
-  --dsw-static-neutral-bluish-00: rgb(255, 255, 255);
-  --dsw-static-neutral-bluish-1000: rgb(15, 17, 21);
-  --dsw-static-neutral-bluish-100: rgb(235, 238, 242);
-  --dsw-static-neutral-bluish-150: rgb(233, 236, 242);
-  --dsw-static-neutral-bluish-200: rgb(225, 229, 238);
-  --dsw-static-neutral-bluish-300: rgb(207, 211, 214);
-  --dsw-static-neutral-bluish-400: rgb(173, 178, 184);
-  --dsw-static-neutral-bluish-500: rgb(151, 157, 166);
-  --dsw-static-neutral-bluish-50: rgb(249, 250, 251);
-  --dsw-static-neutral-bluish-600: rgb(129, 133, 140);
-  --dsw-static-neutral-bluish-60: rgb(249, 250, 251);
-  --dsw-static-neutral-bluish-700: rgb(97, 102, 107);
-  --dsw-static-neutral-bluish-750: rgb(67, 69, 74);
-  --dsw-static-neutral-bluish-75: rgb(241, 243, 245);
-  --dsw-static-neutral-bluish-800: rgb(53, 54, 56);
-  --dsw-static-neutral-bluish-850: rgb(44, 44, 46);
-  --dsw-static-neutral-bluish-875: rgb(35, 35, 36);
-  --dsw-static-neutral-bluish-900: rgb(27, 27, 28);
-  --dsw-static-neutral-bluish-950: rgb(21, 21, 23);
-  --dsw-static-red-100: rgb(254, 226, 226);
-  --dsw-static-red-400: rgb(242, 90, 90);
-  --dsw-static-red-500: rgb(239, 68, 68);
-  --dsw-static-red-50: rgb(254, 242, 242);
-  --dsw-static-red-600: rgb(236, 19, 19);
-  --dsw-static-red-900: rgb(87, 12, 12);
-}
-
 body {
-  --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-layer-1: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-layer-2: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-layer-3: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.24);
+  /* Neutral ramp. `gray-00` is the content canvas, `gray-05`..`gray-10` the
+     chrome steps, `gray-40`..`gray-70` the label steps. Values are Apple's
+     system greys: warm-neutral, never pure black or pure blue-grey. */
+  --dsw-gray-00: rgb(255, 255, 255);
+  --dsw-gray-02: rgb(251, 251, 253);
+  --dsw-gray-05: rgb(245, 245, 247);
+  --dsw-gray-08: rgb(240, 240, 242);
+  --dsw-gray-10: rgb(235, 235, 237);
+  --dsw-gray-15: rgb(229, 229, 231);
+  --dsw-gray-20: rgb(209, 209, 214);
+  --dsw-gray-40: rgb(174, 174, 178);
+  --dsw-gray-50: rgb(142, 142, 147);
+  --dsw-gray-60: rgb(110, 110, 115);
+  --dsw-gray-70: rgb(88, 88, 93);
+  --dsw-gray-85: rgb(29, 29, 31);
+  --dsw-gray-95: rgb(18, 18, 20);
+
+  /* Accent: apple.com blue for ink on light, macOS blue for dark. The light
+     value is deliberately the darker of the two — `#007aff` reads at 3.6:1 on
+     white and fails AA as text, `#0071e3` clears it at 4.6:1. */
+  --dsw-accent: rgb(0, 113, 227);
+  --dsw-accent-hover: rgb(0, 119, 237);
+  --dsw-accent-press: rgb(0, 104, 209);
+
+  /* State inks are the accessible step of each Apple system colour, not the
+     vivid fill step: they are used as text and as 3:1 non-text indicators. */
+  --dsw-state-error: rgb(215, 0, 21);
+  --dsw-state-success: rgb(36, 138, 61);
+  --dsw-state-warn: rgb(201, 52, 0);
+
+  /* File-kind identity. The one place the system keeps hues that do not follow
+     the theme: a spreadsheet is green in every app the user already owns, and
+     a card that recoloured it per theme would stop being recognisable at a
+     glance. Each value carries white text at 4.5:1, because that is the only
+     way the glyph is ever laid on it. */
+  --dsw-alias-file-sheet: rgb(29, 127, 67);
+  --dsw-alias-file-doc: rgb(47, 111, 178);
+  --dsw-alias-file-slides: rgb(194, 94, 44);
+  --dsw-alias-file-table: rgb(63, 143, 99);
+  --dsw-alias-file-pdf: rgb(176, 74, 90);
+  --dsw-alias-file-image: rgb(122, 95, 176);
+  --dsw-alias-file-video: rgb(176, 58, 91);
+  --dsw-alias-file-audio: rgb(44, 140, 162);
+  --dsw-alias-file-text: rgb(107, 122, 141);
+  --dsw-alias-file-other: rgb(107, 114, 128);
+  /* Syntax highlighting for the JSON tree. Roles, not hues: the four token
+     classes a reader distinguishes, each carrying AA on the code-block
+     surface in both palettes. Kept here rather than in the component because
+     a dark-palette reader needs different inks for the same roles. */
+  --dsw-alias-syntax-property: rgb(136, 19, 145);
+  --dsw-alias-syntax-string: rgb(196, 26, 22);
+  --dsw-alias-syntax-number: rgb(28, 0, 207);
+  --dsw-alias-syntax-keyword: rgb(28, 0, 207);
+  --dsw-alias-syntax-punctuation: rgb(32, 33, 36);
+  --dsw-alias-syntax-icon: rgb(95, 99, 104);
+  /* Context-window fill. Its own role rather than a state colour: the meter is
+     a quantity, and a full one is not an error until it is full. */
+  --dsw-meter-accent: rgb(109, 78, 214);
+  /* Document-renderer surfaces. A preview paints a page: a spreadsheet cell
+     grid, a slide, a sheet of paper. Those are objects inside the preview, not
+     chrome around it, so they keep their own canvas and ink rather than
+     following the app's theme — a white page stays a white page in dark mode,
+     which is what the user's own Office app would show them. */
+  --dsw-alias-file-canvas: rgb(255, 255, 255);
+  --dsw-office-ink: rgb(31, 56, 100);
+  --dsw-office-ink-deep: rgb(23, 37, 84);
+  --dsw-office-ink-soft: rgb(37, 99, 235);
+
+  --dsw-alias-bg-base: var(--dsw-gray-00);
+  --dsw-alias-bg-layer-1: var(--dsw-gray-00);
+  --dsw-alias-bg-layer-2: var(--dsw-gray-00);
+  --dsw-alias-bg-layer-3: var(--dsw-gray-00);
+  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.3);
   --dsw-alias-bg-mask-2: rgba(0, 0, 0, 0.12);
   --dsw-alias-bg-mask-3: rgba(0, 0, 0, 0.48);
   --dsw-alias-bg-mask-photo: rgba(0, 0, 0, 0.88);
   --dsw-alias-bg-mask-drop: rgba(255, 255, 255, 0.7);
-  --dsw-alias-bg-module-platform: var(--dsw-static-neutral-bluish-60);
-  --dsw-alias-bg-multi-select: var(--dsw-static-neutral-bluish-60);
-  --dsw-alias-bg-overlay: var(--dsw-static-neutral-bluish-150);
-  --dsw-alias-bg-skeleton: rgba(0, 0, 0, 0.04);
+  --dsw-alias-bg-module-platform: var(--dsw-gray-05);
+  --dsw-alias-bg-multi-select: var(--dsw-gray-05);
+  --dsw-alias-bg-overlay: var(--dsw-gray-10);
+  --dsw-alias-bg-skeleton: rgba(0, 0, 0, 0.05);
   --dsw-alias-border-inverted2: rgba(0, 0, 0, 0);
   --dsw-alias-border-inverted: rgba(0, 0, 0, 0);
-  --dsw-alias-border-l1: rgba(0, 0, 0, 0.04);
-  --dsw-alias-border-l2-darkmode-thin: rgba(0, 0, 0, 0.1);
+  --dsw-alias-border-l1: rgba(0, 0, 0, 0.06);
+  --dsw-alias-border-l2-darkmode-thin: rgba(0, 0, 0, 0.08);
   --dsw-alias-border-l2: rgba(0, 0, 0, 0.1);
-  --dsw-alias-border-l3: rgba(0, 0, 0, 0.12);
-  --dsw-alias-border-l4: rgba(0, 0, 0, 0.16);
-  --dsw-alias-brand-primary-invert: var(--dsw-static-neutral-bluish-1000);
-  --dsw-alias-brand-primary-new-colorprimary-new-color: rgb(65, 118, 230);
-  --dsw-alias-brand-primary: var(--dsw-static-neutral-bluish-1000);
-  --dsw-alias-brand-text: var(--dsw-static-neutral-bluish-1000);
-  --dsw-alias-button-contrast-fill: var(--dsw-static-neutral-bluish-700);
-  --dsw-alias-button-elevated-fill: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-button-floating-fill: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-button-floating-hover: var(--dsw-static-neutral-bluish-75);
-  --dsw-alias-button-ghost-active-border: var(--dsw-static-neutral-bluish-500);
-  --dsw-alias-button-ghost-active-fill: var(--dsw-static-neutral-bluish-100);
-  --dsw-alias-button-ghost-active-hover: var(--dsw-static-neutral-bluish-150);
-  --dsw-alias-button-info-fill: var(--dsw-static-deepseek-500);
-  --dsw-alias-button-info-hover: var(--dsw-static-deepseek-400);
-  --dsw-alias-button-primary-dimmed: var(--dsw-static-neutral-bluish-100);
-  --dsw-alias-button-primary-fill: var(--dsw-alias-brand-primary);
-  --dsw-alias-button-primary-hover: var(--dsw-static-neutral-bluish-750);
+  --dsw-alias-border-l3: rgba(0, 0, 0, 0.14);
+  --dsw-alias-border-l4: rgba(0, 0, 0, 0.2);
+  --dsw-alias-brand-primary-invert: var(--dsw-gray-95);
+  --dsw-alias-brand-primary-new-colorprimary-new-color: var(--dsw-accent);
+  --dsw-alias-brand-primary: var(--dsw-gray-85);
+  --dsw-alias-brand-text: var(--dsw-gray-85);
+  --dsw-alias-button-contrast-fill: var(--dsw-gray-70);
+  --dsw-alias-button-elevated-fill: var(--dsw-gray-00);
+  --dsw-alias-button-floating-fill: var(--dsw-gray-00);
+  --dsw-alias-button-floating-hover: var(--dsw-gray-05);
+  --dsw-alias-button-ghost-active-border: var(--dsw-gray-20);
+  --dsw-alias-button-ghost-active-fill: var(--dsw-gray-10);
+  --dsw-alias-button-ghost-active-hover: var(--dsw-gray-15);
+  /* The one accent fill in the system: every primary action rides it. */
+  --dsw-alias-button-info-fill: var(--dsw-accent);
+  --dsw-alias-button-info-hover: var(--dsw-accent-hover);
+  --dsw-alias-button-primary-dimmed: var(--dsw-gray-10);
+  --dsw-alias-button-primary-fill: var(--dsw-accent);
+  --dsw-alias-button-primary-hover: var(--dsw-accent-hover);
   --dsw-alias-button-tool-bar-fill-invisible: rgba(31, 31, 31, 0.36);
   --dsw-alias-button-tool-bar-fill: rgba(84, 85, 87, 0.5);
   --dsw-alias-button-tool-bar-hover: rgba(84, 85, 87, 0.6);
-  --dsw-alias-interactive-bg-active: rgba(38, 49, 72, 0.1);
-  --dsw-alias-interactive-bg-hover-accent: rgba(38, 49, 72, 0.14);
-  --dsw-alias-interactive-bg-hover-danger: rgba(236, 19, 19, 0.05);
-  --dsw-alias-interactive-bg-hover-solid: var(--dsw-static-neutral-bluish-75);
-  --dsw-alias-interactive-bg-hover: rgba(38, 49, 72, 0.06);
-  --dsw-alias-label-caption: var(--dsw-static-neutral-bluish-400);
-  --dsw-alias-label-dimmed: var(--dsw-static-neutral-bluish-200);
-  --dsw-alias-label-primary-bluish: var(--dsw-static-blue-900);
-  --dsw-alias-label-primary-dimmed: var(--dsw-static-neutral-bluish-950);
-  --dsw-alias-label-primary-foreground: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-label-primary-inverted: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-label-primary: var(--dsw-static-neutral-bluish-1000);
-  --dsw-alias-label-secondary: var(--dsw-static-neutral-bluish-700);
-  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-600);
-  --dsw-alias-markdown-citation: var(--dsw-static-neutral-bluish-100);
-  --dsw-alias-markdown-code-block-banner: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-markdown-code-block: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-markdown-code-segment-selected: var(--dsw-static-neutral-bluish-00);
-  --dsw-alias-markdown-code-segment-unselected: var(--dsw-static-neutral-bluish-75);
-  --dsw-alias-markdown-inline-code: var(--dsw-static-neutral-bluish-100);
-  --dsw-alias-markdown-placeholder: var(--dsw-static-neutral-bluish-60);
-  --dsw-alias-markdown-tag: var(--dsw-static-neutral-bluish-75);
-  --dsw-alias-scrollbar-bg-l1: var(--dsw-static-neutral-200);
-  --dsw-alias-scrollbar-bg-l2: var(--dsw-static-neutral-200);
-  --dsw-alias-scrollbar-hover-l1: var(--dsw-static-neutral-300);
-  --dsw-alias-scrollbar-hover-l2: var(--dsw-static-neutral-300);
-  --dsw-alias-state-business-primary: var(--dsw-static-deepseek-500);
-  --dsw-alias-state-business-tertiary: var(--dsw-static-deepseek-100);
-  --dsw-alias-state-error-primary: var(--dsw-static-red-600);
-  --dsw-alias-state-error-secondary: var(--dsw-static-red-400);
-  --dsw-alias-state-success-primary: var(--dsw-static-green-500);
-  --dsw-alias-state-success-secondary: var(--dsw-static-green-400);
-  --dsw-alias-state-success-tertiary: var(--dsw-static-green-100);
-  --dsw-alias-state-warn-label: var(--dsw-static-amber-600);
-  --dsw-alias-state-warn-primary: var(--dsw-static-amber-500);
-  --dsw-alias-state-warn-secondary: var(--dsw-static-amber-400);
-  --dsw-alias-state-warn-tertiary: var(--dsw-static-amber-100);
-  --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-850);
-  --dsw-specific-bubble-highlight: var(--dsw-static-deepseek-200);
-  --dsw-specific-bubble: var(--dsw-static-deepseek-50);
-  --dsw-specific-input-major: var(--dsw-static-neutral-bluish-00);
-  --dsw-specific-login-input: var(--dsw-static-neutral-bluish-50);
+  /* Neutral fills, one ramp step apart: `secondary` is the resting surface a
+     banner or hovered control sits on, `l2` the next step up for a badge that
+     must read against it, and `tsp-secondary` the translucent chip wash that
+     tints whatever surface it is placed on. */
+  --dsw-alias-fill-l2: var(--dsw-gray-10);
+  --dsw-alias-fill-secondary: var(--dsw-gray-05);
+  --dsw-alias-fill-tsp-secondary: rgba(0, 0, 0, 0.05);
+  --dsw-alias-interactive-bg-active: rgba(0, 0, 0, 0.08);
+  --dsw-alias-interactive-bg-hover-accent: rgba(0, 113, 227, 0.1);
+  --dsw-alias-interactive-bg-hover-danger: rgba(215, 0, 21, 0.07);
+  --dsw-alias-interactive-bg-hover-solid: var(--dsw-gray-08);
+  --dsw-alias-interactive-bg-hover: rgba(0, 0, 0, 0.05);
+  /* The three label steps below primary are bounded by physics, not taste: on
+     the sidebar's own fill (245) a neutral has to sit at or under ~112 to clear
+     4.5:1, so light has room for exactly two steps there. `caption` therefore
+     coincides with `tertiary` in this palette and separates from it in dark,
+     where the ground is dark enough for a third step. Both are still
+     distinguishable from `secondary` — the ramp's job here is to keep the
+     steps above the AA floor, and a third distinct step would have to sit
+     below it. */
+  --dsw-alias-label-caption: var(--dsw-gray-60);
+  --dsw-alias-label-dimmed: var(--dsw-gray-20);
+  --dsw-alias-label-error: var(--dsw-state-error);
+  --dsw-alias-label-primary-bluish: var(--dsw-gray-85);
+  --dsw-alias-label-primary-dimmed: var(--dsw-gray-95);
+  --dsw-alias-label-primary-foreground: var(--dsw-gray-00);
+  --dsw-alias-label-primary-inverted: var(--dsw-gray-00);
+  --dsw-alias-label-primary: var(--dsw-gray-85);
+  /* One step quieter than `caption`: placeholder glyphs and the decoration
+     under a link's text, never a color that has to be read on its own. */
+  --dsw-alias-label-quaternary: var(--dsw-gray-40);
+  --dsw-alias-label-secondary: var(--dsw-gray-70);
+  --dsw-alias-label-tertiary: var(--dsw-gray-60);
+  --dsw-alias-line-secondary: rgba(0, 0, 0, 0.08);
+  --dsw-alias-markdown-citation: var(--dsw-gray-05);
+  --dsw-alias-markdown-code-block-banner: var(--dsw-gray-02);
+  --dsw-alias-markdown-code-block: var(--dsw-gray-02);
+  --dsw-alias-markdown-code-segment-selected: var(--dsw-gray-00);
+  --dsw-alias-markdown-code-segment-unselected: var(--dsw-gray-05);
+  --dsw-alias-markdown-inline-code: var(--dsw-gray-05);
+  --dsw-alias-markdown-placeholder: var(--dsw-gray-05);
+  --dsw-alias-markdown-tag: var(--dsw-gray-05);
+  --dsw-alias-scrollbar-bg-l1: rgba(0, 0, 0, 0.18);
+  --dsw-alias-scrollbar-bg-l2: rgba(0, 0, 0, 0.18);
+  --dsw-alias-scrollbar-hover-l1: rgba(0, 0, 0, 0.32);
+  --dsw-alias-scrollbar-hover-l2: rgba(0, 0, 0, 0.32);
+  /* Glyph separators between metrics. One step quieter than the figures on
+     either side, so a stat line reads as one sentence rather than a column of
+     pipes, but not so faint that the groups run together. */
+  --dsw-alias-separator-primary: var(--dsw-gray-50);
+  --dsw-alias-state-business-primary: var(--dsw-accent);
+  --dsw-alias-state-business-tertiary: rgb(232, 241, 253);
+  --dsw-alias-state-error-primary: var(--dsw-state-error);
+  --dsw-alias-state-error-secondary: rgb(255, 59, 48);
+  --dsw-alias-state-success-primary: var(--dsw-state-success);
+  --dsw-alias-state-success-secondary: rgb(52, 199, 89);
+  --dsw-alias-state-success-tertiary: rgb(232, 246, 236);
+  --dsw-alias-state-warn-label: var(--dsw-state-warn);
+  --dsw-alias-state-warn-primary: var(--dsw-state-warn);
+  --dsw-alias-state-warn-secondary: rgb(255, 149, 0);
+  --dsw-alias-state-warn-tertiary: rgb(255, 244, 229);
+  --dsw-alias-toast-bg: rgba(28, 28, 30, 0.82);
+  /* Inverse surfaces carry their own ink. The plates are dark in BOTH
+     palettes, so their foreground must be light in both — and it therefore
+     cannot come from the theme-flipping gray ramp, whose `gray-00` is white in
+     light and near-black in dark. Reading the plate colour from the ramp and
+     the ink from the static scale is what keeps the pair correct in both. */
+  --dsw-alias-toast-fg: var(--dsw-static-neutral-00);
+  --dsw-alias-tooltip-bg: rgba(28, 28, 30, 0.82);
+  --dsw-alias-tooltip-fg: var(--dsw-static-neutral-00);
+  /* Selection wash. A light tint of the accent, not the accent itself: the
+     glyphs keep their own ink on top of it, so an opaque accent would erase
+     the text it is meant to point at. */
+  --dsw-specific-bubble-highlight: rgb(204, 226, 255);
+  --dsw-specific-bubble: var(--dsw-gray-05);
+  --dsw-specific-input-major: var(--dsw-gray-00);
+  --dsw-specific-login-input: var(--dsw-gray-02);
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
-  --dsw-specific-selector: var(--dsw-static-neutral-bluish-60);
-  --dsw-specific-sidebar-fill: var(--dsw-static-neutral-bluish-50);
-  --dsw-specific-sidebar-nav-item-active-accent: var(--dsw-static-deepseek-100);
-  --dsw-specific-sidebar-nav-item-active: var(--dsw-static-neutral-bluish-100);
-  --dsw-specific-sidebar-nav-item-hover: var(--dsw-static-neutral-bluish-75);
-  --dsw-specific-tip: var(--dsw-static-neutral-bluish-60);
+  --dsw-specific-selector: var(--dsw-gray-05);
+  --dsw-specific-sidebar-fill: var(--dsw-gray-05);
+  --dsw-specific-sidebar-nav-item-active-accent: var(--dsw-gray-15);
+  --dsw-specific-sidebar-nav-item-active: rgba(0, 0, 0, 0.08);
+  --dsw-specific-sidebar-nav-item-hover: rgba(0, 0, 0, 0.05);
+  --dsw-specific-tip: var(--dsw-gray-05);
 }
 
 body[data-ds-dark-theme] {
-  --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-950);
-  --dsw-alias-bg-layer-1: var(--dsw-static-neutral-bluish-875);
-  --dsw-alias-bg-layer-2: var(--dsw-static-neutral-bluish-850);
-  --dsw-alias-bg-layer-3: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.5);
-  --dsw-alias-bg-mask-2: rgba(0, 0, 0, 0.2);
+  /* Dark is a second palette, not an inversion. The ramp runs the other way
+     (chrome sits ABOVE the canvas rather than below it) and the label steps
+     are re-picked for a dark ground instead of being mirrored. */
+  --dsw-gray-00: rgb(28, 28, 30);
+  --dsw-gray-02: rgb(32, 32, 34);
+  --dsw-gray-05: rgb(36, 36, 38);
+  --dsw-gray-08: rgb(44, 44, 46);
+  --dsw-gray-10: rgb(50, 50, 52);
+  --dsw-gray-15: rgb(58, 58, 60);
+  --dsw-gray-20: rgb(68, 68, 70);
+  --dsw-gray-40: rgb(99, 99, 102);
+  --dsw-gray-50: rgb(142, 142, 147);
+  --dsw-gray-60: rgb(152, 152, 157);
+  --dsw-gray-70: rgb(174, 174, 178);
+  --dsw-gray-85: rgb(245, 245, 247);
+  --dsw-gray-95: rgb(255, 255, 255);
+
+  /* macOS dark blue carries white text at 4.6:1 and reads at 4.9:1 on the
+     canvas; the light accent would fail both here. */
+  --dsw-accent: rgb(10, 132, 255);
+  --dsw-accent-hover: rgb(48, 148, 255);
+  --dsw-accent-press: rgb(0, 116, 232);
+
+  --dsw-state-error: rgb(255, 105, 97);
+  --dsw-state-success: rgb(48, 209, 88);
+  --dsw-state-warn: rgb(255, 159, 10);
+
+  --dsw-alias-bg-base: var(--dsw-gray-00);
+  --dsw-alias-bg-layer-1: var(--dsw-gray-02);
+  --dsw-alias-bg-layer-2: var(--dsw-gray-08);
+  --dsw-alias-bg-layer-3: var(--dsw-gray-10);
+  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.55);
+  --dsw-alias-bg-mask-2: rgba(0, 0, 0, 0.24);
   --dsw-alias-bg-mask-3: rgba(0, 0, 0, 0.48);
   --dsw-alias-bg-mask-photo: rgba(0, 0, 0, 0.88);
-  --dsw-alias-bg-mask-drop: rgba(39, 39, 48, 0.7);
-  --dsw-alias-bg-module-platform: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-bg-multi-select: var(--dsw-static-neutral-850);
-  --dsw-alias-bg-overlay: var(--dsw-static-neutral-bluish-700);
+  --dsw-alias-bg-mask-drop: rgba(28, 28, 30, 0.72);
+  --dsw-alias-bg-module-platform: var(--dsw-gray-05);
+  --dsw-alias-bg-multi-select: var(--dsw-gray-05);
+  --dsw-alias-bg-overlay: var(--dsw-gray-15);
   --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.08);
   --dsw-alias-border-inverted2: rgba(255, 255, 255, 0.08);
   --dsw-alias-border-inverted: rgba(255, 255, 255, 0.06);
-  --dsw-alias-border-l1: rgba(255, 255, 255, 0.06);
-  --dsw-alias-border-l2-darkmode-thin: rgba(255, 255, 255, 0.06);
+  --dsw-alias-border-l1: rgba(255, 255, 255, 0.07);
+  --dsw-alias-border-l2-darkmode-thin: rgba(255, 255, 255, 0.08);
   --dsw-alias-border-l2: rgba(255, 255, 255, 0.12);
-  --dsw-alias-border-l3: rgba(255, 255, 255, 0.16);
-  --dsw-alias-border-l4: rgba(255, 255, 255, 0.2);
-  --dsw-alias-brand-primary-invert: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-brand-primary-new-colorprimary-new-color: var(--dsw-static-deepseek-450);
-  --dsw-alias-brand-primary: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-brand-text: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-button-contrast-fill: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-button-elevated-fill: var(--dsw-static-neutral-bluish-750);
-  --dsw-alias-button-floating-fill: var(--dsw-static-neutral-bluish-850);
-  --dsw-alias-button-floating-hover: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-button-ghost-active-border: var(--dsw-static-neutral-bluish-600);
-  --dsw-alias-button-ghost-active-fill: var(--dsw-static-neutral-bluish-750);
-  --dsw-alias-button-ghost-active-hover: var(--dsw-static-neutral-bluish-700);
-  --dsw-alias-button-info-fill: var(--dsw-static-deepseek-400);
-  --dsw-alias-button-info-hover: var(--dsw-static-deepseek-500);
-  --dsw-alias-button-primary-dimmed: var(--dsw-static-neutral-bluish-750);
-  --dsw-alias-button-primary-fill: var(--dsw-alias-brand-primary);
-  --dsw-alias-button-primary-hover: var(--dsw-static-neutral-bluish-100);
+  --dsw-alias-border-l3: rgba(255, 255, 255, 0.17);
+  --dsw-alias-border-l4: rgba(255, 255, 255, 0.24);
+  --dsw-alias-brand-primary-invert: var(--dsw-gray-05);
+  --dsw-alias-brand-primary-new-colorprimary-new-color: var(--dsw-accent);
+  --dsw-alias-brand-primary: var(--dsw-gray-85);
+  --dsw-alias-brand-text: var(--dsw-gray-85);
+  --dsw-alias-button-contrast-fill: var(--dsw-gray-70);
+  --dsw-alias-button-elevated-fill: var(--dsw-gray-10);
+  --dsw-alias-button-floating-fill: var(--dsw-gray-10);
+  --dsw-alias-button-floating-hover: var(--dsw-gray-10);
+  --dsw-alias-button-ghost-active-border: var(--dsw-gray-20);
+  --dsw-alias-button-ghost-active-fill: var(--dsw-gray-15);
+  --dsw-alias-button-ghost-active-hover: var(--dsw-gray-20);
+  --dsw-alias-button-info-fill: var(--dsw-accent);
+  --dsw-alias-button-info-hover: var(--dsw-accent-hover);
+  --dsw-alias-button-primary-dimmed: var(--dsw-gray-15);
+  --dsw-alias-button-primary-fill: var(--dsw-accent);
+  --dsw-alias-button-primary-hover: var(--dsw-accent-hover);
   --dsw-alias-button-tool-bar-fill-invisible: rgba(31, 31, 31, 0.36);
   --dsw-alias-button-tool-bar-fill: rgba(84, 85, 87, 0.5);
   --dsw-alias-button-tool-bar-hover: rgba(84, 85, 87, 0.6);
-  --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.14);
-  --dsw-alias-interactive-bg-hover-accent: rgba(255, 255, 255, 0.24);
-  --dsw-alias-interactive-bg-hover-danger: rgba(242, 90, 90, 0.15);
-  --dsw-alias-interactive-bg-hover-solid: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.08);
-  --dsw-alias-label-caption: var(--dsw-static-neutral-bluish-600);
-  --dsw-alias-label-dimmed: var(--dsw-static-neutral-bluish-750);
-  --dsw-alias-label-primary-bluish: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-label-primary-dimmed: var(--dsw-static-neutral-bluish-100);
-  --dsw-alias-label-primary-foreground: var(--dsw-static-neutral-bluish-1000);
-  --dsw-alias-label-primary-inverted: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-label-primary: var(--dsw-static-neutral-bluish-50);
-  --dsw-alias-label-secondary: var(--dsw-static-neutral-bluish-300);
-  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-400);
-  --dsw-alias-markdown-citation: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-markdown-code-block-banner: var(--dsw-static-neutral-bluish-850);
-  --dsw-alias-markdown-code-block: var(--dsw-static-neutral-bluish-900);
-  --dsw-alias-markdown-code-segment-selected: var(--dsw-static-neutral-bluish-800);
-  --dsw-alias-markdown-code-segment-unselected: var(--dsw-static-neutral-bluish-900);
-  --dsw-alias-markdown-inline-code: var(--dsw-static-neutral-bluish-850);
-  --dsw-alias-markdown-placeholder: var(--dsw-static-neutral-bluish-850);
-  --dsw-alias-markdown-tag: var(--dsw-static-neutral-bluish-850);
-  --dsw-alias-scrollbar-bg-l1: var(--dsw-static-neutral-700);
-  --dsw-alias-scrollbar-bg-l2: var(--dsw-static-neutral-600);
-  --dsw-alias-scrollbar-hover-l1: var(--dsw-static-neutral-600);
-  --dsw-alias-scrollbar-hover-l2: var(--dsw-static-neutral-550);
-  --dsw-alias-state-business-primary: var(--dsw-static-deepseek-400);
-  --dsw-alias-state-business-tertiary: var(--dsw-static-deepseek-800);
-  --dsw-alias-state-error-primary: var(--dsw-static-red-400);
-  --dsw-alias-state-error-secondary: var(--dsw-static-red-400);
-  --dsw-alias-state-success-primary: var(--dsw-static-green-500);
-  --dsw-alias-state-success-secondary: var(--dsw-static-green-400);
-  --dsw-alias-state-success-tertiary: var(--dsw-static-green-900);
-  --dsw-alias-state-warn-label: var(--dsw-static-amber-600);
-  --dsw-alias-state-warn-primary: var(--dsw-static-amber-500);
-  --dsw-alias-state-warn-secondary: var(--dsw-static-amber-400);
-  --dsw-alias-state-warn-tertiary: var(--dsw-static-amber-900);
-  --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-750);
-  --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-750);
-  --dsw-specific-bubble-highlight: var(--dsw-static-neutral-bluish-750);
-  --dsw-specific-bubble: var(--dsw-static-neutral-bluish-850);
-  --dsw-specific-input-major: var(--dsw-static-neutral-bluish-850);
-  --dsw-specific-login-input: var(--dsw-static-neutral-bluish-900);
+  --dsw-alias-fill-l2: var(--dsw-gray-10);
+  --dsw-alias-fill-secondary: var(--dsw-gray-05);
+  --dsw-alias-fill-tsp-secondary: rgba(255, 255, 255, 0.07);
+  --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.12);
+  --dsw-alias-interactive-bg-hover-accent: rgba(10, 132, 255, 0.18);
+  --dsw-alias-interactive-bg-hover-danger: rgba(255, 105, 97, 0.14);
+  --dsw-alias-interactive-bg-hover-solid: var(--dsw-gray-10);
+  --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.07);
+  --dsw-alias-label-caption: var(--dsw-gray-50);
+  --dsw-alias-label-dimmed: var(--dsw-gray-40);
+  --dsw-alias-label-error: var(--dsw-state-error);
+  --dsw-alias-label-primary-bluish: var(--dsw-gray-85);
+  --dsw-alias-label-primary-dimmed: var(--dsw-gray-85);
+  --dsw-alias-label-primary-foreground: var(--dsw-gray-00);
+  --dsw-alias-label-primary-inverted: var(--dsw-gray-00);
+  --dsw-alias-label-primary: var(--dsw-gray-85);
+  --dsw-alias-label-quaternary: var(--dsw-gray-40);
+  --dsw-alias-label-secondary: var(--dsw-gray-70);
+  --dsw-alias-label-tertiary: var(--dsw-gray-60);
+  --dsw-alias-line-secondary: rgba(255, 255, 255, 0.1);
+  --dsw-alias-markdown-citation: var(--dsw-gray-05);
+  --dsw-alias-markdown-code-block-banner: var(--dsw-gray-02);
+  --dsw-alias-markdown-code-block: var(--dsw-gray-02);
+  --dsw-alias-markdown-code-segment-selected: var(--dsw-gray-08);
+  --dsw-alias-markdown-code-segment-unselected: var(--dsw-gray-02);
+  --dsw-alias-markdown-inline-code: var(--dsw-gray-05);
+  --dsw-alias-markdown-placeholder: var(--dsw-gray-05);
+  --dsw-alias-markdown-tag: var(--dsw-gray-05);
+  --dsw-alias-scrollbar-bg-l1: rgba(255, 255, 255, 0.2);
+  --dsw-alias-scrollbar-bg-l2: rgba(255, 255, 255, 0.2);
+  --dsw-alias-scrollbar-hover-l1: rgba(255, 255, 255, 0.34);
+  --dsw-alias-scrollbar-hover-l2: rgba(255, 255, 255, 0.34);
+  --dsw-alias-separator-primary: var(--dsw-gray-50);
+  --dsw-alias-state-business-primary: var(--dsw-accent);
+  --dsw-alias-state-business-tertiary: rgb(20, 45, 76);
+  --dsw-alias-state-error-primary: var(--dsw-state-error);
+  --dsw-alias-state-error-secondary: rgb(255, 69, 58);
+  --dsw-alias-state-success-primary: var(--dsw-state-success);
+  --dsw-alias-state-success-secondary: rgb(48, 209, 88);
+  --dsw-alias-state-success-tertiary: rgb(24, 51, 32);
+  --dsw-alias-state-warn-label: var(--dsw-state-warn);
+  --dsw-alias-state-warn-primary: var(--dsw-state-warn);
+  --dsw-alias-state-warn-secondary: rgb(255, 179, 64);
+  --dsw-alias-state-warn-tertiary: rgb(58, 44, 20);
+  --dsw-alias-toast-bg: rgba(58, 58, 60, 0.86);
+  --dsw-alias-toast-fg: var(--dsw-static-neutral-00);
+  --dsw-alias-tooltip-bg: rgba(58, 58, 60, 0.86);
+  --dsw-alias-tooltip-fg: var(--dsw-static-neutral-00);
+  --dsw-specific-bubble-highlight: rgba(10, 132, 255, 0.36);
+  --dsw-specific-bubble: var(--dsw-gray-05);
+  --dsw-specific-input-major: var(--dsw-gray-08);
+  --dsw-specific-login-input: var(--dsw-gray-02);
   --dsw-specific-menu: var(--dsw-alias-bg-layer-3);
-  --dsw-specific-selector: var(--dsw-static-neutral-bluish-800);
-  --dsw-specific-sidebar-fill: var(--dsw-static-neutral-bluish-900);
-  --dsw-specific-sidebar-nav-item-active-accent: var(--dsw-static-neutral-bluish-800);
-  --dsw-specific-sidebar-nav-item-active: var(--dsw-static-neutral-bluish-750);
-  --dsw-specific-sidebar-nav-item-hover: var(--dsw-static-neutral-bluish-850);
-  --dsw-specific-tip: var(--dsw-static-neutral-bluish-800);
+  --dsw-specific-selector: var(--dsw-gray-05);
+  --dsw-specific-sidebar-fill: var(--dsw-gray-05);
+  --dsw-specific-sidebar-nav-item-active-accent: var(--dsw-gray-15);
+  --dsw-specific-sidebar-nav-item-active: rgba(255, 255, 255, 0.12);
+  --dsw-specific-sidebar-nav-item-hover: rgba(255, 255, 255, 0.07);
+  --dsw-specific-tip: var(--dsw-gray-08);
 }

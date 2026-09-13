@@ -251,7 +251,9 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, t 
       output: formatTokens(usage.outputTokens),
     }))
   }
-  const line = groups.join(' | ')
+  // One separator glyph on screen and in the tooltip copy, so the hover text
+  // reads exactly like the row it describes.
+  const line = groups.join(' · ')
   // The row elides with ellipsis when overlong; a delayed hover tooltip carries
   // the full line, enabled only while content is actually clipped.
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -272,7 +274,7 @@ export const StatsLine = memo(function StatsLine({ useSession, useProjection, t 
       <div ref={rootRef} className={css.root}>
         {groups.map((group, i) => (
           <Fragment key={group}>
-            {i > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
+            {i > 0 && <>{' '}<span className={css.sep} aria-hidden>·</span>{' '}</>}
             <span>{group}</span>
           </Fragment>
         ))}

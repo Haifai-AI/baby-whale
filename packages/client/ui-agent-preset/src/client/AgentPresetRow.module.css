@@ -1,11 +1,28 @@
-/* Agent-preset row: title/description plus the preset selector pill. */
+/* Settings row on the macOS inset-group pattern: a 13px label with an
+ * optional 11px explanation above a right-aligned control, separated from the
+ * next row by a hairline that stops short of the card's left edge. The group
+ * card itself is the section's (see GeneralSection.module.css); a row owns
+ * only its own rhythm and the separator below it. */
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  gap: 12px;
+  padding: 10px 0;
+}
+
+/* Inset separator as a pseudo-element rather than a border: a border spans the
+   row box, and this one has to stop where the label starts so the card reads
+   as one object with items in it rather than as a stack of boxes. */
+.row::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: var(--dsw-alias-border-l1);
 }
 
 .rowText {
@@ -13,48 +30,60 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-right: 48px;
+  gap: 1px;
+  padding-right: 40px;
 }
 
 .title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 22px;
+  line-height: 18px;
   color: var(--dsw-alias-label-primary);
 }
 
 .desc {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  line-height: 15px;
+  /* Secondary, not tertiary: at 11px on the card fill, tertiary measures
+     4.46:1 in the dark palette — under AA by a margin small enough to look
+     fine and large enough to fail. */
+  color: var(--dsw-alias-label-secondary);
 }
 
+/* Pop-up button: a white face with a hairline edge, not a filled pill. The
+   pill fill made every settings row look like it had a coloured control in
+   it; a pop-up button should read as a value you can change, at the weight of
+   the value it holds. */
 .selector {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  height: 36px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 18px;
-  background: var(--dsw-alias-bg-module-platform);
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-button-elevated-fill);
+  box-shadow: var(--dsw-shadow-lv1);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .selector:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-button-floating-hover);
 }
 
 .selector:disabled {
   cursor: default;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .chevron {
   flex: none;
+  opacity: 0.55;
 }

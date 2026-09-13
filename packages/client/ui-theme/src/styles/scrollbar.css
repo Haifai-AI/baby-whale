@@ -21,7 +21,7 @@ body {
      below. A surface that must align itself beside a space-consuming bar
      (ConversationRoot's overlay composer seat) reads this instead of
      hardcoding the number. */
-  --dsh-scrollbar-width: 8px;
+  --dsh-scrollbar-width: 11px;
 }
 
 /* The two paths are mutually exclusive, and the gate is load-bearing rather
@@ -64,8 +64,8 @@ body {
    selector matching already does. Not inherited either, hence the unscoped
    selectors. */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 11px;
+  height: 11px;
 }
 
 /* Track stays transparent so the thumb reads against whatever surface scrolls
@@ -74,13 +74,20 @@ body {
   background: transparent;
 }
 
+/* An overlay bar: the thumb is the full 11px hit box inset to a 7px pill by a
+   transparent border, so the pointer target stays comfortable while the ink
+   stays slim. Padding-box clipping is what makes the border read as space
+   rather than as a ring. */
 ::-webkit-scrollbar-thumb {
-  border-radius: 4px;
+  border: 2px solid transparent;
+  border-radius: var(--dsw-radius-full);
   background: var(--dsh-scrollbar-thumb);
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--dsh-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 /* Both scrollbars meeting in a corner: no separate token, so the corner

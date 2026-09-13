@@ -11,7 +11,7 @@
 }
 
 .error {
-  color: var(--dsw-static-red-500, #c0392b);
+  color: var(--dsw-alias-state-error-primary);
   font-size: 13px;
 }
 

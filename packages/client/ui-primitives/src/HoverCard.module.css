@@ -5,20 +5,20 @@
   display: block;
 }
 
-/* Preview card (figma session hover card): 244 wide, r12, pad 12/16, the
- * menu card's elevation. Surface is #2C2C2E in both themes (figma value,
- * light/dark identical), so a component-level variable, not a theme token.
+/* Preview card: 244 wide, r12, pad 12/16, the menu card's elevation. The
+ * surface is the system's inverse plate — dark in both palettes — which the
+ * tooltip and the toast already share, so it reads from that token rather
+ * than declaring a component-local literal.
  * Hit-testable on purpose: resting the pointer on the card holds it open
  * (HoverCard's grace close), which a `pointer-events: none` card cannot do. */
 .card {
-  --dsw-hovercard-bg: #2C2C2E;
   position: fixed;
   z-index: 100;
   box-sizing: border-box;
   width: 244px;
   padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--dsw-hovercard-bg);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-tooltip-bg);
   box-shadow: var(--dsw-shadow-lv3);
 }
 

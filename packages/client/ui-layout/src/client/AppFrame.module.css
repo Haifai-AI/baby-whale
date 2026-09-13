@@ -25,6 +25,13 @@
 .sidebarCol {
   min-width: 0;
   overflow: hidden;
+  /* Opaque, deliberately. The sidebar is a grid column with nothing behind it,
+     so a backdrop blur would composite the whole shell to show a colour that
+     is already flat — and it would be actively wrong: `backdrop-filter`
+     establishes a containing block for `position: fixed` descendants, so the
+     settings overlay mounted in the sidebar foot and every portaled menu
+     anchored inside the list would be positioned against this column instead
+     of the viewport. See ui-theme's material tokens for where blur is safe. */
   background: var(--dsw-specific-sidebar-fill);
   border-right: 1px solid var(--dsw-alias-border-l1);
 }
@@ -39,7 +46,7 @@
 .detailsCol {
   min-width: 0;
   overflow: hidden;
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  border-left: 1px solid var(--dsw-alias-border-l1);
 }
 
 /* The details subtree stays mounted at zero width, so its border must not paint

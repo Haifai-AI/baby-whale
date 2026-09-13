@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-13-web-theme-token-aliases-and-browser-surfaces.md
+2026-09-13-web-theme-token-aliases-and-browser-surfaces.md: befa2b9220805ce684be88a4bf22697ad1836478
+2026-09-13-web-theme-token-aliases-and-browser-surfaces.zh.md: 335a256f16a3844d28129c8792bd661c0ff01ac1

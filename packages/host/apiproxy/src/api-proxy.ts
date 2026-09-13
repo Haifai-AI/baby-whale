@@ -3279,18 +3279,18 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     officeRuntime: {
       // Setup-banner snapshot: managed runtime presence, install lifecycle,
       // and the guided page for platforms without an automatic flow.
-      async status(request) {
+      status(request) {
         const managed = managedSofficePath()
         const located = findSoffice()
         const support = managedInstallSupport()
-        return ok(request, {
+        return Promise.resolve(ok(request, {
           soffice: located !== undefined
             ? { found: true, source: managed !== undefined && managed === located ? 'managed' : 'system', path: located }
             : { found: false, source: 'none' },
           install: sofficeInstallState(),
           managedSupported: support.supported,
           ...(support.guideUrl !== undefined ? { guideUrl: support.guideUrl } : {}),
-        })
+        }))
       },
       async install(request) {
         const state = await beginManagedSofficeInstall(resetSofficeLookup)
@@ -3325,7 +3325,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           if (callId === undefined) continue
           const failed = message?.isError === true
             || (message?.content ?? []).some(block => (block.text ?? '').includes('deliver:'))
-          results.set(String(callId), !failed)
+          results.set(callId, !failed)
         }
         const claimed = new Map<string, { readonly seq: number }>()
         for (const event of sourceSession(source).events) {
@@ -3592,7 +3592,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               let field = ''
               let quoted = false
               for (let i = 0; i < row.length; i++) {
-                const ch = row[i]
+                const ch = row[i] ?? ''
                 if (quoted) {
                   if (ch === '"' && row[i + 1] === '"') { field += '"'; i++ }
                   else if (ch === '"') quoted = false
@@ -3613,7 +3613,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
                 name: 'csv',
                 total_rows: Math.max(table.length - 1, 0),
                 total_cols: width,
-                ...(table[0]?.every(cell => typeof cell === 'string') ? { header: table[0] ?? [] } : {}),
+                ...(table[0]?.every(cell => typeof cell === 'string') ? { header: table[0] } : {}),
                 rows: table.slice(1).map(row => Array.from({ length: width }, (_, c) => ({ v: row[c] ?? '' }))),
                 truncated: text.length >= 512 * 1024,
               }],
@@ -3624,7 +3624,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         return ok(request, {
           // ParsedPreview is JSON-safe by construction; the wide wire face
           // keeps client-side narrowing local to the gallery renderer.
-          ...(preview !== undefined ? { preview: preview as unknown as Record<string, unknown> } : {}),
+          ...(preview !== undefined ? { preview } : {}),
           size: bytes.byteLength,
         })
       },

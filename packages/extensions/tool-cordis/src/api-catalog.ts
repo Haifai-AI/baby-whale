@@ -388,6 +388,21 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'uploads: UploadsApi',
+        description: 'Host-only intake surface (POST bytes, no wire envelope); absent from IApiClient.',
+        parameters: [],
+      },
+      {
+        signature: 'artifacts: ArtifactsApi',
+        description: 'Per-session artifact gallery (produced + uploaded files).',
+        parameters: [],
+      },
+      {
+        signature: 'officeRuntime: OfficeRuntimeApi',
+        description: 'Managed LibreOffice runtime for pixel-perfect previews.',
+        parameters: [],
+      },
+      {
         signature: 'respond(message: ClientResponse): Promise<RpcReceipt>',
         description: 'Response entry for server requests; not a domain method.',
         parameters: [{ name: 'message', description: 'Client response carrying the server request\'s rpcId.' }],
@@ -803,6 +818,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Atomically create or replace UTF-8 text. `expected` guards intent and staleness; omission allows unconditional overwrite.',
         parameters: [{ name: 'target', description: 'the resolved target to write.' }, { name: 'content', description: 'the full new file content.' }, { name: 'expected', description: 'the write intent guarding the write; omit for unconditional.' }, { name: 'signal', description: 'aborts before atomic publication takes effect.' }, { name: 'sandboxPolicy', description: 'the per-call mode and workspace root this write runs under; a sandboxing backend fences the write by it, the bare backend ignores it. Omit to leave the backend its own default.' }],
         returns: 'the outcome, including the version the write produced.',
+      },
+      {
+        signature: 'abstract writeBytes( target: FsTarget, bytes: Uint8Array, expected?: FsWriteIntent, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsBinaryWriteOutcome>',
+        description: 'Atomically create or replace raw bytes. Diff guards and staleness behave exactly like writeText; the outcome carries the byte size because binary content has no text diff basis.',
+        parameters: [{ name: 'target', description: 'the resolved target to write.' }, { name: 'bytes', description: 'the full new file content as raw bytes.' }, { name: 'expected', description: 'the write intent guarding the write; omit for unconditional.' }, { name: 'signal', description: 'aborts before atomic publication takes effect.' }, { name: 'sandboxPolicy', description: 'the per-call mode and workspace root this write runs under; a sandboxing backend fences the write by it, the bare backend ignores it. Omit to leave the backend its own default.' }],
+        returns: 'the outcome, including the version and byte size the write produced.',
       },
       {
         signature: 'abstract editText( target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsEditOutcome>',
@@ -2902,6 +2923,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class ApprovalService extends Service {\n    static Config: z<Config>;\n    constructor(ctx: Context, public config: Config);\n    setPolicy(agent: Agent, policy: ApprovalPolicy): void;\n    async request(req: ApprovalRequest): Promise<ApprovalOutcome>;\n    overrideOf(session: Session): ApprovalPolicy | undefined;\n}',
   },
   {
+    name: 'ArtifactEntry',
+    declaration: 'export interface ArtifactEntry {\n    readonly path: string;\n    readonly name: string;\n    readonly kind: \'xlsx\' | \'docx\' | \'pptx\' | \'csv\' | \'pdf\' | \'image\' | \'markdown\' | \'text\' | \'video\' | \'audio\' | \'other\';\n    readonly size: number;\n    readonly modifiedAt: number;\n    readonly origin: \'deliverable\' | \'upload\';\n}',
+  },
+  {
+    name: 'ArtifactsApi',
+    declaration: 'export interface ArtifactsApi {\n    list(request: RpcRequest<{\n        sessionId: SessionId;\n    }>): Promise<RpcResponse<{\n        artifacts: readonly ArtifactEntry[];\n    }>>;\n    preview(request: RpcRequest<{\n        sessionId: SessionId;\n        path: string;\n    }>): Promise<RpcResponse<{\n        preview?: PreviewValue;\n        size: number;\n    }>>;\n    file(query: {\n        path: string;\n    }, signal: AbortSignal): Promise<Response>;\n    raw(query: {\n        sessionId: SessionId;\n        path: string;\n        download?: \'1\';\n        range?: string;\n    }, signal: AbortSignal): Promise<Response>;\n}',
+  },
+  {
     name: 'AskUserQuestionAnswer',
     declaration: 'export interface AskUserQuestionAnswer {\n    answers: AskUserQuestionAnswerItem[];\n}',
   },
@@ -3358,6 +3387,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FinishReasonMap {\n    \'stop\': {\n        kind: \'stop\';\n    };\n    \'tool-calls\': {\n        kind: \'tool-calls\';\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    \'aborted\': {\n        kind: \'aborted\';\n        failure: LlmFailure;\n    };\n    \'error\': {\n        kind: \'error\';\n        failure: LlmFailure;\n    };\n}',
   },
   {
+    name: 'FsBinaryWriteOutcome',
+    declaration: 'export interface FsBinaryWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    size: number;\n}',
+  },
+  {
     name: 'FsDirEntry',
     declaration: 'export interface FsDirEntry {\n    name: string;\n    type: \'file\' | \'directory\' | \'other\';\n    target: FsTarget;\n    version?: FsVersion;\n    size?: number;\n}',
   },
@@ -3802,6 +3835,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
   {
+    name: 'OfficeRuntimeApi',
+    declaration: 'export interface OfficeRuntimeApi {\n    status(request: RpcRequest<Record<string, never>>): Promise<RpcResponse<{\n        soffice: {\n            found: boolean;\n            source: SofficeSource;\n            path?: string;\n        };\n        install: SofficeInstallView;\n        managedSupported: boolean;\n        guideUrl?: string;\n    }>>;\n    install(request: RpcRequest<Record<string, never>>): Promise<RpcResponse<{\n        install: SofficeInstallView;\n    }>>;\n}',
+  },
+  {
     name: 'OneShotSubagentDescriptorData',
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
@@ -3988,6 +4025,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RpcReceipt',
     declaration: 'export type RpcReceipt = {\n    accepted: true;\n} | {\n    accepted: false;\n    reason: \'not-pending\' | \'bad-response\';\n};',
+  },
+  {
+    name: 'RpcRequest',
+    declaration: 'export interface RpcRequest<P> {\n    rpcId: RpcId;\n    payload: P;\n}',
+  },
+  {
+    name: 'RpcResponse',
+    declaration: 'export interface RpcResponse<T> {\n    rpcId: RpcId;\n    result: RpcResult<T>;\n}',
   },
   {
     name: 'RpcResult',
@@ -4420,6 +4465,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillViewOptions',
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+  },
+  {
+    name: 'SofficeInstallView',
+    declaration: 'export interface SofficeInstallView {\n    phase: \'idle\' | \'downloading\' | \'installing\' | \'done\' | \'error\';\n    progress: number;\n    message?: string;\n    error?: string;\n}',
+  },
+  {
+    name: 'SofficeSource',
+    declaration: 'export type SofficeSource = \'managed\' | \'system\' | \'none\';',
   },
   {
     name: 'SpawnTeammateRequest',
@@ -4928,6 +4981,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+  },
+  {
+    name: 'UploadsApi',
+    declaration: 'export interface UploadsApi {\n    workspaceFile(query: {\n        sessionId: SessionId;\n        filename: string;\n    }, signal: AbortSignal, request: Request): Promise<Response>;\n}',
   },
   {
     name: 'UserMessage',

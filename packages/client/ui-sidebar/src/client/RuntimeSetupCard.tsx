@@ -1,5 +1,6 @@
 /** Sidebar runtime-setup card: one-time LibreOffice download for previews. */
 import { useCallback, useEffect, useState } from 'react'
+import type { JSX } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './RuntimeSetupCard.module.css'
@@ -40,7 +41,7 @@ export function RuntimeSetupCard({ connection, wide, t }: RuntimeSetupCardProps)
     try {
       const response = await connection.api.officeRuntime.status({})
       const value = response.result.ok ? response.result.value : undefined
-      if (value !== undefined) setStatus(value as unknown as RuntimeStatus)
+      if (value !== undefined) setStatus(value)
     } catch {
       // The card simply stays hidden when the host does not answer.
     }

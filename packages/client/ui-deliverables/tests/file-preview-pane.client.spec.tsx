@@ -8,6 +8,7 @@
  */
 import { render, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -17,21 +18,25 @@ import { en } from '../src/client/locales.ts'
 const t = makeTranslate(en)
 const sessionId = 'sess-media' as SessionId
 
-function fakeConnection(preview?: { kind: string; text?: string }): ConnectionHandle {
+/** A connection whose preview RPC is an inspectable mock, returned alongside that mock. */
+function fakeConnection(preview?: { kind: string; text?: string }): {
+  readonly connection: ConnectionHandle
+  readonly previewRpc: Mock
+} {
+  const previewRpc = vi.fn(async () => ({
+    result: { ok: true as const, value: { preview, size: 12 } },
+  }))
   return {
-    api: {
-      artifacts: {
-        preview: vi.fn(async () => ({
-          result: { ok: true as const, value: { preview, size: 12 } },
-        })),
-      },
-    },
-  } as never as ConnectionHandle
+    previewRpc,
+    connection: {
+      api: { artifacts: { preview: previewRpc } },
+    } as unknown as ConnectionHandle,
+  }
 }
 
 describe('FilePreviewPane mode dispatch', () => {
   it('renders a video element on the raw channel with no preview RPC', () => {
-    const connection = fakeConnection()
+    const { connection, previewRpc } = fakeConnection()
     const { container } = render(
       <FilePreviewPane path="deliverables/demo.mp4" sessionId={sessionId} connection={connection} t={t} />,
     )
@@ -40,30 +45,30 @@ describe('FilePreviewPane mode dispatch', () => {
     expect(video?.getAttribute('src'))
       .toBe(`/api/artifacts.raw?${new URLSearchParams({ session: sessionId, path: 'deliverables/demo.mp4' })}`)
     expect(video?.getAttribute('controls')).not.toBeNull()
-    expect(connection.api.artifacts.preview).not.toHaveBeenCalled()
+    expect(previewRpc).not.toHaveBeenCalled()
   })
 
   it('keeps .mov off the native player: rpc fallback, no video element', () => {
-    const connection = fakeConnection()
+    const { connection, previewRpc } = fakeConnection()
     const { container } = render(
       <FilePreviewPane path="deliverables/clip.mov" sessionId={sessionId} connection={connection} t={t} />,
     )
     expect(container.querySelector('video')).toBeNull()
     // The fallback is the preview RPC, not a dead player.
-    expect(connection.api.artifacts.preview).toHaveBeenCalledTimes(1)
+    expect(previewRpc).toHaveBeenCalledTimes(1)
   })
 
   it('renders an audio element for audio extensions, also RPC-free', () => {
-    const connection = fakeConnection()
+    const { connection, previewRpc } = fakeConnection()
     const { container } = render(
       <FilePreviewPane path="deliverables/jingle.mp3" sessionId={sessionId} connection={connection} t={t} />,
     )
     expect(container.querySelector('audio')).not.toBeNull()
-    expect(connection.api.artifacts.preview).not.toHaveBeenCalled()
+    expect(previewRpc).not.toHaveBeenCalled()
   })
 
   it('keys the player by path so retargeting rebuilds it', () => {
-    const connection = fakeConnection()
+    const { connection } = fakeConnection()
     const { container, rerender } = render(
       <FilePreviewPane path="deliverables/one.mp4" sessionId={sessionId} connection={connection} t={t} />,
     )
@@ -77,7 +82,7 @@ describe('FilePreviewPane mode dispatch', () => {
   })
 
   it('keeps images on the raw channel and rpc kinds on the preview channel', async () => {
-    const connection = fakeConnection({ kind: 'markdown', text: '# hi' })
+    const { connection, previewRpc } = fakeConnection({ kind: 'markdown', text: '# hi' })
     const { container } = render(
       <FilePreviewPane path="deliverables/pic.png" sessionId={sessionId} connection={connection} t={t} />,
     )
@@ -86,7 +91,7 @@ describe('FilePreviewPane mode dispatch', () => {
     const rpc = render(
       <FilePreviewPane path="deliverables/notes.md" sessionId={sessionId} connection={connection} t={t} />,
     )
-    expect(connection.api.artifacts.preview).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(rpc.container.textContent).toContain('hi'))
+    expect(previewRpc).toHaveBeenCalledTimes(1)
+    await waitFor(() => { expect(rpc.container.textContent).toContain('hi') })
   })
 })

@@ -50,7 +50,14 @@ function waitForOutput(child: SubprocessHandle, pattern: RegExp, label: string):
       if (match === null) return
       resolveOnce(match[1] ?? match[0])
     }
-    const timer = setTimeout(() => { rejectOnce(new Error(`${label} not ready:\n${output}`)) }, 60_000)
+    // Standard hosted runners (2 cores) can take well over a minute to reach
+    // the first ready line: tsx must compile the dev-server entry and Vite must
+    // cold-start before anything is printed. The bound stays overridable for
+    // slower self-hosted pools.
+    const rawTimeout = process.env.DSH_DEV_WEB_READY_TIMEOUT_MS
+    const parsedTimeout = rawTimeout === undefined ? Number.NaN : Number.parseInt(rawTimeout, 10)
+    const readyTimeoutMs = Number.isSafeInteger(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 180_000
+    const timer = setTimeout(() => { rejectOnce(new Error(`${label} not ready:\n${output}`)) }, readyTimeoutMs)
     child.stdout?.on('data', onData)
     child.stderr?.on('data', onData)
     void child.done.then((outcome) => {

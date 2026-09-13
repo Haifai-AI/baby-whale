@@ -224,13 +224,6 @@
     - id: tool-fs
       name: '@deepseek-ai/dsh-tool-fs'
 
-    - id: tool-office
-      name: '@deepseek-ai/dsh-tool-office'
-
-    # Deliver claims: the code-first creation flow's surfacing tool.
-    - id: tool-deliver
-      name: '@deepseek-ai/dsh-tool-deliver'
-
     - id: tool-fs-search
       name: '@deepseek-ai/dsh-tool-fs-search'
       config:

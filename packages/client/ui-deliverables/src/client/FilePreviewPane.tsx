@@ -59,23 +59,25 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
   // new one loads.
   useEffect(() => {
     if (mode !== 'rpc') return
-    let cancelled = false
+    // Same live-flag idiom as MessageImage: the flag is PER EFFECT RUN (a
+    // closure local, not a shared ref) — cleanup(A) must not cancel effect(B),
+    // and A's late response must never render under B's path. The state reset
+    // below also keeps the previous file's content from lingering while the
+    // new one loads.
+    let live = true
     setPreview({ status: 'loading' })
-    void (async () => {
-      try {
-        const response = await connection.api.artifacts.preview({ sessionId, path })
-        const value = response.result.ok ? response.result.value : undefined
-        const parsed = value?.preview as ParsedPreview | undefined
-        if (!cancelled) {
-          setPreview(parsed !== undefined && typeof parsed.kind === 'string'
-            ? { status: 'ready', data: parsed }
-            : { status: 'unsupported' })
-        }
-      } catch {
-        if (!cancelled) setPreview({ status: 'unsupported' })
+    void connection.api.artifacts.preview({ sessionId, path }).then((response) => {
+      const value = response.result.ok ? response.result.value : undefined
+      const parsed = value?.preview as ParsedPreview | undefined
+      if (live) {
+        setPreview(parsed !== undefined && typeof parsed.kind === 'string'
+          ? { status: 'ready', data: parsed }
+          : { status: 'unsupported' })
       }
-    })()
-    return () => { cancelled = true }
+    }, () => {
+      if (live) setPreview({ status: 'unsupported' })
+    })
+    return () => { live = false }
   }, [connection, mode, path, sessionId])
 
   const rawUrl = `/api/artifacts.raw?${rawQuery.toString()}`

@@ -19,6 +19,7 @@ export {
 } from './escalation.ts'
 export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
 export { canonicalPath, writableRoots } from './roots.ts'
+export { sessionCwd, sessionResolveOptions, type SessionCwdExecution } from './session-cwd.ts'
 
 /**
  * File-effect policy for confined processes. `read-only` permits only required

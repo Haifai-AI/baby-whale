@@ -129,6 +129,15 @@ async function backupTarget(
   return backupPath
 }
 
+/**
+ * Restore one trash backup back over its original workspace path.
+ * @param ctx - the plugin context.
+ * @param exec - the calling execution (cwd + cancellation).
+ * @param workspace - the session workspace root.
+ * @param maxBackupBytes - size cap.
+ * @param backup - the trash-relative backup path to restore from.
+ * @returns ok with the recovered original path, or not-ok when the backup is gone.
+ */
 export async function restoreBackup(
   ctx: Context,
   exec: ToolExecution,

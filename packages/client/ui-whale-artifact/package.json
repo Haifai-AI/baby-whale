@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-whale-artifact",
   "description": "Office artifact preview cards for Web: spreadsheet, slide-deck, and document renderers over the xlsx_create/pptx_create/docx_create tool results",
-  "version": "0.1.1-rc.2",
+  "version": "0.1.9",
   "publishConfig": {
     "access": "public"
   },

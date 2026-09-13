@@ -158,10 +158,7 @@ async function targetState(ctx: Context, exec: ToolExecution, path: string): Pro
   const target = await ctx.fs.resolve(path, cwd !== undefined ? { cwd, signal: exec.signal } : { signal: exec.signal })
   // The fs service resolves to a handle carrying targetKey (absolute,
   // symlink-realified); the boundary comparison needs that exact path.
-  const key = typeof target === 'string'
-    ? target
-    : String((target as { targetKey?: unknown } | undefined)?.targetKey ?? '')
-  return { resolved: resolve(key), exists: (await ctx.fs.stat(target, exec.signal)) !== undefined }
+  return { resolved: resolve(target.targetKey), exists: (await ctx.fs.stat(target, exec.signal)) !== undefined }
 }
 
 /**

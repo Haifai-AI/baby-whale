@@ -40,6 +40,7 @@
       ],
       "platform": "web",
       "external": [
+        "@deepseek-ai/dsh-client-connection/client",
         "@deepseek-ai/dsh-client-ui-whale-artifact/client"
       ]
     }

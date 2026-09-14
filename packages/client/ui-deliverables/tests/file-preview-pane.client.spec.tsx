@@ -94,4 +94,21 @@ describe('FilePreviewPane mode dispatch', () => {
     expect(previewRpc).toHaveBeenCalledTimes(1)
     await waitFor(() => { expect(rpc.container.textContent).toContain('hi') })
   })
+
+  it('wraps the PDF frame in the full-height pane instead of leaving it bare', () => {
+    // A bare iframe has no intrinsic height. The details panel renders this
+    // seat inside a scrolling, padded body, so an unwrapped frame collapsed to
+    // the UA default and drew the page as a thumbnail in the corner. The
+    // wrapper is what the frame's `flex: 1` resolves against, and every other
+    // mode already had one.
+    const { connection, previewRpc } = fakeConnection()
+    const { container } = render(
+      <FilePreviewPane path="deliverables/report.pdf" sessionId={sessionId} connection={connection} t={t} />,
+    )
+    const frame = container.querySelector('iframe')
+    expect(frame).not.toBeNull()
+    expect(frame?.parentElement?.className).toMatch(/filePreviewPane/)
+    // Raw channel: a PDF never needs the preview RPC.
+    expect(previewRpc).not.toHaveBeenCalled()
+  })
 })

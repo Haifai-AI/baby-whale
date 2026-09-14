@@ -90,7 +90,15 @@ export function FilePreviewPane({ path, sessionId, connection, t }: {
     )
   }
   if (mode === 'pdf') {
-    return <iframe title={basename(path)} src={rawUrl} className={css.filePreviewFrame} />
+    // Wrapped like every other mode. A bare iframe has no intrinsic height, so
+    // inside the details panel's scrolling body it collapsed to the UA default
+    // (~150px) and drew the page as a thumbnail in the corner; `.filePreviewPane`
+    // supplies the full-height flex column the frame's `flex: 1` resolves against.
+    return (
+      <div className={css.filePreviewPane}>
+        <iframe title={basename(path)} src={rawUrl} className={css.filePreviewFrame} />
+      </div>
+    )
   }
   if (mode === 'video') {
     return (

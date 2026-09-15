@@ -138,7 +138,10 @@ it('accepts pasted images into the composer rail in order and removes them', asy
   // gone) and the banner dismisses itself after its hold-and-fade lifetime.
   fireEvent.paste(textarea, {
     clipboardData: {
-      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => new File(['x'], 'notes.txt', { type: 'text/plain' }) }],
+      // An unsupported IMAGE type: a `text/plain` file is a document and takes
+      // the workspace-upload path, so it could never reach the image
+      // admission this case asserts.
+      items: [{ kind: 'file', type: 'image/bmp', getAsFile: () => new File(['x'], 'notes.bmp', { type: 'image/bmp' }) }],
       getData: () => '',
     },
   })

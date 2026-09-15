@@ -159,13 +159,21 @@ jobs:
           || 'ubuntu-latest' }}
     name: node 24 / snapshots and artifacts
     env:
-      DSH_GATE_CONCURRENCY: '8'
+      DSH_GATE_CONCURRENCY: '4'
       DSH_NODE_COMPAT_SKIP_TYPECHECK: '1'
-      DSH_OXLINT_THREADS: '8'
-      DSH_PUBLINT_CONCURRENCY: '8'
-      DSH_WEB_SNAPSHOT_WORKERS: '6'
-      # Failover halves snapshot concurrency for the shared 64-core VM.
-      DSH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}
+      DSH_OXLINT_THREADS: '4'
+      DSH_PUBLINT_CONCURRENCY: '4'
+      # The headless model-failure scenario must sleep the provider's whole
+      # retry backoff (~15s) before it can report, and a loaded runner stretches
+      # that past the 30s default. The knob exists in the smoke harness; CI is
+      # what sets it. Its per-test deadline is 105s.
+      DSH_LOADER_SMOKE_TIMEOUT_MS: '90000'
+      DSH_WEB_SNAPSHOT_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '6' || '2' }}
+      # Snapshot scenarios boot real bins and poll session logs every 10ms, so
+      # oversubscribing the box starves their turn waits and reports timeouts
+      # that never happen on a quiet machine. Sized to the actual runner:
+      # 4 vCPU hosted, 64-core failover VM (which still halves for sharing).
+      DSH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '3' }}
     steps:
       - uses: actions/checkout@v6
         with:

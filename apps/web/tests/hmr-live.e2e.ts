@@ -148,4 +148,7 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     await rm(world, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
   }
   if (failures.length > 0) throw new AggregateError(failures, 'HMR browser test or cleanup failed')
-}, 120_000)
+  // Above the `waitForOutput` ready budget (default 180s): a shorter deadline
+  // kills the test before its own timeout error can report why the tree was
+  // slow, which is what happened on 4-vCPU runners.
+}, 300_000)

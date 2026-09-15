@@ -533,9 +533,15 @@ async function waitForPersistedTurnStart(
   let invalidRecord: { error: unknown } | undefined
   await vi.waitFor(async () => {
     const log = (await harvestSessionLogs(root)).find(candidate => candidate.id === sessionId)
-    let openTurn: number | undefined
+    // Without a minimum the caller wants a turn that is open NOW; with one it
+    // wants evidence that the turn BEGAN, which a closed turn still satisfies.
+    let satisfied = false
     try {
-      openTurn = log === undefined ? undefined : latestOpenTurn(log.content)
+      if (log !== undefined) {
+        satisfied = minimumTurn === undefined
+          ? latestOpenTurn(log.content) !== undefined
+          : (latestTurnStart(log.content) ?? 0) >= minimumTurn
+      }
     } catch (error) {
       // A malformed persisted record is a scenario bug, not a not-yet state:
       // vi.waitFor retries every callback throw, so capture the validation
@@ -543,7 +549,7 @@ async function waitForPersistedTurnStart(
       invalidRecord = { error }
       return
     }
-    if (openTurn === undefined || (minimumTurn !== undefined && openTurn < minimumTurn)) {
+    if (!satisfied) {
       const detail = minimumTurn === undefined ? 'turn/start' : `turn/start at or beyond turn ${minimumTurn}`
       throw new Error(`snapshot-harness: session "${sessionId}" did not persist ${detail} within ${timeoutMs}ms`)
     }
@@ -723,11 +729,19 @@ function latestEventFollowsTurnEnd(content: string, type: string): boolean {
   return turnEnd >= 0 && complete.lastIndexOf(`\n{"type":"${type}",`) > turnEnd
 }
 
-/** Return the latest open turn number, validating the persisted boundary record. */
-function latestOpenTurn(content: string): number | undefined {
+/**
+ * The turn number of the last persisted `turn/start`, whether or not it has
+ * since closed. The log is append-only, so "turn 2 began" stays true forever —
+ * unlike {@link latestOpenTurn}, which a later `turn/end` erases. A wait that
+ * only ever asked the open question missed a turn that opened and closed
+ * between two polls and then could never succeed at any timeout.
+ * @param content - the complete persisted session log.
+ * @returns the turn number, or undefined when no valid start record exists.
+ */
+function latestTurnStart(content: string): number | undefined {
   const complete = content.slice(0, content.lastIndexOf('\n') + 1)
   const start = complete.lastIndexOf('\n{"type":"turn/start",')
-  if (start <= complete.lastIndexOf('\n{"type":"turn/end",')) return undefined
+  if (start < 0) return undefined
   const end = complete.indexOf('\n', start + 1)
   const record = JSON.parse(complete.slice(start + 1, end)) as { data?: { turn?: unknown } | null }
   const turn = record.data?.turn
@@ -735,6 +749,15 @@ function latestOpenTurn(content: string): number | undefined {
     throw new Error('snapshot-harness: invalid persisted turn/start record')
   }
   return turn as number
+}
+
+/** Return the latest open turn number, validating the persisted boundary record. */
+function latestOpenTurn(content: string): number | undefined {
+  const complete = content.slice(0, content.lastIndexOf('\n') + 1)
+  if (complete.lastIndexOf('\n{"type":"turn/start",') <= complete.lastIndexOf('\n{"type":"turn/end",')) {
+    return undefined
+  }
+  return latestTurnStart(content)
 }
 
 /**

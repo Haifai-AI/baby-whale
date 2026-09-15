@@ -702,6 +702,38 @@ describe('runScenario', () => {
     expect(result.sessionLogs[0]?.content).toContain('"turn":3')
   })
 
+  it('waitForTurnStart accepts a required turn that began and already closed', { timeout: 20_000 }, async () => {
+    // The runtime opens a later turn on background-child settlement, so that
+    // turn can open AND close between two polls. Asking only the open question
+    // made the wait unsatisfiable at any timeout — subagent-report and
+    // subagent-list-agents reported 10s timeouts that no bound could clear.
+    const { fixtureFile } = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [
+          { type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 },
+          { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+          { type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason: { kind: 'stop' } } },
+          { type: 'turn/start', seq: 2, time: 3, data: { turn: 2 } },
+          { type: 'turn/end', seq: 3, time: 4, data: { turn: 2, reason: { kind: 'stop' } } },
+        ],
+      }],
+    })
+    const result = await runScenario(
+      {
+        steps: [
+          ...boot,
+          { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnStart', minimumTurn: 2 },
+        ],
+      },
+      { agent: AGENT, mode: 'replay', fixtureFile },
+    )
+    expect(result.sessionLogs[0]?.content).toContain('"turn":2')
+  })
+
   it('waitForTurnStart rejects missing, earlier, and malformed durable turns', { timeout: 20_000 }, async () => {
     const missing = await scenario({})
     await expect(runScenario(

@@ -112,6 +112,14 @@ describe('minimal agent preset', () => {
         "tools": [
           "bash",
           "str_replace_editor",
+          "whale_task_create",
+          "whale_task_list",
+          "whale_task_pause",
+          "whale_task_remove",
+          "whale_task_resume",
+          "whale_task_run",
+          "whale_trash_list",
+          "whale_trash_restore",
         ],
       }
     `)

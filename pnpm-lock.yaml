@@ -2709,6 +2709,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-settings':
         specifier: workspace:^
         version: link:../ui-settings
+      '@deepseek-ai/dsh-client-ui-settings-plugins':
+        specifier: workspace:^
+        version: link:../ui-settings-plugins
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../ui-slots

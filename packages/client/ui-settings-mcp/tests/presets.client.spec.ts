@@ -75,4 +75,13 @@ describe('uniqueName', () => {
     const taken = ['filesystem', ...Array.from({ length: 20 }, (_, index) => `filesystem-${String(index + 2)}`)]
     expect(uniqueName('filesystem', taken)).toMatch(NAME_PATTERN)
   })
+
+  it('stays legal even when the whole suffix range is exhausted', () => {
+    // 999 same-named servers is not a real session, but the fallback is the one
+    // path that could hand the server an illegal namespace, so it is exercised
+    // rather than trusted: the result must still satisfy the wire pattern.
+    const taken = ['filesystem', ...Array.from({ length: 998 }, (_, index) => `filesystem-${String(index + 2)}`)]
+    expect(taken).toHaveLength(999)
+    expect(uniqueName('filesystem', taken)).toMatch(NAME_PATTERN)
+  })
 })

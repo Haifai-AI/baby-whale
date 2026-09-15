@@ -59,7 +59,10 @@ function foldEntry(entry: McpServerEntryView): McpServerEntryView {
 }
 
 /** In-memory scope double: saves fold straight into the snapshot, like the Host. */
-function fakeScope(initial: readonly McpServerEntryView[]): SettingsScope<McpSettingsView> {
+function fakeScope(
+  initial: readonly McpServerEntryView[],
+  options: { mode?: 'host' | 'memory'; writable?: boolean } = {},
+): SettingsScope<McpSettingsView> {
   // The snapshot object is cached: useSyncExternalStore requires getSnapshot
   // to return a stable reference until the next change.
   let snapshot: SettingsScopeSnapshot<McpSettingsView> = {
@@ -68,8 +71,8 @@ function fakeScope(initial: readonly McpServerEntryView[]): SettingsScope<McpSet
     base: undefined,
     user: undefined,
     revision: 1,
-    writable: true,
-    mode: 'host',
+    writable: options.writable ?? true,
+    mode: options.mode ?? 'host',
   }
   const listeners = new Set<() => void>()
   return {
@@ -102,8 +105,9 @@ function t(key: McpSettingsLocaleKey, params?: Record<string, unknown>): string 
 function renderTab(
   servers: readonly McpServerEntryView[] = [],
   chooseFolder?: () => Promise<string | null>,
+  options: { mode?: 'host' | 'memory'; writable?: boolean } = {},
 ): { scope: SettingsScope<McpSettingsView> } {
-  const scope = fakeScope(servers)
+  const scope = fakeScope(servers, options)
   const props = {
     list: vi.fn(async () => ({ servers: [] })),
     restart: vi.fn(async () => ({ servers: [] })),
@@ -420,5 +424,63 @@ describe('McpSettingsTab quick start', () => {
     // a general server: Advanced is open and the raw args are exposed.
     expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
     expect((screen.getByLabelText(/^Arguments/) as HTMLTextAreaElement).value).toContain('--extra')
+  })
+})
+
+describe('McpSettingsTab field handling', () => {
+  it('skips a malformed KEY=VALUE line instead of inventing a key', async () => {
+    const { scope } = renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.manual) }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'echo' } })
+    fireEvent.change(screen.getByLabelText(/^Command/), { target: { value: 'npx' } })
+    // The manual path opens Advanced on its own; the env field is already shown.
+    // A line with no `=` names nothing; a leading `=` names an empty key. Both
+    // are dropped rather than becoming a variable called "".
+    fireEvent.change(screen.getByLabelText(/^Environment/), { target: { value: 'GOOD=1\nno-equals-here\n=blank\nALSO=2' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    const saved = scope.getSnapshot().value?.servers ?? []
+    expect(saved[0]?.env).toEqual({ GOOD: '1', ALSO: '2' })
+  })
+
+  it('treats a missing timeout as the default rather than zero', async () => {
+    const { scope } = renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.manual) }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'echo' } })
+    fireEvent.change(screen.getByLabelText(/^Command/), { target: { value: 'npx' } })
+    // Cleared field: an empty string parses to NaN, which must not become a
+    // zero-millisecond deadline that kills every call instantly.
+    fireEvent.change(screen.getByLabelText(/^Tool timeout/), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    expect(scope.getSnapshot().value?.servers[0]?.toolCallTimeoutMs).toBe(60_000)
+  })
+
+  it('drops the preset reading when only the command differs', async () => {
+    const handRolled: McpServerEntryView = {
+      id: 'srv-x', name: 'filesystem', enabled: true, transport: 'stdio',
+      // Same argument shape as the preset, different executable.
+      command: 'bunx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/somewhere'],
+      env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+    }
+    renderTab([handRolled])
+    fireEvent.click(screen.getByRole('button', { name: /filesystem/ }))
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    await act(async () => {})
+    // Args match but the command does not, so this is not that preset.
+    expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
+    expect((screen.getByLabelText(/^Command/) as HTMLInputElement).value).toBe('bunx')
+  })
+
+  it('offers no write controls when the scope is not the Host document', async () => {
+    // A profile-scoped tree is read-only here: showing Add or Edit would offer
+    // actions the write path cannot honour.
+    renderTab([], undefined, { mode: 'memory' })
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: en.add })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.importJson })).toBeNull()
   })
 })

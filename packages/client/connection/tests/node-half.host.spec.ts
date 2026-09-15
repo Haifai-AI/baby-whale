@@ -284,6 +284,26 @@ describe('connection node half', () => {
     }
   })
 
+  it('serves anyway when the token cannot be stored', async () => {
+    // An unwritable home (read-only mount, foreign ownership) must not stop the
+    // harness from serving: the boot keeps a usable in-memory token and reports
+    // `durable: false` so the caller can say that open tabs will not survive a
+    // restart. Reached here by pointing the home at a path a file already
+    // occupies, which no directory creation can satisfy.
+    const blocked = join(testHome, 'blocked')
+    await writeFile(blocked, 'not a directory\n', { mode: 0o600 })
+    const { loadOrCreateApiToken } = await import('../src/api-token-file.ts')
+
+    const resolved = await loadOrCreateApiToken(join(blocked, '.api-token'))
+    expect(resolved.durable).toBe(false)
+    // A usable credential for THIS process is still returned.
+    expect(resolved.token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    // And it is a fresh mint each time, because nothing was persisted.
+    const second = await loadOrCreateApiToken(join(blocked, '.api-token'))
+    expect(second.durable).toBe(false)
+    expect(second.token).not.toBe(resolved.token)
+  })
+
   it('keeps a pinned token authoritative over anything stored', async () => {
     await writeFile(join(testHome, '.api-token'), `${'s'.repeat(43)}\n`, { mode: 0o600 })
     const ctx = new Context()

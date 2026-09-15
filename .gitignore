@@ -54,3 +54,14 @@ qa/
 *.swp
 Thumbs.db
 .env.*
+
+# Compiled residue beside its own source. `tsc` emits declarations and JS next
+# to the input when it runs without an outDir, and this repository keeps the
+# source plane and the artifact plane strictly apart (`src/` holds source,
+# `lib/` holds emit). Hand-written ambient declarations under `src/` are real
+# source and keep their own names, so only a compiler emit of a file that also
+# exists as `.ts` is ignored here.
+packages/*/*/src/*.d.ts.map
+packages/*/*/src/*.js
+packages/*/*/src/*.js.map
+packages/*/*/src/types.d.ts

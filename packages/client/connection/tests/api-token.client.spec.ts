@@ -77,6 +77,28 @@ describe('resolveApiToken', () => {
     vi.stubGlobal('location', undefined)
     expect(resolveApiToken()).toBeUndefined()
   })
+
+  it('scrubs the fragment on a page whose location omits path and search', () => {
+    // A fixture page can supply only the fragment it needs. The scrub must
+    // then fall back to an empty suffix rather than reading absent fields.
+    const replaceState = vi.fn()
+    vi.stubGlobal('location', { hash: '#token=abc123' })
+    vi.stubGlobal('history', { replaceState })
+    expect(resolveApiToken()).toBe('abc123')
+    expect(replaceState).toHaveBeenCalledWith(null, '', '')
+  })
+
+  it('keeps the fragment on a page that has no history object', () => {
+    vi.stubGlobal('location', { hash: '#token=abc123', pathname: '/', search: '' })
+    vi.stubGlobal('history', undefined)
+    expect(resolveApiToken()).toBe('abc123')
+  })
+
+  it('reads the fragment on a page with no storage object at all', () => {
+    vi.stubGlobal('location', { hash: '#token=abc123', pathname: '/', search: '' })
+    vi.stubGlobal('sessionStorage', undefined)
+    expect(resolveApiToken()).toBe('abc123')
+  })
 })
 
 describe('withApiTokenQuery', () => {

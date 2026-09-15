@@ -113,7 +113,12 @@ async function deepseekDefaultsServer(): Promise<DeepSeekDefaultsServer> {
       const write = (): void => {
         if (keepAlives-- > 0) {
           response.write(': keep-alive\n\n')
-          setTimeout(write, 60)
+          // 30ms against the fixture's 150ms `streamIdleTimeoutMs`: a comment
+          // must land inside the idle window for this scenario to be about
+          // comments at all, and a 60ms timer on a loaded runner can slip past
+          // 150ms, which the watchdog reads as an idle stream and answers with
+          // a retry — observed as two requests where the scenario pins one.
+          setTimeout(write, 30)
           return
         }
         response.end([
@@ -123,7 +128,7 @@ async function deepseekDefaultsServer(): Promise<DeepSeekDefaultsServer> {
           '',
         ].join('\n\n'))
       }
-      setTimeout(write, 60)
+      setTimeout(write, 30)
     })
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))

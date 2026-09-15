@@ -8,6 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import type { McpStatusSnapshot } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { McpSettingsTab, canonicalJson } from '../src/client/McpSettingsTab.tsx'
@@ -61,13 +62,25 @@ function foldEntry(entry: McpServerEntryView): McpServerEntryView {
 /** In-memory scope double: saves fold straight into the snapshot, like the Host. */
 function fakeScope(
   initial: readonly McpServerEntryView[],
-  options: { mode?: 'host' | 'memory'; writable?: boolean } = {},
-): SettingsScope<McpSettingsView> {
+  options: {
+    mode?: 'host' | 'memory'
+    writable?: boolean
+    /** Start before the first Host answer: loading status, no section yet. */
+    loading?: boolean
+    /** A deployment that does not serve the `mcp` namespace at all. */
+    unavailable?: boolean
+    /** Reject the write, as a failed Host write does. */
+    failWrite?: boolean
+    /** Accept the write without folding it, as a superseded document does. */
+    dropWrite?: boolean
+  } = {},
+): SettingsScope<McpSettingsView> & { setSpy: ReturnType<typeof vi.fn> } {
+  const empty = options.loading === true || options.unavailable === true
   // The snapshot object is cached: useSyncExternalStore requires getSnapshot
   // to return a stable reference until the next change.
   let snapshot: SettingsScopeSnapshot<McpSettingsView> = {
-    status: 'ready',
-    value: { servers: [...initial] },
+    status: options.unavailable === true ? 'unavailable' : options.loading === true ? 'loading' : 'ready',
+    value: empty ? undefined : { servers: [...initial] },
     base: undefined,
     user: undefined,
     revision: 1,
@@ -75,23 +88,57 @@ function fakeScope(
     mode: options.mode ?? 'host',
   }
   const listeners = new Set<() => void>()
+  const set = vi.fn(async (field: string, next: unknown) => {
+    if (options.failWrite === true) throw new Error('the Host refused the write')
+    if (field === 'servers' && options.dropWrite !== true) {
+      snapshot = {
+        ...snapshot,
+        value: { servers: (next as McpServerEntryView[]).map(foldEntry) },
+      }
+    }
+    for (const listener of [...listeners]) listener()
+  })
   return {
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
       listeners.add(listener)
       return () => { listeners.delete(listener) }
     },
-    async set(field, next) {
-      if (field === 'servers') {
-        snapshot = {
-          ...snapshot,
-          value: { servers: (next as McpServerEntryView[]).map(foldEntry) },
-        }
-      }
-      for (const listener of [...listeners]) listener()
-    },
+    set,
     async unset() {},
+    setSpy: set,
   }
+}
+
+/**
+ * One Host status row for an expanded card.
+ * @param entry - the saved entry the row describes.
+ * @param rest - state, error, and tool-name overrides.
+ */
+function statusRow(
+  entry: McpServerEntryView,
+  rest: Partial<McpStatusSnapshot['servers'][number]> = {},
+): McpStatusSnapshot['servers'][number] {
+  return {
+    id: entry.id,
+    name: entry.name,
+    transport: entry.transport,
+    target: entry.transport === 'stdio' ? [entry.command, ...entry.args].join(' ') : entry.url,
+    enabled: entry.enabled,
+    state: 'connected',
+    error: null,
+    toolNames: [],
+    localToolNames: [],
+    ...rest,
+  }
+}
+
+/** A status read whose settlement the test owns. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
 }
 
 function t(key: McpSettingsLocaleKey, params?: Record<string, unknown>): string {
@@ -105,18 +152,19 @@ function t(key: McpSettingsLocaleKey, params?: Record<string, unknown>): string 
 function renderTab(
   servers: readonly McpServerEntryView[] = [],
   chooseFolder?: () => Promise<string | null>,
-  options: { mode?: 'host' | 'memory'; writable?: boolean } = {},
-): { scope: SettingsScope<McpSettingsView> } {
+  options: Parameters<typeof fakeScope>[1] & {
+    /** Status read override, for reads the test holds open or fails. */
+    list?: () => Promise<McpStatusSnapshot>
+    /** Restart override, for remounts the test holds open or fails. */
+    restart?: (id: string) => Promise<McpStatusSnapshot>
+  } = {},
+): { scope: ReturnType<typeof fakeScope>; view: RenderResult; list: ReturnType<typeof vi.fn>; restart: ReturnType<typeof vi.fn> } {
   const scope = fakeScope(servers, options)
-  const props = {
-    list: vi.fn(async () => ({ servers: [] })),
-    restart: vi.fn(async () => ({ servers: [] })),
-    scope,
-    chooseFolder,
-    t,
-  } as unknown as McpSettingsTabProps
-  render(<McpSettingsTab {...props} />)
-  return { scope }
+  const list = vi.fn(options.list ?? (async () => ({ servers: [] })))
+  const restart = vi.fn(options.restart ?? (async () => ({ servers: [] })))
+  const props = { list, restart, scope, chooseFolder, t } as unknown as McpSettingsTabProps
+  const view = render(<McpSettingsTab {...props} />)
+  return { scope, view, list, restart }
 }
 
 async function openEditor(entry: McpServerEntryView): Promise<void> {
@@ -215,18 +263,8 @@ describe('McpSettingsTab tool chips', () => {
   }
 
   /** A status row carrying the exact names the mount owns, plus display-safe local names. */
-  function statusRow(entry: McpServerEntryView, toolNames: readonly string[], localToolNames: readonly string[]): McpStatusSnapshot['servers'][number] {
-    return {
-      id: entry.id,
-      name: entry.name,
-      transport: entry.transport,
-      target: entry.command,
-      enabled: entry.enabled,
-      state: 'connected',
-      error: null,
-      toolNames,
-      localToolNames,
-    }
+  function ownRow(entry: McpServerEntryView, toolNames: readonly string[], localToolNames: readonly string[]) {
+    return statusRow(entry, { toolNames, localToolNames })
   }
 
   it('renders owner-exact chips from the payload: local names under the true owning server', async () => {
@@ -239,8 +277,8 @@ describe('McpSettingsTab tool chips', () => {
     const props = {
       list: vi.fn(async () => ({
         servers: [
-          statusRow(SERVER_A, ['mcp__a__b_t'], ['b.t']),
-          statusRow(SERVER_AMB, ['mcp__a__b__echo'], ['echo']),
+          ownRow(SERVER_A, ['mcp__a__b_t'], ['b.t']),
+          ownRow(SERVER_AMB, ['mcp__a__b__echo'], ['echo']),
         ],
       })),
       restart: vi.fn(async () => ({ servers: [] })),
@@ -482,5 +520,570 @@ describe('McpSettingsTab field handling', () => {
     await act(async () => {})
     expect(screen.queryByRole('button', { name: en.add })).toBeNull()
     expect(screen.queryByRole('button', { name: en.importJson })).toBeNull()
+  })
+})
+
+describe('McpSettingsTab states', () => {
+  const SERVER: McpServerEntryView = {
+    id: 'srv-1', name: 'local', enabled: true, transport: 'stdio',
+    command: 'npx', args: ['-y', 'pkg'], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+  }
+
+  /** Open one card's accordion by its title. */
+  function toggleCard(title: string): void {
+    fireEvent.click(screen.getByText(title, { exact: true }).closest('button')!)
+  }
+
+  it('shows the loading line until the settings document answers', async () => {
+    renderTab([], undefined, { loading: true })
+    await act(async () => {})
+
+    expect(screen.getByText(en.loading)).toBeTruthy()
+    // Nothing is known yet, so the empty catalog is not asserted either.
+    expect(screen.queryByText(en.empty)).toBeNull()
+    expect(screen.getByRole('button', { name: en.add })).toBeTruthy()
+  })
+
+  it('says the tab is unavailable when the namespace is not served', async () => {
+    renderTab([], undefined, { unavailable: true })
+    await act(async () => {})
+
+    expect(screen.getByText(en.error)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.add })).toBeNull()
+  })
+
+  it('reports a status read that failed and re-reads it on retry', async () => {
+    const list = vi.fn()
+      .mockRejectedValueOnce(new Error('bridge offline'))
+      .mockResolvedValue({ servers: [] })
+    renderTab([], undefined, { list })
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toBe(en.error)
+
+    fireEvent.click(screen.getByRole('button', { name: en.retry }))
+    await act(async () => {})
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('drops a status read that lands after the tab is gone', async () => {
+    const pending = deferred<McpStatusSnapshot>()
+    const { view } = renderTab([], undefined, { list: () => pending.promise })
+    view.unmount()
+
+    pending.resolve({ servers: [] })
+    await act(async () => {})
+
+    expect(view.container.textContent).toBe('')
+  })
+
+  it('drops a status failure that lands after the tab is gone', async () => {
+    const pending = deferred<McpStatusSnapshot>()
+    const { view } = renderTab([], undefined, { list: () => pending.promise })
+    view.unmount()
+
+    pending.reject(new Error('bridge offline'))
+    await act(async () => {})
+
+    expect(view.container.textContent).toBe('')
+  })
+
+  it('states a server is disabled without claiming a live status', async () => {
+    const off: McpServerEntryView = { ...SERVER, enabled: false }
+    const { restart } = renderTab([off])
+    await act(async () => {})
+    toggleCard('local')
+
+    // A disabled server is never spawned, so its dot and Restart are absent
+    // and the card says disabled rather than "connecting" forever.
+    expect(screen.getByText(en.stateDisabled)).toBeTruthy()
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByRole('button', { name: en.restart })).toBeNull()
+    expect(restart).not.toHaveBeenCalled()
+  })
+
+  it('shows the command line of an expanded server and says it lists no tools yet', async () => {
+    const { list } = renderTab([SERVER], undefined, {
+      list: async () => ({ servers: [statusRow(SERVER, { state: 'connecting' })] }),
+    })
+    await act(async () => {})
+    expect(list).toHaveBeenCalled()
+    toggleCard('local')
+
+    expect(screen.getByText('npx -y pkg')).toBeTruthy()
+    expect(screen.getByText(en.toolEmpty)).toBeTruthy()
+  })
+
+  it('reports the error a server bridge reported', async () => {
+    renderTab([SERVER], undefined, {
+      list: async () => ({ servers: [statusRow(SERVER, { state: 'failed', error: 'spawn ENOENT' })] }),
+    })
+    await act(async () => {})
+    toggleCard('local')
+
+    expect(screen.getByRole('alert').textContent).toBe('spawn ENOENT')
+  })
+
+  it('keeps an expanded card read-only without the Host document', async () => {
+    const { scope } = renderTab([SERVER], undefined, { writable: false })
+    await act(async () => {})
+    toggleCard('local')
+
+    expect(scope.getSnapshot().writable).toBe(false)
+    expect(screen.queryByRole('button', { name: en.edit })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.remove })).toBeNull()
+    // Restart stays available: it acts on the running bridge, not the document.
+    expect(screen.getByRole('button', { name: en.restart })).toBeTruthy()
+  })
+
+  it('closes a card again on a second click', async () => {
+    renderTab([SERVER])
+    await act(async () => {})
+    toggleCard('local')
+    expect(screen.getByText('npx -y pkg')).toBeTruthy()
+
+    toggleCard('local')
+
+    expect(screen.queryByText('npx -y pkg')).toBeNull()
+  })
+})
+
+describe('McpSettingsTab card actions', () => {
+  const SERVER: McpServerEntryView = {
+    id: 'srv-1', name: 'local', enabled: true, transport: 'stdio',
+    command: 'npx', args: ['-y', 'pkg'], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+  }
+  const OTHER: McpServerEntryView = {
+    id: 'srv-2', name: 'other', enabled: true, transport: 'stdio',
+    command: 'bunx', args: [], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+  }
+
+  function toggleCard(title: string): void {
+    fireEvent.click(screen.getByText(title, { exact: true }).closest('button')!)
+  }
+
+  it('edits one server without disturbing the others', async () => {
+    const { scope } = renderTab([SERVER, OTHER])
+    await act(async () => {})
+    toggleCard('other')
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    const saved = scope.getSnapshot().value?.servers ?? []
+    expect(saved.map(entry => entry.name)).toEqual(['local', 'renamed'])
+    expect(saved[0]).toEqual(SERVER)
+  })
+
+  it('closes the editor without writing when cancelled', async () => {
+    const { scope } = renderTab([SERVER])
+    await act(async () => {})
+    toggleCard('local')
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'renamed' } })
+
+    fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+    await act(async () => {})
+
+    expect(screen.queryByLabelText(/^Name/)).toBeNull()
+    expect(scope.getSnapshot().value?.servers[0]?.name).toBe('local')
+  })
+
+  it('keeps the editor open and says so when the section did not land', async () => {
+    // The Host accepted the call but folded a different document back (a
+    // concurrent writer): the tab must not pretend the edit is saved.
+    const { scope } = renderTab([SERVER], undefined, { dropWrite: true })
+    await act(async () => {})
+    toggleCard('local')
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toBe(en.saveFailed)
+    expect(screen.getByRole('button', { name: en.save })).toBeTruthy()
+    expect(scope.getSnapshot().value?.servers[0]?.name).toBe('local')
+  })
+
+  it('reports a rejected write as a save failure', async () => {
+    const { scope, view } = renderTab([SERVER], undefined, { failWrite: true })
+    await act(async () => {})
+    toggleCard('local')
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toBe(en.saveFailed)
+    expect(scope.setSpy).toHaveBeenCalledWith('servers', expect.any(Array))
+    expect(view.container.textContent).toContain(en.saveFailed)
+  })
+
+  it('reports a save that did not land when the scope has no section yet', async () => {
+    const { scope } = renderTab([], undefined, { loading: true, dropWrite: true })
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.manual) }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'cloud' } })
+    fireEvent.change(screen.getByLabelText(/^Command/), { target: { value: 'npx' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    // Nothing folded back, so the tab reports the save instead of closing.
+    expect(screen.getByRole('alert').textContent).toBe(en.saveFailed)
+    expect(scope.getSnapshot().value).toBeUndefined()
+  })
+
+  it('flips a saved server off and on from its card', async () => {
+    const { scope } = renderTab([SERVER, OTHER])
+    await act(async () => {})
+    toggleCard('local')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: en.enabledSwitch }))
+    await act(async () => {})
+    expect(scope.getSnapshot().value?.servers.map(entry => entry.enabled)).toEqual([false, true])
+
+    fireEvent.click(screen.getByRole('checkbox', { name: en.enabledSwitch }))
+    await act(async () => {})
+    expect(scope.getSnapshot().value?.servers.map(entry => entry.enabled)).toEqual([true, true])
+  })
+
+  it('reports an enable write that failed', async () => {
+    const { scope } = renderTab([SERVER], undefined, { failWrite: true })
+    await act(async () => {})
+    toggleCard('local')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: en.enabledSwitch }))
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toBe(en.saveFailed)
+    expect(scope.getSnapshot().value?.servers[0]?.enabled).toBe(true)
+  })
+
+  it('asks before removing a server, then writes the shorter list', async () => {
+    const { scope } = renderTab([SERVER, OTHER])
+    await act(async () => {})
+    toggleCard('local')
+
+    fireEvent.click(screen.getByRole('button', { name: en.remove }))
+    expect(screen.getByText(en.removeConfirm.replace('{name}', 'local'))).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: en.remove }))
+    await act(async () => {})
+
+    expect(scope.getSnapshot().value?.servers.map(entry => entry.name)).toEqual(['other'])
+    expect(screen.queryByText('local')).toBeNull()
+  })
+
+  it('drops the removal question when cancelled', async () => {
+    const { scope } = renderTab([SERVER])
+    await act(async () => {})
+    toggleCard('local')
+    fireEvent.click(screen.getByRole('button', { name: en.remove }))
+
+    fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+    await act(async () => {})
+
+    expect(screen.queryByText(en.removeConfirm.replace('{name}', 'local'))).toBeNull()
+    expect(scope.getSnapshot().value?.servers).toHaveLength(1)
+  })
+
+  it('reports a removal that failed', async () => {
+    const { scope } = renderTab([SERVER], undefined, { failWrite: true })
+    await act(async () => {})
+    toggleCard('local')
+    fireEvent.click(screen.getByRole('button', { name: en.remove }))
+    fireEvent.click(screen.getByRole('button', { name: en.remove }))
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toBe(en.saveFailed)
+    expect(scope.getSnapshot().value?.servers).toHaveLength(1)
+  })
+
+  it('restarts a server from its card', async () => {
+    const { restart } = renderTab([SERVER], undefined, {
+      restart: async () => ({ servers: [statusRow(SERVER, { state: 'connecting' })] }),
+    })
+    await act(async () => {})
+    toggleCard('local')
+
+    fireEvent.click(screen.getByRole('button', { name: en.restart }))
+    await act(async () => {})
+
+    expect(restart).toHaveBeenCalledWith('srv-1')
+  })
+})
+
+describe('McpSettingsTab editor fields', () => {
+  const SERVER: McpServerEntryView = {
+    id: 'srv-1', name: 'local', enabled: true, transport: 'stdio',
+    command: 'npx', args: ['-y', 'pkg'], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+  }
+
+  it('flips a new server off through the editor switch', async () => {
+    const { scope } = renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.manual) }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'cloud' } })
+    fireEvent.change(screen.getByLabelText(/^Command/), { target: { value: 'npx' } })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: en.enabledSwitch }))
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    expect(scope.getSnapshot().value?.servers[0]?.enabled).toBe(false)
+  })
+
+  /** Open one saved server's editor. */
+  async function openEditor(): Promise<void> {
+    renderTab([SERVER])
+    await act(async () => {})
+    fireEvent.click(screen.getByText('local', { exact: true }).closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+  }
+
+  it('ignores a name edit that arrives after the editor was cancelled', async () => {
+    await openEditor()
+    const name = screen.getByLabelText(/^Name/)
+
+    // Both events land in one batch, the way a fast typist can outrun the
+    // close: the draft is already gone when the keystroke is folded in.
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+      fireEvent.change(name, { target: { value: 'renamed' } })
+    })
+
+    expect(screen.queryByLabelText(/^Name/)).toBeNull()
+  })
+
+  it('ignores a transport change that arrives after the editor was cancelled', async () => {
+    await openEditor()
+    const transport = screen.getByRole('combobox')
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+      fireEvent.change(transport, { target: { value: 'streamable-http' } })
+    })
+
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('ignores a switch flip that arrives after the editor was cancelled', async () => {
+    await openEditor()
+    const enabled = screen.getByRole('checkbox', { name: en.enabledSwitch })
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+      fireEvent.click(enabled)
+    })
+
+    // The card's own switch stays behind; the editor's is gone with the form.
+    expect(screen.queryByRole('button', { name: en.save })).toBeNull()
+    expect(screen.getAllByRole('checkbox', { name: en.enabledSwitch })).toHaveLength(1)
+  })
+
+  it('takes a typed folder when no chooser is mounted', async () => {
+    const { scope } = renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.presetFilesystem) }))
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText(new RegExp(en.folder)), { target: { value: '/srv/docs' } })
+    expect(screen.getByLabelText<HTMLInputElement>(new RegExp(en.folder)).value).toBe('/srv/docs')
+
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    expect(scope.getSnapshot().value?.servers[0]?.args).toEqual([
+      '-y', '@modelcontextprotocol/server-filesystem', '/srv/docs',
+    ])
+  })
+
+  it('leaves the folder the user typed when the native dialog is dismissed', async () => {
+    renderTab([], async () => null)
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.presetFilesystem) }))
+    await act(async () => {})
+    fireEvent.change(screen.getByLabelText(new RegExp(en.folder)), { target: { value: '/srv/docs' } })
+
+    fireEvent.click(screen.getByRole('button', { name: en.chooseFolder }))
+    await act(async () => {})
+
+    expect(screen.getByLabelText<HTMLInputElement>(new RegExp(en.folder)).value).toBe('/srv/docs')
+  })
+
+  it('ignores a folder chosen after the editor was closed', async () => {
+    const pending = deferred<string | null>()
+    renderTab([], () => pending.promise)
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.presetFilesystem) }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: en.chooseFolder }))
+
+    fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+    pending.resolve('/picked/late')
+    await act(async () => {})
+
+    expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
+  })
+
+  it('takes a typed HTTP timeout and headers', async () => {
+    const { scope } = renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.manual) }))
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'cloud' } })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'streamable-http' } })
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: 'https://cloud.example/mcp' } })
+    fireEvent.change(screen.getByLabelText(/^Tool timeout/), { target: { value: '15' } })
+    fireEvent.change(screen.getByLabelText(/^Headers/), { target: { value: 'X-A=1' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    expect(scope.getSnapshot().value?.servers[0]).toMatchObject({
+      transport: 'streamable-http', toolCallTimeoutMs: 15_000, headers: { 'X-A': '1' },
+    })
+  })
+
+  it('switches an HTTP draft back to a stdio command line', async () => {
+    renderTab([HTTP_SERVER])
+    await act(async () => {})
+    fireEvent.click(screen.getByText('remote', { exact: true }).closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    await act(async () => {})
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'stdio' } })
+    await act(async () => {})
+
+    expect(screen.getByLabelText<HTMLInputElement>(/^Command/).value).toBe('')
+    expect(screen.queryByLabelText(/^URL/)).toBeNull()
+  })
+
+  it('stages the raw argument list behind Advanced for a preset server', async () => {
+    const { scope } = renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.presetFilesystem) }))
+    await act(async () => {})
+    fireEvent.change(screen.getByLabelText(new RegExp(en.folder)), { target: { value: '/srv/docs' } })
+
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.advanced) }))
+    await act(async () => {})
+    // Behind Advanced the preset states the command it decided on its own.
+    expect(screen.getByText(en.presetCommandNote.replace('{command}', 'npx'))).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/^Arguments/), {
+      target: { value: '-y\n@modelcontextprotocol/server-filesystem\n/srv/docs\n--readonly' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+
+    // The folder still wins for the path slot, so the typed list only adds
+    // the extra flag.
+    expect(scope.getSnapshot().value?.servers[0]?.args).toEqual([
+      '-y', '@modelcontextprotocol/server-filesystem', '/srv/docs',
+    ])
+  })
+})
+
+describe('McpSettingsTab JSON import', () => {
+  const SERVER: McpServerEntryView = {
+    id: 'srv-1', name: 'local', enabled: true, transport: 'stdio',
+    command: 'npx', args: [], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+  }
+
+  /** Open the import dialog and paste one block. */
+  function paste(text: string): void {
+    fireEvent.click(screen.getByRole('button', { name: en.importJson }))
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
+    fireEvent.click(screen.getByRole('button', { name: en.importApply }))
+  }
+
+  it('adds the servers pasted from another client', async () => {
+    const { scope } = renderTab()
+    await act(async () => {})
+
+    paste(JSON.stringify({
+      mcpServers: {
+        github: { command: 'npx', args: ['-y', 'server-github'] },
+        remote: { url: 'https://example.com/mcp' },
+      },
+    }))
+    await act(async () => {})
+
+    const saved = scope.getSnapshot().value?.servers ?? []
+    expect(saved.map(entry => entry.name)).toEqual(['github', 'remote'])
+    expect(saved[1]).toMatchObject({ transport: 'streamable-http', url: 'https://example.com/mcp' })
+    // The dialog closed and the new servers joined the list.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('github')).toBeTruthy()
+  })
+
+  it('suffixes an imported name that is already taken', async () => {
+    const { scope } = renderTab([SERVER])
+    await act(async () => {})
+
+    paste(JSON.stringify({ mcpServers: { local: { command: 'other' } } }))
+    await act(async () => {})
+
+    expect(scope.getSnapshot().value?.servers.map(entry => entry.name)).toEqual(['local', 'local-2'])
+  })
+
+  it('reports a paste that is not JSON', async () => {
+    renderTab()
+    await act(async () => {})
+
+    paste('{ nope')
+    await act(async () => {})
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toContain(en.importError.split('{reason}')[0]!)
+  })
+
+  it('reports a paste that names no server with a launch target', async () => {
+    const { scope } = renderTab()
+    await act(async () => {})
+
+    paste(JSON.stringify({ mcpServers: { junk: { note: 'no command or url' } } }))
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toContain(en.toolEmpty)
+    expect(scope.getSnapshot().value?.servers ?? []).toHaveLength(0)
+  })
+
+  it('closes the dialog without importing when cancelled', async () => {
+    const { scope } = renderTab()
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: en.importJson }))
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '{}' } })
+    fireEvent.click(screen.getByRole('button', { name: en.importCancel }))
+    await act(async () => {})
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(scope.setSpy).not.toHaveBeenCalled()
+  })
+
+  it('reports an import that did not land', async () => {
+    const { scope } = renderTab([], undefined, { failWrite: true })
+    await act(async () => {})
+
+    paste(JSON.stringify({ mcpServers: { github: { command: 'npx' } } }))
+    await act(async () => {})
+
+    expect(screen.getByRole('alert').textContent).toBe(en.saveFailed)
+    expect(scope.getSnapshot().value?.servers ?? []).toHaveLength(0)
+  })
+
+  it('goes back to the list from the quick-start catalog', async () => {
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    expect(screen.getByText(en.quickStart)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: en.cancel }))
+
+    expect(screen.queryByText(en.quickStart)).toBeNull()
+    expect(screen.queryByLabelText(/^Name/)).toBeNull()
+    expect(screen.getByText(en.empty)).toBeTruthy()
   })
 })

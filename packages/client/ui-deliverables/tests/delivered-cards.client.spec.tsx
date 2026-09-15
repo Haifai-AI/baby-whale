@@ -172,6 +172,12 @@ describe('DeliveredCards', () => {
 
     fireEvent.click(chevrons[0]!)
     expect(view.getByRole('menu')).toBeTruthy()
+    // The same chevron closes the menu it opened.
+    fireEvent.click(chevrons[0]!)
+    expect(view.queryByRole('menu')).toBeNull()
+
+    fireEvent.click(chevrons[0]!)
+    expect(view.getByRole('menu')).toBeTruthy()
     fireEvent.mouseDown(document.body)
     expect(view.queryByRole('menu')).toBeNull()
 

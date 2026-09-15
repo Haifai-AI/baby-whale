@@ -117,6 +117,27 @@ describe('ComposerAttachments', () => {
     expect(view.queryByRole('status')).toBeNull()
   })
 
+  it('partitions a drop between the draft rail and the session workspace', () => {
+    const onAddImages = vi.fn()
+    const onUploadFiles = vi.fn()
+    render(<ComposerAttachments {...props({ onAddImages, onUploadFiles })} />)
+
+    const image = attachment('drop-image').file
+    const report = new File([Uint8Array.of(1)], 'notes.pdf', { type: 'application/pdf' })
+    fireEvent.drop(document.body, { dataTransfer: { types: ['Files'], files: [image, report], dropEffect: 'none' } })
+    expect(onAddImages).toHaveBeenLastCalledWith([image])
+    expect(onUploadFiles).toHaveBeenLastCalledWith([report])
+
+    // A drop of one kind leaves the other consumer untouched.
+    fireEvent.drop(document.body, { dataTransfer: { types: ['Files'], files: [image], dropEffect: 'none' } })
+    expect(onAddImages).toHaveBeenCalledTimes(2)
+    expect(onUploadFiles).toHaveBeenCalledTimes(1)
+
+    fireEvent.drop(document.body, { dataTransfer: { types: ['Files'], files: [report], dropEffect: 'none' } })
+    expect(onAddImages).toHaveBeenCalledTimes(2)
+    expect(onUploadFiles).toHaveBeenCalledTimes(2)
+  })
+
   it('shows a blocked drop without forwarding its files', () => {
     const onAddImages = vi.fn()
     const view = render(<ComposerAttachments {...props({ canAcceptDrop: false, onAddImages })} />)

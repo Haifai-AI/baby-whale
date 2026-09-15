@@ -385,6 +385,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
   }, [scope])
 
   const saveDraft = (): void => {
+    /* v8 ignore next -- the form that submits renders only while a draft is open, so this arm narrows `editing` and never branches */
     if (editing === null) return
     setAttempted(true)
     if (problem !== null) return
@@ -473,6 +474,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
   }
 
   const pickFolder = (): void => {
+    /* v8 ignore next -- the button that calls this renders only with a chooser and an open draft, so this arm never branches */
     if (chooseFolder === undefined || editing === null) return
     void chooseFolder().then((path) => {
       if (path === null) return

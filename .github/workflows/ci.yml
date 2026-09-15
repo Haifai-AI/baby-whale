@@ -429,6 +429,11 @@ jobs:
       # Instrumented process and polling fixtures can exceed Vitest's defaults
       # under the complete lane's concurrent gate load.
       DSH_COVERAGE_TEST_TIMEOUT_MS: '30000'
+      # Native Windows spawns Git and Node far slower than the POSIX lanes, and
+      # the Lefthook installer serializes concurrent runs behind its own lock.
+      # Two multi-worktree cases reached the suite's 30s default exactly at the
+      # deadline; the budget is a runner fact, so CI owns it.
+      DSH_LEFTHOOK_TEST_TIMEOUT_MS: '120000'
       DSH_GATE_CONCURRENCY: '4'
       DSH_PUBLINT_CONCURRENCY: '8'
     steps:

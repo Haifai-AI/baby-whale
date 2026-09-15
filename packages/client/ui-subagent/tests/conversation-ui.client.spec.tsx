@@ -783,6 +783,28 @@ describe('SubagentHeaderLineage', () => {
     expect(within(current).getByText('indexer').className).toContain('currentLabel')
     expect(screen.queryByRole('treeitem', { name: /reviewer/ })).toBeNull()
   })
+
+  it('keeps the open catalog anchored to its trigger across viewport moves', () => {
+    render(<SubagentHeaderLineage {...props(catalog())} />)
+    const trigger = screen.getByRole('button', { name: /2 个子代理/ })
+    hoverCatalog(trigger)
+    expect(screen.getByRole('tree').style.top).toBe('5px')
+
+    // The trigger moved (a collapsed toolbar, a scrolled list): the open menu
+    // follows it instead of staying at its stale coordinates.
+    const rect = (top: number, bottom: number): DOMRect => ({
+      x: 40, y: top, top, left: 40, right: 200, bottom, width: 160, height: 20,
+      toJSON: () => ({}),
+    })
+    const bounds = vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(rect(200, 220))
+    fireEvent.resize(window)
+    expect(screen.getByRole('tree').style.top).toBe('225px')
+    expect(screen.getByRole('tree').style.left).toBe('40px')
+
+    bounds.mockReturnValue(rect(300, 320))
+    fireEvent.scroll(document)
+    expect(screen.getByRole('tree').style.top).toBe('325px')
+  })
 })
 
 describe('SubagentReadOnlyComposer', () => {

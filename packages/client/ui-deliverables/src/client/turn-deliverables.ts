@@ -83,6 +83,7 @@ function parseArgs(raw: unknown): unknown {
  * preserve the pre-assembly behavior and do not contribute independently.
  */
 function producedPaths(view: ToolResultNode['callView']): readonly string[] {
+  /* v8 ignore next -- update() routes a null view to argsPaths, so the sole caller never reaches this declaration-mandated null arm. */
   if (view === null) return []
   if (view.card === 'diff') return (view.locations ?? []).map(location => location.path)
   if (view.card === 'generic' && view.kind === 'edit') {

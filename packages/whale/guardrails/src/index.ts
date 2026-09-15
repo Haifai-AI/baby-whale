@@ -7,7 +7,7 @@
  */
 
 import { realpathSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
@@ -403,8 +403,13 @@ function withinWorkspace(target: string, cwd: string | undefined): boolean {
   } catch {
     // Vanished workspace: the lexical form is the best remaining evidence.
   }
-  const boundary = root.endsWith('/') ? root : `${root}/`
-  return target === root || target.startsWith(boundary)
+  // Containment by `path.relative`, not by string prefix: a prefix needs the
+  // platform's own separator appended to the root, and on Windows the root
+  // then ends `C:\ws\` while the target continues `C:\ws\file`, so every file
+  // inside the workspace read as outside it and faced an approval card it
+  // should not have. `relative` also keeps the same-prefix sibling case out.
+  const rel = relative(root, target)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 /**

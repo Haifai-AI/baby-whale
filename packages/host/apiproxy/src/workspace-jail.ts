@@ -18,40 +18,42 @@
 
 import { realpathSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 
 /**
- * The containment boundary for a root: the real path (symlink-realified,
- * so macOS `/var` vs `/private/var` style aliases compare equal) with a
- * trailing separator, so `/work/` never contains `/workspace-evil/x`.
- * A vanished root falls back to its lexical form rather than throwing.
+ * The real, symlink-resolved form of a root, so macOS `/var` versus
+ * `/private/var` aliases compare equal. A vanished root falls back to its
+ * lexical form rather than throwing.
  * @param root - the jail root directory.
- * @returns `{ real, boundary }`: the real root and its separator-terminated form.
+ * @returns the real root.
  */
-function boundaryFor(root: string): { real: string; boundary: string } {
-  let real = resolve(root)
+function realRootOf(root: string): string {
+  const resolved = resolve(root)
   try {
-    real = resolve(realpathSync(real))
+    return resolve(realpathSync(resolved))
   } catch {
     // Vanished root: the lexical form is the best remaining evidence.
+    return resolved
   }
-  return { real, boundary: real.endsWith('/') ? real : `${real}/` }
 }
 
 /**
- * Whether an absolute path sits inside a root: equal to it, or under its
- * separator-terminated boundary (so `/work/` never contains
- * `/workspace-evil/x`). Pure and directly unit-tested — every file and
- * preview gate funnels through here. Both sides are expected in canonical
- * (realpath) spelling, which keeps the comparison casing-consistent even on
- * case-insensitive filesystems.
+ * Whether an absolute path sits inside a root: equal to it, or beneath it.
+ * Containment is decided by `path.relative`, never by string prefix. A prefix
+ * comparison has to append the platform's own separator to the root, and the
+ * two sides then disagree on Windows — the root ends `C:\ws\` while the
+ * candidate continues `C:\ws\file`, so `startsWith` was false and every file
+ * inside the workspace was refused. `relative` also settles the same-prefix
+ * sibling case (`/work` versus `/workspace-evil/x` yields `..`), and reports
+ * a candidate on a different Windows drive as absolute rather than relative.
+ * Pure and directly unit-tested — every file and preview gate funnels here.
  * @param root - the jail root directory.
  * @param absolute - the candidate absolute path.
  * @returns true for the root itself and paths strictly beneath it.
  */
 export function containedPath(root: string, absolute: string): boolean {
-  const { real, boundary } = boundaryFor(root)
-  return absolute === real || absolute.startsWith(boundary)
+  const rel = relative(realRootOf(root), absolute)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 /**

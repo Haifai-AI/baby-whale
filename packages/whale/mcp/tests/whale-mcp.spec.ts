@@ -11,7 +11,7 @@ import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import WhaleMcpService, { name as PLUGIN_NAME } from '../src/index.ts'
 import { decideMcpApproval, mcpAskReason, MCP_TOOL_PREFIX } from '../src/approval.ts'
 import { McpSettingsSchema, mountFingerprint, toBridgeConfig } from '../src/config.ts'
-import type { McpServerEntry, McpSettings } from '../src/config.ts'
+import type { McpServerEntry } from '../src/config.ts'
 
 const contexts: Context[] = []
 
@@ -303,8 +303,8 @@ function wedgedFiber(): {
       await: () => startup.promise,
       dispose: () => cleanup.promise,
     },
-    settleAwait: () => startup.resolve(true),
-    settleDispose: () => cleanup.resolve(true),
+    settleAwait: () => { startup.resolve(true) },
+    settleDispose: () => { cleanup.resolve(true) },
   }
 }
 
@@ -322,7 +322,7 @@ describe('WhaleMcpService', () => {
     const { entry, dir } = await writeEchoFixture()
     try {
       const { ctx, manager } = await harness()
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
       await until(manager, entry.id, 'connected')
 
       const names = ctx.tools.schemas().map(schema => schema.name)
@@ -341,7 +341,7 @@ describe('WhaleMcpService', () => {
     const { entry, dir } = await writeEchoFixture()
     try {
       const { ctx, manager } = await harness()
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
       await until(manager, entry.id, 'connected')
       const definition = ctx.tools.get('mcp__whale__echo')
       expect(definition).toBeDefined()
@@ -360,7 +360,7 @@ describe('WhaleMcpService', () => {
     try {
       const { ctx, manager } = await harness()
       const broken: McpServerEntry = { ...structuredClone(entry), id: 'srv-bad', name: 'bad', command: 'definitely-not-a-binary-xyz' }
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] })
       await until(manager, entry.id, 'connected')
       await until(manager, broken.id, 'failed')
       const rows = new Map(manager.list().servers.map(row => [row.id, row]))
@@ -378,7 +378,7 @@ describe('WhaleMcpService', () => {
     try {
       const { ctx, manager } = await harness()
       const ambiguous = { ...structuredClone(entry), id: 'srv-amb', name: 'a__b' }
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), ambiguous] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), ambiguous] })
       await until(manager, entry.id, 'connected')
       await until(manager, ambiguous.id, 'connected')
 
@@ -419,7 +419,7 @@ describe('WhaleMcpService', () => {
       const { ctx, manager } = await harness()
       await ctx.settings.update(settingsNamespace('mcp'), {
         servers: [structuredClone(serverA.entry), structuredClone(serverAmb.entry)],
-      } as McpSettings)
+      })
       await until(manager, serverA.entry.id, 'connected')
       await until(manager, serverAmb.entry.id, 'connected')
 
@@ -446,7 +446,7 @@ describe('WhaleMcpService', () => {
       // disabled row owns nothing.
       await ctx.settings.update(settingsNamespace('mcp'), {
         servers: [structuredClone(serverA.entry), { ...structuredClone(serverAmb.entry), enabled: false }],
-      } as McpSettings)
+      })
       await until(manager, serverAmb.entry.id, 'disabled')
       await until(manager, serverA.entry.id, 'connected')
       const after = new Map(manager.list().servers.map(row => [row.name, row]))
@@ -473,7 +473,7 @@ describe('WhaleMcpService', () => {
       manager.startupTimeoutMs = 400
       const broken: McpServerEntry = { ...structuredClone(entry), id: 'srv-bad', name: 'bad', command: 'definitely-not-a-binary-xyz' }
       const mounts = trackMounts()
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] })
       await until(manager, entry.id, 'connected')
       await until(manager, broken.id, 'failed')
       expect(mounts.countOf('bad')).toBe(1)
@@ -483,7 +483,7 @@ describe('WhaleMcpService', () => {
       // The remount itself is the synchronization: wait for it by count, since
       // the old cell still reads `connected` until its teardown completes.
       const edited = { ...structuredClone(entry), args: [...entry.args, '-v'] }
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [edited, broken] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [edited, broken] })
       await untilCount(() => mounts.countOf('whale') >= 2, 'remount of the edited healthy server')
       await until(manager, entry.id, 'connected')
       expect(mounts.countOf('whale')).toBe(2)
@@ -534,7 +534,7 @@ describe('WhaleMcpService', () => {
       process.on('unhandledRejection', onUnhandled)
       try {
         // The wedged server mounts FIRST; the healthy one must still mount.
-        await ctx.settings.update(settingsNamespace('mcp'), { servers: [wedge, structuredClone(entry)] } as McpSettings)
+        await ctx.settings.update(settingsNamespace('mcp'), { servers: [wedge, structuredClone(entry)] })
         await until(manager, entry.id, 'connected')
         await until(manager, wedge.id, 'stuck')
         expect(mounts.countOf('wedge')).toBe(1)
@@ -550,7 +550,7 @@ describe('WhaleMcpService', () => {
         // entry is never mounted a second time behind it.
         await ctx.settings.update(settingsNamespace('mcp'), {
           servers: [wedge, { ...structuredClone(entry), args: [...entry.args, '-v'] }],
-        } as McpSettings)
+        })
         await until(manager, entry.id, 'connected')
         expect(mounts.countOf('wedge')).toBe(1)
 
@@ -595,7 +595,7 @@ describe('WhaleMcpService', () => {
       // strand the healthy one behind it without a bounded startup.
       await ctx.settings.update(settingsNamespace('mcp'), {
         servers: [structuredClone(hanging), structuredClone(entry)],
-      } as McpSettings)
+      })
 
       await until(manager, entry.id, 'connected')
       await until(manager, hanging.id, 'failed')
@@ -610,7 +610,7 @@ describe('WhaleMcpService', () => {
       // Reconcile stays responsive: a settings edit settles afterwards.
       await ctx.settings.update(settingsNamespace('mcp'), {
         servers: [{ ...structuredClone(hanging), enabled: false }, structuredClone(entry)],
-      } as McpSettings)
+      })
       await until(manager, hanging.id, 'disabled')
       await until(manager, entry.id, 'connected')
       expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__whale__echo')
@@ -625,19 +625,19 @@ describe('WhaleMcpService', () => {
     try {
       const { ctx, manager } = await harness()
       const broken: McpServerEntry = { ...structuredClone(entry), id: 'srv-bad', name: 'bad', command: 'definitely-not-a-binary-xyz' }
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry), broken] })
       await until(manager, entry.id, 'connected')
       await until(manager, broken.id, 'failed')
       // A still-configured enabled entry keeps its failed status.
       expect(manager.list().servers.find(row => row.id === broken.id)).toMatchObject({ state: 'failed' })
 
       // Removing both entries drops every record, including the failed one.
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [] })
       await untilCells(manager, cells => cells.size === 0)
       expect(manager.list().servers).toEqual([])
 
       // Re-adding a previously removed id mounts fresh rather than showing a stale state.
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
       await until(manager, entry.id, 'connected')
       expect(cellsOf(manager).size).toBe(1)
     } finally {
@@ -649,15 +649,15 @@ describe('WhaleMcpService', () => {
     const { entry, dir } = await writeEchoFixture()
     try {
       const { ctx, manager } = await harness()
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
       await until(manager, entry.id, 'connected')
 
       const disabled = { ...structuredClone(entry), enabled: false }
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [disabled] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [disabled] })
       await until(manager, entry.id, 'disabled')
       expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('mcp__whale__echo')
 
-      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] } as McpSettings)
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
       await until(manager, entry.id, 'connected')
 
       const snapshot = await manager.restart({ id: entry.id })
@@ -682,7 +682,7 @@ describe('WhaleMcpService', () => {
       const { ctx, manager } = await harness()
       await ctx.settings.update(settingsNamespace('mcp'), {
         servers: [structuredClone(github.entry), structuredClone(other.entry)],
-      } as McpSettings)
+      })
       await until(manager, github.entry.id, 'connected')
       await until(manager, other.entry.id, 'connected')
 
@@ -711,7 +711,7 @@ describe('WhaleMcpService', () => {
           { ...structuredClone(github.entry), enabled: false },
           structuredClone(other.entry),
         ],
-      } as McpSettings)
+      })
       await until(manager, github.entry.id, 'disabled')
       expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('mcp__github__delete_repo')
 
@@ -785,7 +785,7 @@ describe('WhaleMcpService', () => {
 
 describe('McpSettingsSchema', () => {
   it('resolves an empty section to no servers', () => {
-    const resolved = McpSettingsSchema({} as never) as McpSettings
+    const resolved = McpSettingsSchema({} as never)
     expect(resolved.servers).toEqual([])
   })
 })

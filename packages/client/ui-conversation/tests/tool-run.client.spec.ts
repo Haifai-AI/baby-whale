@@ -6,7 +6,7 @@
 // interleaves assistant steps with tool calls, prose ends a run, and a settled
 // run that failed must not fold.
 import { describe, expect, it } from 'vitest'
-import type { ChatNodeStore, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ChatConversationViewNode, ChatNodeStore, ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ChatNode } from '../src/client/contract/chat-nodes.ts'
 import type { ChatFlowEntry } from '../src/client/chat/tool-run.ts'
 import {
@@ -53,7 +53,9 @@ function other(key: string, kind: string): ChatNode {
 
 /** The narrow reader the runtime hands a renderer. */
 function store(nodes: readonly ChatNode[]): ChatNodeStore {
-  const index = new Map(nodes.map(node => [node.key, node as never]))
+  // The store's reader answers with the view-node union; the test nodes are
+  // that union's members, so the reader names it rather than widening.
+  const index = new Map<string, ChatConversationViewNode>(nodes.map(node => [node.key, node]))
   return { get: key => index.get(key), values: () => [...index.values()] }
 }
 
@@ -188,7 +190,7 @@ describe('groupToolRuns', () => {
     expect(failed[0]).toMatchObject({ run: { failed: true } })
 
     const stopped = groupToolRuns(['c1'], store([
-      call('c1', { ...settled('c', 200, 150), error: { name: 'AbortError', code: 'interrupted' } } as ToolCallBlock),
+      call('c1', { ...settled('c', 200, 150), error: { name: 'AbortError', code: 'interrupted' } }),
     ]))
     expect(stopped[0]).toMatchObject({ run: { failed: true } })
   })

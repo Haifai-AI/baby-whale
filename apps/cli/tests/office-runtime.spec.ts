@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh/tests/office-runtime
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
@@ -17,6 +17,19 @@ import {
   windowsOfficeInstallScript,
 } from '../src/profile-boot.ts'
 import { OFFICE_REQUIREMENTS_LOCK } from '../src/office-requirements-lock.ts'
+
+/** Every background install the boot spawned, captured instead of run. */
+const spawnCalls = vi.hoisted(() => [] as { command: string; args: string[] }[])
+
+// The marker-absent paths start a real PowerShell/bash venv build otherwise:
+// capture the spawn so the handoff is asserted without touching a network.
+vi.mock('node:child_process', async importOriginal => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawn: (command: string, args: string[]) => {
+    spawnCalls.push({ command, args })
+    return { unref: () => {} }
+  },
+}))
 
 const ROOT_BASE = mkdtempSync(join(tmpdir(), 'dsh-office-runtime-'))
 afterAll(() => { rmSync(ROOT_BASE, { recursive: true, force: true }) })
@@ -34,6 +47,7 @@ function bootAs(platform: string, venvDir: string): void {
 
 afterEach(() => {
   Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true })
+  spawnCalls.length = 0
   vi.unstubAllEnvs()
 })
 
@@ -68,9 +82,32 @@ describe('prepareOfficeRuntime', () => {
     expect(process.env.DSH_OFFICE_PYTHON).toBe('C:\\tools\\python.exe')
   })
 
-  // Marker-absent paths spawn background installers (bash / PowerShell) and
-  // are deliberately not covered here: asserting nothing would either build
-  // a real venv or crash on the missing shell.
+  // Marker-absent paths spawn background installers (bash / PowerShell);
+  // `spawn` is mocked above so the handoff is asserted without building a venv.
+})
+
+describe('office background install', () => {
+  it('hands the pinned lock to the POSIX install through a file', () => {
+    const venvDir = mkdtempSync(join(ROOT_BASE, 'posix-spawn-'))
+    bootAs('darwin', venvDir)
+    expect(readFileSync(join(venvDir, 'office-requirements.lock'), 'utf8')).toBe(OFFICE_REQUIREMENTS_LOCK)
+    const call = spawnCalls[0]
+    expect(call?.command).toBe('/bin/bash')
+    expect(call?.args[0]).toBe('-c')
+    expect(call?.args[1]).toContain('--require-hashes')
+    expect(call?.args[1]).not.toContain(OFFICE_REQUIREMENTS_LOCK.slice(0, 64))
+  })
+
+  it('hands the pinned lock to the Windows install without overrunning the command line', () => {
+    const venvDir = mkdtempSync(join(ROOT_BASE, 'win-spawn-'))
+    bootAs('win32', venvDir)
+    expect(readFileSync(join(venvDir, 'office-requirements.lock'), 'utf8')).toBe(OFFICE_REQUIREMENTS_LOCK)
+    const call = spawnCalls[0]
+    expect(call?.command).toBe('powershell.exe')
+    // Windows caps one process command line at 32,767 characters: inlining the
+    // 63 KB lock here made every boot die on `spawn ENAMETOOLONG`.
+    expect([call?.command, ...(call?.args ?? [])].join(' ').length).toBeLessThan(4_000)
+  })
 })
 
 /** Direct dependencies the office venv exists to provide. */
@@ -142,5 +179,11 @@ describe('office install scripts', () => {
       expect(scripts[dialect]).not.toContain(` ${name}`)
     }
     expect(scripts[dialect]).toContain(OFFICE_LIBS_MARKER)
+  })
+
+  it.each(['posix', 'windows'] as const)('%s keeps the lock out of the command line', (dialect) => {
+    expect(scripts[dialect]).not.toContain(OFFICE_REQUIREMENTS_LOCK.slice(0, 64))
+    expect(scripts[dialect].length).toBeLessThan(2_000)
+    expect(scripts[dialect]).toContain('office-requirements.lock')
   })
 })

@@ -102,6 +102,13 @@ export type { JsonValue } from '@deepseek-ai/dsh-session'
 export type { CodeDispatchEventData, CodeDispatchStartEventData } from './types.ts'
 
 export { CodeRunFailedError, RUN_CODE_NAME } from './code-mode.ts'
+// The session-log approval readers both tool fences share; keeping them here
+// is what stops each fence from re-deriving the same audit pair.
+export {
+  approvedAskReasons,
+  sessionApprovalPolicy,
+  type ApprovedAskReasonCache,
+} from './approval-log.ts'
 export { jsonSchemaToTs, renderToolsSdk } from './ts-types.ts'
 export { jsonSchemaToPy, renderToolsSdkPy } from './py-types.ts'
 export { defineContentToolFixture, type ContentToolFixtureOptions } from './testing.ts'

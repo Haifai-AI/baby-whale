@@ -10,7 +10,13 @@ import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import {
+  approvedAskReasons,
+  sessionApprovalPolicy,
+  type ApprovedAskReasonCache,
+  type PreToolDecision,
+  type ToolExecution,
+} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-fs'
 
@@ -356,32 +362,15 @@ function overwritePathsOf(exec: ToolExecution): string[] {
  * and the fence must not re-ask on every edit of the same file (the model
  * touches a deck script a dozen times a turn). Rejected or cancelled asks
  * stay unapproved and keep asking. Validated against the log length — the
- * event list is append-only, so an equal length is the same log.
+ * event list is append-only, so an equal length is the same log. The reader
+ * itself is shared with the MCP first-use fence.
  */
 interface SessionEventLike {
   readonly type: string
   readonly data?: unknown
 }
 
-const approvedOverwrites = new WeakMap<object, { readonly length: number; readonly reasons: ReadonlySet<string> }>()
-
-/**
- * The session's approval policy: the last `approval/policy` event wins, and
- * a session without one runs the default `'ask'`. `'never'` is what the
- * danger-full-access preset writes — it means never PROMPT, with the sandbox
- * layer owning allow/deny — so a fence that asks under it would get its ask
- * auto-rejected by the approval service without any human seeing a card.
- */
-function sessionApprovalPolicy(session: unknown): 'ask' | 'never' {
-  const events = (session as { events?: readonly SessionEventLike[] } | undefined)?.events ?? []
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]
-    if (event?.type !== 'approval/policy') continue
-    const data = event.data as { policy?: unknown } | undefined
-    return data?.policy === 'never' ? 'never' : 'ask'
-  }
-  return 'ask'
-}
+const approvedOverwrites: ApprovedAskReasonCache = new WeakMap()
 
 /**
  * The user-selected permission preset: the last `permission/preset` event
@@ -416,28 +405,6 @@ function withinWorkspace(target: string, cwd: string | undefined): boolean {
   }
   const boundary = root.endsWith('/') ? root : `${root}/`
   return target === root || target.startsWith(boundary)
-}
-
-function approvedOverwriteReasons(session: unknown): ReadonlySet<string> {
-  const events = (session as { events?: readonly SessionEventLike[] } | undefined)?.events ?? []
-  const cacheable = session !== null && typeof session === 'object'
-  if (cacheable) {
-    const cached = approvedOverwrites.get(session)
-    if (cached !== undefined && cached.length === events.length) return cached.reasons
-  }
-  const reasonById = new Map<string, string | undefined>()
-  const reasons = new Set<string>()
-  for (const event of events) {
-    const data = event.data as { id?: unknown; reason?: unknown; outcome?: unknown } | undefined
-    if (event.type === 'approval/asked' && typeof data?.id === 'string') {
-      reasonById.set(data.id, typeof data.reason === 'string' ? data.reason : undefined)
-    } else if (event.type === 'approval/decided' && data?.outcome === 'allowed-once' && typeof data.id === 'string') {
-      const reason = reasonById.get(data.id)
-      if (reason !== undefined) reasons.add(reason)
-    }
-  }
-  if (cacheable) approvedOverwrites.set(session, { length: events.length, reasons })
-  return reasons
 }
 
 /**
@@ -498,7 +465,7 @@ export function apply(ctx: Context, config: Config): void {
       // keeps its ask for targets the preset does not cover.
       if (sessionPermissionPreset(exec.agent?.session) === 'workspace-write' && withinWorkspace(state.resolved, cwd)) continue
       const reason = `overwrite existing file "${path}"?`
-      if (approvedOverwriteReasons(exec.agent?.session).has(reason)) continue
+      if (approvedAskReasons(exec.agent?.session, approvedOverwrites).has(reason)) continue
       return { kind: 'ask', reason }
     }
     return next()

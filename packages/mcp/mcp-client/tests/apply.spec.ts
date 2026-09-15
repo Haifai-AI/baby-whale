@@ -277,14 +277,17 @@ describe('apply (plugin lifecycle)', () => {
     const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
     mockConnect.mockImplementation(() => connectGate.promise)
 
-    await expect(apply(ctx, {
+    // The cause is read off the caught value: a nested matcher would widen the
+    // expected object to `any` and lose the assertion's types.
+    const rejection = await apply(ctx, {
       ...stdioConfig,
       startupTimeoutMs: 80,
       failOnStartupError: true,
-    })).rejects.toMatchObject({
-      message: 'mcp-client(srv): initial connection or tool synchronization failed',
-      cause: expect.objectContaining({ message: expect.stringContaining('startup did not settle within 80ms') }),
-    })
+    }).then(() => undefined, (error: unknown) => error)
+    expect(rejection).toBeInstanceOf(Error)
+    const failure = rejection as Error
+    expect(failure.message).toBe('mcp-client(srv): initial connection or tool synchronization failed')
+    expect((failure.cause as Error).message).toContain('startup did not settle within 80ms')
 
     expect(mockListTools).not.toHaveBeenCalled()
     expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()

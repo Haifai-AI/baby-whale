@@ -318,7 +318,7 @@ export class WhaleMcpService extends TypertRemoteService {
    * @returns the Cordis fiber running the bridge plugin.
    */
   protected mountFiber(config: BridgeConfig): MountFiber {
-    return this.ctx.plugin(bridge, config) as MountFiber
+    return this.ctx.plugin(bridge, config)
   }
 
   /**
@@ -357,11 +357,13 @@ export class WhaleMcpService extends TypertRemoteService {
     // into an unhandled rejection.
     const startup = Promise.resolve().then(() => fiber.await())
     startup.catch(() => {})
-    let abandoned = false
+    // Boxed, not a bare `let`: the deadline callback runs after an await, and
+    // a bare flag reads as permanently false to control-flow narrowing.
+    const abandoned = { hit: false }
     try {
       await Promise.race([
         startup,
-        startupDeadline(this.startupTimeoutMs + this.startupGraceMs, () => { abandoned = true }),
+        startupDeadline(this.startupTimeoutMs + this.startupGraceMs, () => { abandoned.hit = true }),
       ])
     } catch (error) {
       cell.state = 'failed'
@@ -369,7 +371,7 @@ export class WhaleMcpService extends TypertRemoteService {
       await this.abandonFiber(entry.id, cell)
       return
     }
-    if (abandoned) {
+    if (abandoned.hit) {
       cell.state = 'failed'
       cell.error = `startup did not settle within ${this.startupTimeoutMs + this.startupGraceMs}ms — mount abandoned; restart to retry`
       await this.abandonFiber(entry.id, cell)
@@ -460,7 +462,7 @@ export class WhaleMcpService extends TypertRemoteService {
       if (disposing === undefined) {
         settled.resolve()
       } else {
-        disposing.then(() => settled.resolve(), (error) => {
+        disposing.then(() => { settled.resolve() }, (error: unknown) => {
           this.ctx.logger.warn('whale-mcp: disposing server %s failed: %o', id, error)
           settled.resolve()
         })
@@ -488,7 +490,7 @@ export class WhaleMcpService extends TypertRemoteService {
   private watchDisposal(cell: ServerCell, record: DisposalRecord): void {
     if (cell.watched) return
     cell.watched = true
-    void record.settled.then(() => this.settleStuck(cell))
+    void record.settled.then(() => { this.settleStuck(cell) })
   }
 
   /**
@@ -601,7 +603,7 @@ function startupDeadline(ms: number, onTick?: () => void): Promise<never> {
  */
 function delayFalse(ms: number): Promise<false> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms)
+    const timer = setTimeout(() => { resolve(false) }, ms)
     timer.unref()
   })
 }

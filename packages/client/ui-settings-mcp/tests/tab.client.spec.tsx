@@ -55,7 +55,7 @@ function foldEntry(entry: McpServerEntryView): McpServerEntryView {
     transport: entry.transport,
     enabled: entry.enabled,
     id: entry.id,
-  } as McpServerEntryView
+  }
 }
 
 /** In-memory scope double: saves fold straight into the snapshot, like the Host. */
@@ -137,7 +137,7 @@ describe('McpSettingsTab transport selector', () => {
   it('exposes exactly the HTTP fields for an HTTP server and no stdio fields', async () => {
     renderTab([HTTP_SERVER])
     await openEditor(HTTP_SERVER)
-    expect((screen.getByLabelText(/^URL/) as HTMLInputElement).value).toBe(HTTP_SERVER.url)
+    expect(screen.getByLabelText<HTMLInputElement>(/^URL/).value).toBe(HTTP_SERVER.url)
     expect(screen.getByLabelText(/^Headers/)).toBeDefined()
     expect(screen.queryByLabelText(/^Command/)).toBeNull()
     expect(screen.queryByLabelText(/^Arguments/)).toBeNull()
@@ -298,13 +298,13 @@ describe('McpSettingsTab quick start', () => {
     renderTab()
     choosePreset(en.presetMemory)
     await act(async () => {})
-    expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('memory')
+    expect(screen.getByLabelText<HTMLInputElement>(/^Name/).value).toBe('memory')
     // The command is decided by the preset and kept out of the way: the
     // argument list lives behind Advanced, not in front of the reader.
     expect(screen.queryByLabelText(/^Arguments/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: exact(en.advanced) }))
     await act(async () => {})
-    expect((screen.getByLabelText(/^Arguments/) as HTMLTextAreaElement).value)
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/^Arguments/).value)
       .toContain('@modelcontextprotocol/server-memory')
   })
 
@@ -317,7 +317,7 @@ describe('McpSettingsTab quick start', () => {
     expect(screen.getByLabelText(new RegExp(en.folder))).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: en.chooseFolder }))
     await act(async () => {})
-    expect((screen.getByLabelText(new RegExp(en.folder)) as HTMLInputElement).value)
+    expect(screen.getByLabelText<HTMLInputElement>(new RegExp(en.folder)).value)
       .toBe('/Users/someone/Documents')
 
     fireEvent.click(screen.getByRole('button', { name: en.save }))
@@ -365,7 +365,7 @@ describe('McpSettingsTab quick start', () => {
     // Adding the same preset again must not claim mcp__memory__* twice.
     choosePreset(en.presetMemory)
     await act(async () => {})
-    expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('memory-2')
+    expect(screen.getByLabelText<HTMLInputElement>(/^Name/).value).toBe('memory-2')
   })
 
   it('abandons the preset when the transport leaves stdio', async () => {
@@ -423,7 +423,7 @@ describe('McpSettingsTab quick start', () => {
     // The command line no longer matches the preset, so the honest reading is
     // a general server: Advanced is open and the raw args are exposed.
     expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
-    expect((screen.getByLabelText(/^Arguments/) as HTMLTextAreaElement).value).toContain('--extra')
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/^Arguments/).value).toContain('--extra')
   })
 })
 
@@ -472,7 +472,7 @@ describe('McpSettingsTab field handling', () => {
     await act(async () => {})
     // Args match but the command does not, so this is not that preset.
     expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
-    expect((screen.getByLabelText(/^Command/) as HTMLInputElement).value).toBe('bunx')
+    expect(screen.getByLabelText<HTMLInputElement>(/^Command/).value).toBe('bunx')
   })
 
   it('offers no write controls when the scope is not the Host document', async () => {

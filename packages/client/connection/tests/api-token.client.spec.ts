@@ -68,6 +68,15 @@ describe('resolveApiToken', () => {
     window.location.hash = '#token=fragment'
     expect(resolveApiToken()).toBe('fragment')
   })
+
+  it('returns undefined on a fixture page that has storage but no location', () => {
+    // The built-lib fixture page defines `globalThis.location` alone, and Node
+    // itself defines `sessionStorage` while never defining `location`: reading
+    // a hardcoded `window.location` here threw out of the RPC call path.
+    vi.stubGlobal('sessionStorage', { getItem: (): string | null => null, setItem: (): void => {} })
+    vi.stubGlobal('location', undefined)
+    expect(resolveApiToken()).toBeUndefined()
+  })
 })
 
 describe('withApiTokenQuery', () => {

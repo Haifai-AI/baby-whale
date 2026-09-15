@@ -60,7 +60,7 @@ function waitForReadyLine(child: ChildProcess): Promise<string> {
  * @param entryUrl - the printed `dsh web: <url>` value.
  * @returns the bare origin and the instance token it carried.
  */
-function splitEntryUrl(entryUrl: string): { baseUrl: string, apiToken: string } {
+function splitEntryUrl(entryUrl: string): { baseUrl: string; apiToken: string } {
   const url = new URL(entryUrl.replace('0.0.0.0', '127.0.0.1'))
   const apiToken = /[#&]token=([^&#]*)/.exec(url.hash)?.[1] ?? ''
   url.hash = ''

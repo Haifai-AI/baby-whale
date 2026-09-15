@@ -25,6 +25,11 @@ export type { McpResult } from './tools.ts'
 export { getMcpToolOrigin, type McpToolOrigin } from './tools.ts'
 export type { ReconnectConfig, ResolvedReconnectPolicy } from './connection.ts'
 
+/** Render an unknown startup failure for process-local diagnostics only. */
+function renderThrown(value: unknown): string {
+  return value instanceof Error ? value.message : String(value)
+}
+
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'mcp-client'
 
@@ -207,12 +212,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       })
     }, startupTimeoutMs)
     timer.unref()
-    connection.ready.then(resolve)
+    void connection.ready.then(resolve)
   })
   if (outcome.error !== undefined) {
     if (config.failOnStartupError) {
       throw new Error(`mcp-client(${config.serverName}): initial connection or tool synchronization failed`, { cause: outcome.error })
     }
-    ctx.logger.warn(`${label}: startup failed: ${String(outcome.error)}`)
+    ctx.logger.warn(`${label}: startup failed: ${renderThrown(outcome.error)}`)
   }
 }

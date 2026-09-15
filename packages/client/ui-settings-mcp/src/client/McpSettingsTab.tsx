@@ -128,6 +128,17 @@ function recordToLines(record: Readonly<Record<string, string>>): string {
 }
 
 /**
+ * The keyed view of one visited JSON value.
+ * @param visited - the value the JSON replacer is visiting.
+ * @returns the record for a plain object, undefined for a leaf or an array.
+ */
+function plainObject(visited: unknown): Record<string, unknown> | undefined {
+  if (visited === null || typeof visited !== 'object') return undefined
+  if (Array.isArray(visited)) return undefined
+  return visited as Record<string, unknown>
+}
+
+/**
  * Canonical JSON: object keys sorted at every depth, so two structurally
  * equal sections stringify identically regardless of key order. The
  * landed/save settlement check must compare meaning, not key insertion order
@@ -136,9 +147,9 @@ function recordToLines(record: Readonly<Record<string, string>>): string {
  * @returns the order-insensitive JSON form.
  */
 export function canonicalJson(value: unknown): string {
-  return JSON.stringify(value, (_key, visited) => {
-    if (visited === null || typeof visited !== 'object' || Array.isArray(visited)) return visited
-    const record = visited as Record<string, unknown>
+  return JSON.stringify(value, (_key: string, visited: unknown): unknown => {
+    const record = plainObject(visited)
+    if (record === undefined) return visited
     return Object.keys(record).sort().map(key => [key, record[key]] as const)
       .reduce<Record<string, unknown>>((sorted, [key, item]) => { sorted[key] = item; return sorted }, {})
   })
@@ -223,10 +234,8 @@ function draftProblem(draft: Draft, taken: readonly string[]): McpSettingsLocale
   if (!NAME_PATTERN.test(draft.name)) return 'nameInvalid'
   if (taken.includes(draft.name)) return 'nameTaken'
   if (draft.transport === 'stdio' && draft.command.trim().length === 0) return 'commandRequired'
-  if (draft.transport === 'stdio' && presetById(draft.presetId ?? '') !== undefined
-    && presetNeedsPath(presetById(draft.presetId ?? '')!) && draft.folder.trim().length === 0) {
-    return 'folderRequired'
-  }
+  const preset = draft.transport === 'stdio' ? presetById(draft.presetId ?? '') : undefined
+  if (preset !== undefined && presetNeedsPath(preset) && draft.folder.trim().length === 0) return 'folderRequired'
   if (draft.transport === 'streamable-http' && !/^https?:\/\/\S+$/.test(draft.url.trim())) return 'urlRequired'
   return null
 }
@@ -299,11 +308,29 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
   const [busy, setBusy] = useState(false)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
-  const servers = useMemo(
-    () => (snapshot.value !== undefined && Array.isArray(snapshot.value.servers) ? snapshot.value.servers : []),
-    [snapshot.value],
-  )
+  // The scope's decoder validates the section against the namespace's wire
+  // schema, so `servers` is present whenever a value is. An `Array.isArray`
+  // guard here would widen the readonly entry list to `any[]`.
+  const servers = useMemo(() => snapshot.value?.servers ?? [], [snapshot.value])
   const writable = snapshot.writable && snapshot.mode === 'host'
+
+  /**
+   * Change handler for one draft text field: every call site otherwise repeated
+   * the null-draft guard inline and overran the line budget.
+   * @param patch - folds the field's new value into the draft.
+   * @returns the change handler for that field.
+   */
+  const draftField = (patch: (draft: Draft, value: string) => Draft) =>
+    (event: { currentTarget: { value: string } }): void => {
+      const value = event.currentTarget.value
+      setEditing(current => current === null ? current : patch(current, value))
+    }
+
+  /** The enable switch folds a boolean rather than an input value. */
+  const draftToggle = (event: { currentTarget: { checked: boolean } }): void => {
+    const enabled = event.currentTarget.checked
+    setEditing(current => current === null ? current : { ...current, enabled })
+  }
 
   const refreshStatuses = useCallback(() => { setStatusRequest(value => value + 1) }, [])
 
@@ -414,7 +441,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
   }
 
   const restartServer = (id: string): void => {
-    void restart(id).then(() => scheduleRefresh())
+    void restart(id).then(() => { scheduleRefresh() })
   }
 
   const openEdit = (entry: McpServerEntryView): void => {
@@ -545,7 +572,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
               <input
                 type="text"
                 value={editing.name}
-                onChange={(event) => { const name = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, name }) }}
+                onChange={draftField((draft, name) => ({ ...draft, name }))}
                 placeholder={t('name')}
                 spellCheck={false}
               />
@@ -590,7 +617,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                     type="text"
                     aria-label={t('folder')}
                     value={editing.folder}
-                    onChange={(event) => { const folder = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, folder }) }}
+                    onChange={draftField((draft, folder) => ({ ...draft, folder }))}
                     placeholder="/Users/you/Documents"
                     spellCheck={false}
                   />
@@ -608,7 +635,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                 <input
                   type="text"
                   value={editing.command}
-                  onChange={(event) => { const command = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, command }) }}
+                  onChange={draftField((draft, command) => ({ ...draft, command }))}
                   placeholder="npx"
                   spellCheck={false}
                 />
@@ -622,7 +649,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                   <input
                     type="text"
                     value={editing.url}
-                    onChange={(event) => { const url = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, url }) }}
+                    onChange={draftField((draft, url) => ({ ...draft, url }))}
                     placeholder="https://example.com/mcp"
                     spellCheck={false}
                   />
@@ -631,7 +658,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                   <span>{t('headers')}</span>
                   <textarea
                     value={editing.headersText}
-                    onChange={(event) => { const headersText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, headersText }) }}
+                    onChange={draftField((draft, headersText) => ({ ...draft, headersText }))}
                     placeholder={t('headersHint')}
                     rows={3}
                     spellCheck={false}
@@ -643,7 +670,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                     type="number"
                     min={1}
                     value={editing.timeoutText}
-                    onChange={(event) => { const timeoutText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, timeoutText }) }}
+                    onChange={draftField((draft, timeoutText) => ({ ...draft, timeoutText }))}
                   />
                 </label>
               </>
@@ -673,7 +700,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                     <span>{t('args')}</span>
                     <textarea
                       value={editing.argsText}
-                      onChange={(event) => { const argsText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, argsText }) }}
+                      onChange={draftField((draft, argsText) => ({ ...draft, argsText }))}
                       placeholder={t('argsHint')}
                       rows={3}
                       spellCheck={false}
@@ -683,7 +710,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                     <span>{t('env')}</span>
                     <textarea
                       value={editing.envText}
-                      onChange={(event) => { const envText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, envText }) }}
+                      onChange={draftField((draft, envText) => ({ ...draft, envText }))}
                       placeholder={t('envHint')}
                       rows={3}
                       spellCheck={false}
@@ -695,7 +722,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                       type="number"
                       min={1}
                       value={editing.timeoutText}
-                      onChange={(event) => { const timeoutText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, timeoutText }) }}
+                      onChange={draftField((draft, timeoutText) => ({ ...draft, timeoutText }))}
                     />
                   </label>
                 </div>
@@ -706,7 +733,7 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
             <input
               type="checkbox"
               checked={editing.enabled}
-              onChange={(event) => { const enabled = event.currentTarget.checked; setEditing(current => current === null ? current : { ...current, enabled }) }}
+              onChange={draftToggle}
             />
             <span>{t('enabledSwitch')}</span>
           </label>
@@ -784,24 +811,24 @@ export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSet
                             type="checkbox"
                             checked={entry.enabled}
                             disabled={busy}
-                            onChange={() => toggleEnabled(entry)}
+                            onChange={() => { toggleEnabled(entry) }}
                           />
                           <span>{t('enabledSwitch')}</span>
                         </label>
-                        <button type="button" className={css.ghostButton} onClick={() => openEdit(entry)}>{t('edit')}</button>
+                        <button type="button" className={css.ghostButton} onClick={() => { openEdit(entry) }}>{t('edit')}</button>
                         {confirmingId === entry.id ? (
                           <span className={css.confirmRow}>
                             <span>{t('removeConfirm', { name: entry.name })}</span>
-                            <button type="button" className={css.dangerButton} onClick={() => removeServer(entry.id)}>{t('remove')}</button>
-                            <button type="button" className={css.ghostButton} onClick={() => setConfirmingId(null)}>{t('cancel')}</button>
+                            <button type="button" className={css.dangerButton} onClick={() => { removeServer(entry.id) }}>{t('remove')}</button>
+                            <button type="button" className={css.ghostButton} onClick={() => { setConfirmingId(null) }}>{t('cancel')}</button>
                           </span>
                         ) : (
-                          <button type="button" className={css.dangerButton} onClick={() => setConfirmingId(entry.id)}>{t('remove')}</button>
+                          <button type="button" className={css.dangerButton} onClick={() => { setConfirmingId(entry.id) }}>{t('remove')}</button>
                         )}
                       </>
                     ) : null}
                     {entry.enabled ? (
-                      <button type="button" className={css.ghostButton} disabled={busy} onClick={() => restartServer(entry.id)}>
+                      <button type="button" className={css.ghostButton} disabled={busy} onClick={() => { restartServer(entry.id) }}>
                         {t('restart')}
                       </button>
                     ) : null}

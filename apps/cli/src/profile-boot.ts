@@ -11,7 +11,6 @@
  * @module @deepseek-ai/dsh/profile-boot
  */
 
-import { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -67,12 +66,23 @@ const HARNESS_SKILL_ROOT = fileURLToPath(new URL('../../../.agents/skills/', imp
 export const OFFICE_LIBS_MARKER = '.libs-ok-3'
 
 /**
- * The locked set as base64: the install scripts below must reproduce it
- * byte-for-byte, and shell quoting cannot be trusted with 770 lines of pins
- * and hashes. Both dialects decode with a tool their flow already guarantees
- * (python3 on POSIX builds the venv; .NET is inbox on Windows).
+ * The locked set beside the install log, written by {@link writeOfficeLock}
+ * before either dialect spawns. Node writes it rather than the shell: the set
+ * is 63 KB, which overflows the Windows command line (32,767 characters,
+ * observed as `spawn ENAMETOOLONG`) and wastes an argument vector on POSIX.
  */
-const OFFICE_LOCK_B64 = Buffer.from(OFFICE_REQUIREMENTS_LOCK, 'utf8').toString('base64')
+const OFFICE_LOCK_FILENAME = 'office-requirements.lock'
+
+/**
+ * Write the pinned set for the install script to consume.
+ * @param venvDir - the venv root; must already exist.
+ * @returns the absolute lock-file path.
+ */
+function writeOfficeLock(venvDir: string): string {
+  const requirements = join(venvDir, OFFICE_LOCK_FILENAME)
+  writeFileSync(requirements, OFFICE_REQUIREMENTS_LOCK)
+  return requirements
+}
 
 /**
  * POSIX background-install script: venv creation plus the hash-enforced
@@ -83,12 +93,11 @@ const OFFICE_LOCK_B64 = Buffer.from(OFFICE_REQUIREMENTS_LOCK, 'utf8').toString('
  * @returns bash lines joined with `&&` by the caller.
  */
 export function posixOfficeInstallScript(pythonBin: string, venvDir: string): string[] {
-  const requirements = join(venvDir, 'office-requirements.lock')
+  const requirements = join(venvDir, OFFICE_LOCK_FILENAME)
   return [
     'set -e',
     'echo "--- office venv install started: $(date -u +%FT%TZ)"',
     `[ -x ${JSON.stringify(pythonBin)} ] || python3 -m venv ${JSON.stringify(venvDir)}`,
-    `python3 -c "import base64,sys;sys.stdout.buffer.write(base64.b64decode(sys.argv[1]))" ${OFFICE_LOCK_B64} > ${JSON.stringify(requirements)}`,
     `${JSON.stringify(pythonBin)} -m pip install --quiet --disable-pip-version-check --require-hashes --upgrade -r ${JSON.stringify(requirements)}`,
     `touch ${JSON.stringify(join(venvDir, OFFICE_LIBS_MARKER))}`,
     'echo "--- office venv install finished: $(date -u +%FT%TZ)"',
@@ -105,7 +114,7 @@ export function posixOfficeInstallScript(pythonBin: string, venvDir: string): st
  */
 export function windowsOfficeInstallScript(pythonExe: string, venvDir: string): string[] {
   const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`
-  const requirements = join(venvDir, 'office-requirements.lock')
+  const requirements = join(venvDir, OFFICE_LOCK_FILENAME)
   return [
     "$ErrorActionPreference = 'Stop'",
     "Write-Output '--- office venv install started'",
@@ -114,7 +123,6 @@ export function windowsOfficeInstallScript(pythonExe: string, venvDir: string): 
     'if ($null -eq $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }',
     "if ($null -eq $pyCmd) { throw 'no Python found (py/python/python3) — install it, then restart the app' }",
     `if (-not (Test-Path ${quote(pythonExe)})) { & $pyCmd.Source -m venv ${quote(venvDir)} }`,
-    `[System.IO.File]::WriteAllBytes(${quote(requirements)}, [System.Convert]::FromBase64String('${OFFICE_LOCK_B64}'))`,
     `& ${quote(pythonExe)} -m pip install --quiet --disable-pip-version-check --require-hashes --upgrade -r ${quote(requirements)}`,
     `New-Item -ItemType File -Force -Path ${quote(join(venvDir, OFFICE_LIBS_MARKER))} | Out-Null`,
     "Write-Output '--- office venv install finished'",
@@ -145,6 +153,7 @@ export function prepareOfficeRuntime(): void {
     return
   }
   mkdirSync(venvDir, { recursive: true })
+  writeOfficeLock(venvDir)
   // Install progress and failures land here instead of /dev/null: a quiet
   // background failure used to surface only as "python missing" much later.
   const installLog = join(venvDir, 'install.log')
@@ -174,6 +183,7 @@ function prepareOfficeRuntimeWindows(home: string): void {
     return
   }
   mkdirSync(venvDir, { recursive: true })
+  writeOfficeLock(venvDir)
   // All streams append to the install log inside the script itself, so the
   // spawn stays stdio-ignored (detached fd redirection is unreliable on win32).
   const installLog = join(venvDir, 'install.log')

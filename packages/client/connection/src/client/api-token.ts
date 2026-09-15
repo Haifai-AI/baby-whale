@@ -14,18 +14,38 @@
 const STORAGE_KEY = 'dsh.apiToken'
 
 /**
+ * The page globals this module reads. Reached through `globalThis`, matching
+ * the rest of this package: a browser exposes the same objects as `window`,
+ * while a fixture page defines only some of them, and Node defines
+ * `sessionStorage` (so it cannot stand in for "runs in a browser") without
+ * ever defining `location`.
+ */
+interface PageGlobals {
+  readonly location?: {
+    readonly hash?: string
+    readonly pathname?: string
+    readonly search?: string
+  }
+  readonly history?: { replaceState(data: unknown, unused: string, url?: string): void }
+}
+
+/**
  * Capture the entry-URL token into tab storage and scrub it from the address
  * bar, so shoulder-surfed history and copied links carry no credential.
  * @returns the captured token, when the URL carries one.
  */
 function captureFragmentToken(): string | undefined {
-  if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') return undefined
-  const match = /[#&]token=([^&#]*)/.exec(window.location.hash)
+  const page = globalThis as PageGlobals
+  const hash = page.location?.hash
+  if (hash === undefined || hash === '') return undefined
+  const match = /[#&]token=([^&#]*)/.exec(hash)
   const token = match?.[1] === undefined || match[1].length === 0 ? undefined : match[1]
   if (token === undefined) return undefined
   try {
     sessionStorage.setItem(STORAGE_KEY, token)
-    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    // A page without `history` (fixture transport) keeps the fragment; the
+    // returned token still authenticates this load.
+    page.history?.replaceState(null, '', (page.location?.pathname ?? '') + (page.location?.search ?? ''))
   } catch {
     // Storage or history unavailable (locked-down contexts): the in-URL
     // token still authenticates this page load via the return below.

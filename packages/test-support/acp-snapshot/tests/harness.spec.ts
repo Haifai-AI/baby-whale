@@ -741,6 +741,27 @@ describe('runScenario', () => {
       { agent: AGENT, mode: 'replay', fixtureFile: missing.fixtureFile },
     )).rejects.toThrow(/did not persist turn\/start within 200ms/)
 
+    // A log that exists but has opened no turn yet: the minimum-turn question
+    // is asked of a record that is not there, which is a not-yet state.
+    const noTurn = await scenario({
+      prompt: 'hang-until-cancel',
+      persistLogsOnCancel: true,
+      logs: [{
+        file: 'project/main/session.jsonl',
+        lines: [{ type: 'session', version: 0, id: '{{SID}}', createdAt: 1, delegationDepth: 0 }],
+      }],
+    })
+    await expect(runScenario(
+      {
+        steps: [
+          ...boot,
+          { op: 'promptAndCancel', text: 'hang' },
+          { op: 'waitForTurnStart', minimumTurn: 2, timeoutMs: 200 },
+        ],
+      },
+      { agent: AGENT, mode: 'replay', fixtureFile: noTurn.fixtureFile },
+    )).rejects.toThrow(/turn\/start at or beyond turn 2 within 200ms/)
+
     const earlier = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,

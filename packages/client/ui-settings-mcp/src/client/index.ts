@@ -42,7 +42,13 @@ export function apply(ctx: ClientContext): void {
     return result.value
   }
   const scope = ctx.settingsScope.bind<McpSettingsView>({ namespace: 'mcp' })
-  const injected = (): McpSettingsTabInjected => ({ list, restart, scope })
+  // Optional: the workspace service owns the Host's folder chooser, and a tree
+  // without it still gets a usable tab — the path stays typeable.
+  const workspaces = ctx.get('workspaces')
+  const chooseFolder = workspaces === undefined
+    ? undefined
+    : async (): Promise<string | null> => workspaces.pickDirectory()
+  const injected = (): McpSettingsTabInjected => ({ list, restart, scope, chooseFolder })
 
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
     name: 'settings.plugins.tab',

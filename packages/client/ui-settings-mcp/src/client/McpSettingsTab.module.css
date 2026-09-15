@@ -59,7 +59,7 @@
 .primaryButton {
   border: 1px solid var(--dsw-alias-state-business-primary);
   background: var(--dsw-alias-state-business-primary);
-  color: var(--dsw-alias-label-invert, #fff);
+  color: var(--dsw-alias-label-primary-inverted);
 }
 
 .primaryButton:hover {
@@ -103,7 +103,7 @@
 
 .empty {
   border: 1px dashed var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-lg);
   padding: 22px 16px;
   text-align: center;
 }
@@ -143,7 +143,7 @@
 
 .card {
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-bg-layer-1);
   overflow: hidden;
 }
@@ -181,7 +181,7 @@
 
 .transportTag {
   flex: none;
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-xs);
   border: 1px solid var(--dsw-alias-border-l2);
   padding: 1px 7px;
   font-size: 11px;
@@ -218,11 +218,11 @@
 }
 
 .statusDot[data-state='connected'] {
-  background: var(--dsw-alias-state-success-primary, #2e9e5b);
+  background: var(--dsw-alias-state-success-primary);
 }
 
 .statusDot[data-state='connecting'] {
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 70%, #d9a13c);
+  background: var(--dsw-alias-state-warn-secondary);
   animation: mcp-pulse 1.2s ease-in-out infinite;
 }
 
@@ -418,7 +418,7 @@
   border-radius: 12px;
   background: var(--dsw-alias-bg-layer-1);
   padding: 16px;
-  box-shadow: 0 18px 50px rgb(0 0 0 / 25%);
+  box-shadow: var(--dsw-shadow-lv3);
 }
 
 .importHint {
@@ -452,4 +452,226 @@
   .field:nth-child(n + 5):nth-child(odd) {
     grid-column: auto;
   }
+}
+
+/* ── Quick start catalog ────────────────────────────────────────────────────
+   A source list, not a gallery of cards. Every row is one server and the rows
+   carry the same 6px corner and rhythm as the server cards they add into, so
+   choosing reads as picking from a menu rather than browsing a grid. */
+
+.catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  padding: 14px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.catalogHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.catalogTitle {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.catalogHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.presetList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.presetRow,
+.manualRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.presetRow:hover,
+.manualRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The leading tile repeats the process-row chrome: a definite left edge is
+   what makes the list scan as objects rather than as paragraphs. */
+.presetIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.presetText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.presetName {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.presetBlurb {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The row's affordance stays quiet until hover: the whole row is the target,
+   and a permanent button beside every option would read as four decisions. */
+.presetAdd {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--dsw-alias-state-business-primary);
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.presetRow:hover .presetAdd,
+.presetRow:focus-visible .presetAdd {
+  opacity: 1;
+}
+
+/* The manual path sits apart: it is not one more server, it is the other way in. */
+.manualRow {
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 0 0 var(--dsw-radius-sm) var(--dsw-radius-sm);
+  padding-top: 10px;
+}
+
+.manualRow .presetName {
+  font-weight: 400;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── Editor additions ─────────────────────────────────────────────────────── */
+
+/* Title and tag on one line: the tag qualifies the title, so it belongs beside
+   it rather than below it as a second heading. */
+.editorHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.presetTag {
+  flex: none;
+  border-radius: var(--dsw-radius-xs);
+  padding: 1px 6px;
+  background: var(--dsw-alias-fill-secondary);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* A field that spans the two-column grid (the folder row, the preset note). */
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.folderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.folderRow input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.namespacePreview {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code);
+}
+
+.fieldProblem {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.presetNote {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.advancedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  padding: 4px 8px;
+  margin-left: -8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.advancedToggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.advancedToggle small {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.advancedToggle .chevron {
+  transition: transform var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.advancedToggle[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
 }

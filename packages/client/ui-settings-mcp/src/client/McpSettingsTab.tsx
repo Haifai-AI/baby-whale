@@ -3,10 +3,18 @@ import type { McpStatusSnapshot } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   IconChevronDownOutline14,
+  IconDataOutline16,
+  IconFolderOpenOutline16,
   IconPlusOutline16,
+  IconSparkle16,
+  IconThinkOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { McpSettingsLocaleKey } from './locales.ts'
+import {
+  MCP_PRESETS, PRESET_PATH_TOKEN, presetArgs, presetById, presetNeedsPath, uniqueName,
+  type McpPreset, type McpPresetGlyph,
+} from './presets.ts'
 import css from './McpSettingsTab.module.css'
 
 /** One saved server as the client sees the `mcp` settings section. */
@@ -37,6 +45,12 @@ export interface McpSettingsTabInjected {
   restart: (id: string) => Promise<McpStatusSnapshot>
   /** The bound `mcp` settings scope (section value, writes, writability). */
   scope: SettingsScope<McpSettingsView>
+  /**
+   * Open the Host's own folder chooser, for a preset that reads a directory.
+   * Absent when no workspace service is mounted, which hides the button and
+   * leaves the path typeable rather than failing the tab.
+   */
+  chooseFolder?: (() => Promise<string | null>) | undefined
 }
 
 type McpServerStatus = McpStatusSnapshot['servers'][number]
@@ -51,6 +65,13 @@ export type McpSettingsTabProps =
 /** Staged editable form over one server entry. */
 interface Draft {
   readonly id: string | null
+  /**
+   * The preset this draft came from, when it came from one. Non-null hides the
+   * command and argument fields behind Advanced: the preset already decided
+   * them, and showing `npx -y @modelcontextprotocol/...` to someone who picked
+   * "Filesystem" is the confusion the preset exists to remove.
+   */
+  readonly presetId: string | null
   name: string
   enabled: boolean
   transport: 'stdio' | 'streamable-http'
@@ -61,6 +82,12 @@ interface Draft {
   url: string
   headersText: string
   timeoutText: string
+  /**
+   * The folder a path-taking preset reads. Held apart from `argsText` so the
+   * picker and the text field cannot disagree, and substituted into the args
+   * only when the entry is built.
+   */
+  folder: string
 }
 
 import { parseImport, newId } from './json-import.ts'
@@ -121,6 +148,7 @@ export function canonicalJson(value: unknown): string {
 function draftOf(entry: McpServerEntryView): Draft {
   return {
     id: entry.id,
+    presetId: matchPreset(entry),
     name: entry.name,
     enabled: entry.enabled,
     transport: entry.transport,
@@ -131,42 +159,125 @@ function draftOf(entry: McpServerEntryView): Draft {
     url: entry.url,
     headersText: recordToLines(entry.headers),
     timeoutText: String(Math.round(entry.toolCallTimeoutMs / 1000)),
+    folder: '',
   }
+}
+
+/**
+ * The preset an existing entry was built from, when its command line still
+ * matches one exactly.
+ *
+ * Editing a preset-backed server keeps the preset's affordances (the folder
+ * field rather than a raw argument list) only while nothing has diverged. A
+ * hand-edited command drops back to the general form, which is the honest
+ * reading: it is no longer that preset.
+ * @param entry - the saved entry to classify.
+ * @returns the matching preset id, or null for a general server.
+ */
+function matchPreset(entry: McpServerEntryView): string | null {
+  if (entry.transport !== 'stdio') return null
+  for (const preset of MCP_PRESETS) {
+    if (entry.args.length !== preset.args.length) continue
+    // A `{path}` slot matches whatever folder the entry carries; every literal
+    // argument must agree, so a hand-edited tail drops the preset reading.
+    const matches = preset.args.every((arg, index) => arg === PRESET_PATH_TOKEN
+      ? true
+      : entry.args[index] === arg)
+    if (matches && entry.command === preset.command) return preset.id
+  }
+  return null
 }
 
 /** Blank staged form for a new server. */
 function blankDraft(transport: 'stdio' | 'streamable-http'): Draft {
   return {
-    id: null, name: '', enabled: true, transport,
+    id: null, presetId: null, name: '', enabled: true, transport,
     command: '', argsText: '', envText: '', cwd: '',
-    url: '', headersText: '', timeoutText: '60',
+    url: '', headersText: '', timeoutText: '60', folder: '',
   }
 }
 
-/** Staged form → savable entry, or the first blocking problem. */
-function entryOf(draft: Draft): { ok: true; entry: McpServerEntryView } | { ok: false } {
-  if (!NAME_PATTERN.test(draft.name)) return { ok: false }
+/** A draft pre-filled from one catalog entry, named clear of what exists. */
+function presetDraft(preset: McpPreset, taken: readonly string[]): Draft {
+  return {
+    ...blankDraft('stdio'),
+    presetId: preset.id,
+    name: uniqueName(preset.name, taken),
+    command: preset.command,
+    argsText: preset.args.join('\n'),
+  }
+}
+
+/**
+ * The first reason this draft cannot be saved, or null when it can.
+ *
+ * The form reports this beside the offending field and keeps Save enabled, so
+ * a disabled button never has to be decoded: the reader is told what to fix
+ * rather than left to guess which of nine fields is wrong.
+ * @param draft - the staged form.
+ * @param taken - names already used by other entries.
+ * @returns the locale key naming the problem, or null.
+ */
+function draftProblem(draft: Draft, taken: readonly string[]): McpSettingsLocaleKey | null {
+  if (draft.name.length === 0) return 'nameRequired'
+  if (!NAME_PATTERN.test(draft.name)) return 'nameInvalid'
+  if (taken.includes(draft.name)) return 'nameTaken'
+  if (draft.transport === 'stdio' && draft.command.trim().length === 0) return 'commandRequired'
+  if (draft.transport === 'stdio' && presetById(draft.presetId ?? '') !== undefined
+    && presetNeedsPath(presetById(draft.presetId ?? '')!) && draft.folder.trim().length === 0) {
+    return 'folderRequired'
+  }
+  if (draft.transport === 'streamable-http' && !/^https?:\/\/\S+$/.test(draft.url.trim())) return 'urlRequired'
+  return null
+}
+
+/**
+ * The folder-taking preset this draft is bound to, when it still is one.
+ *
+ * A preset describes a stdio command line, so the binding is stdio-only:
+ * switching the transport to HTTP abandons it rather than substituting a
+ * folder into a server that will never be spawned.
+ * @param draft - the staged form.
+ * @returns the preset whose folder field the form should show, or undefined.
+ */
+function draftPreset(draft: Draft): McpPreset | undefined {
+  if (draft.presetId === null || draft.transport !== 'stdio') return undefined
+  const preset = presetById(draft.presetId)
+  return preset !== undefined && presetNeedsPath(preset) ? preset : undefined
+}
+
+/** Staged form → the entry to save. Only called once {@link draftProblem} is null. */
+function entryOf(draft: Draft): McpServerEntryView {
   const timeoutSeconds = Number.parseInt(draft.timeoutText, 10)
-  const entry: McpServerEntryView = {
+  const preset = draftPreset(draft)
+  const args = preset !== undefined
+    ? presetArgs(preset, draft.folder.trim())
+    : draft.argsText.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+  return {
     id: draft.id ?? newId(),
     name: draft.name,
     enabled: draft.enabled,
     transport: draft.transport,
     command: draft.command.trim(),
-    args: draft.argsText.split('\n').map(line => line.trim()).filter(line => line.length > 0),
+    args,
     env: linesToRecord(draft.envText),
     cwd: draft.cwd.trim(),
     url: draft.url.trim(),
     headers: linesToRecord(draft.headersText),
     toolCallTimeoutMs: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 60_000,
   }
-  if (entry.transport === 'stdio' && entry.command.length === 0) return { ok: false }
-  if (entry.transport === 'streamable-http' && entry.url.length === 0) return { ok: false }
-  return { ok: true, entry }
+}
+
+/** The catalog's leading glyph per preset. */
+const PRESET_ICONS: Record<McpPresetGlyph, ReactNode> = {
+  folder: <IconFolderOpenOutline16 size={14} />,
+  memory: <IconDataOutline16 size={14} />,
+  steps: <IconThinkOutline16 size={14} />,
+  sparkle: <IconSparkle16 size={14} />,
 }
 
 /** Render the MCP servers management tab. */
-export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps): ReactNode {
+export function McpSettingsTab({ list, restart, scope, chooseFolder, t }: McpSettingsTabProps): ReactNode {
   // The scope controller's methods are class members: bind through stable
   // closures so useSyncExternalStore sees fixed identities and `this` lands.
   const subscribe = useCallback((listener: () => void) => scope.subscribe(listener), [scope])
@@ -176,6 +287,9 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
   const [statusError, setStatusError] = useState(false)
   const [statusRequest, setStatusRequest] = useState(0)
   const [editing, setEditing] = useState<Draft | null>(null)
+  const [choosing, setChoosing] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [attempted, setAttempted] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
@@ -245,18 +359,19 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
 
   const saveDraft = (): void => {
     if (editing === null) return
-    const parsed = entryOf(editing)
-    if (!parsed.ok) return
+    setAttempted(true)
+    if (problem !== null) return
     const next = editing.id === null
-      ? [...servers, parsed.entry]
-      : servers.map(entry => entry.id === editing.id ? parsed.entry : entry)
+      ? [...servers, entryOf(editing)]
+      : servers.map(entry => entry.id === editing.id ? entryOf(editing) : entry)
     void writeServers(next).then((landed) => {
       if (!landed) {
         setSaveFailed(true)
         return
       }
       setEditing(null)
-      setExpandedId(parsed.entry.id)
+      setAttempted(false)
+      setExpandedId(editing.id)
       scheduleRefresh()
     })
   }
@@ -304,7 +419,38 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
 
   const openEdit = (entry: McpServerEntryView): void => {
     setEditing(draftOf(entry))
+    setChoosing(false)
+    setShowAdvanced(matchPreset(entry) === null)
     setSaveFailed(false)
+  }
+
+  /** Open the catalog: the default way in, since a blank form is the hard way. */
+  const openChooser = (): void => {
+    setChoosing(true)
+    setEditing(null)
+    setSaveFailed(false)
+  }
+
+  const startPreset = (preset: McpPreset): void => {
+    setEditing(presetDraft(preset, servers.map(entry => entry.name)))
+    setChoosing(false)
+    setShowAdvanced(false)
+    setSaveFailed(false)
+  }
+
+  const startBlank = (): void => {
+    setEditing(blankDraft('stdio'))
+    setChoosing(false)
+    setShowAdvanced(true)
+    setSaveFailed(false)
+  }
+
+  const pickFolder = (): void => {
+    if (chooseFolder === undefined || editing === null) return
+    void chooseFolder().then((path) => {
+      if (path === null) return
+      setEditing(current => current === null ? current : { ...current, folder: path })
+    })
   }
 
   if (snapshot.status === 'unavailable') {
@@ -312,6 +458,11 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
   }
 
   const enabledCount = servers.filter(entry => entry.enabled).length
+  // Names this draft must avoid: every other entry, so editing a server does
+  // not collide with itself.
+  const takenNames = servers.filter(entry => entry.id !== editing?.id).map(entry => entry.name)
+  const problem = editing === null ? null : draftProblem(editing, takenNames)
+  const presetForDraft = editing === null ? undefined : draftPreset(editing)
 
   return (
     <div className={css.section} aria-busy={snapshot.status === 'loading' || busy}>
@@ -326,7 +477,7 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
               <button type="button" className={css.ghostButton} onClick={() => { setImportFailure(null); setImportOpen(true) }}>
                 {t('importJson')}
               </button>
-              <button type="button" className={css.primaryButton} onClick={() => { setEditing(blankDraft('stdio')); setSaveFailed(false) }}>
+              <button type="button" className={css.primaryButton} onClick={openChooser}>
                 <IconPlusOutline16 aria-hidden="true" size={14} />
                 {t('add')}
               </button>
@@ -345,81 +496,133 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
 
       {snapshot.status === 'loading' ? <p className={css.status}>{t('loading')}</p> : null}
 
+      {choosing ? (
+        // The catalog as a source list rather than a card grid: every row is
+        // one server, the same shape as the list it joins, so choosing reads
+        // as picking from a menu instead of browsing a gallery.
+        <section className={css.catalog} aria-label={t('quickStart')}>
+          <div className={css.catalogHead}>
+            <strong className={css.catalogTitle}>{t('quickStart')}</strong>
+            <p className={css.catalogHint}>{t('quickStartHint')}</p>
+          </div>
+          <ul className={css.presetList}>
+            {MCP_PRESETS.map(preset => (
+              <li key={preset.id}>
+                <button type="button" className={css.presetRow} onClick={() => { startPreset(preset) }}>
+                  <span className={css.presetIcon} aria-hidden="true">{PRESET_ICONS[preset.glyph]}</span>
+                  <span className={css.presetText}>
+                    <span className={css.presetName}>{t(preset.name === 'filesystem' ? 'presetFilesystem'
+                      : preset.name === 'memory' ? 'presetMemory'
+                        : preset.name === 'sequential-thinking' ? 'presetThinking' : 'presetEverything')}</span>
+                    <span className={css.presetBlurb}>{t(preset.blurb)}</span>
+                  </span>
+                  <span className={css.presetAdd}>{t('addPreset')}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className={css.manualRow} onClick={startBlank}>
+            <span className={css.presetText}>
+              <span className={css.presetName}>{t('manual')}</span>
+              <span className={css.presetBlurb}>{t('manualHint')}</span>
+            </span>
+          </button>
+          <div className={css.cardActions}>
+            <button type="button" className={css.ghostButton} onClick={() => { setChoosing(false) }}>{t('cancel')}</button>
+          </div>
+        </section>
+      ) : null}
+
       {editing !== null ? (
         <form className={`${css.card} ${css.editorCard}`} onSubmit={(event) => { event.preventDefault(); saveDraft() }}>
-          <strong className={css.cardTitle}>{editing.id === null ? t('add') : `${t('edit')} — ${editing.name}`}</strong>
+          <div className={css.editorHead}>
+            <strong className={css.cardTitle}>{editing.id === null ? t('add') : `${t('edit')} — ${editing.name}`}</strong>
+            {editing.presetId !== null ? <span className={css.presetTag}>{t('presetTag')}</span> : null}
+          </div>
           <div className={css.formGrid}>
             <label className={css.field}>
               <span>{t('name')}</span>
               <input
                 type="text"
                 value={editing.name}
-                onChange={(event) => { setEditing({ ...editing, name: event.currentTarget.value }) }}
+                onChange={(event) => { const name = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, name }) }}
                 placeholder={t('name')}
                 spellCheck={false}
               />
-              <small>{t('nameHint')}</small>
+              {/* The naming rule stated as its consequence rather than as a
+                  regex: the reader sees the name the model will actually call. */}
+              <small className={css.namespacePreview}>
+                {editing.name.length > 0 && NAME_PATTERN.test(editing.name)
+                  ? t('namespacePreview', { prefix: `mcp__${editing.name}__` })
+                  : t('nameHint')}
+              </small>
             </label>
             <label className={css.field}>
               <span>{t('transport')}</span>
               <select
                 value={editing.transport}
-                onChange={(event) => { setEditing({ ...editing, transport: event.currentTarget.value as Draft['transport'] }) }}
+                onChange={(event) => {
+                  const transport = event.currentTarget.value as Draft['transport']
+                  setEditing((current) => {
+                    if (current === null) return current
+                    // Leaving stdio abandons a preset: its command line is a
+                    // local process, so the name, tag, and Advanced state must
+                    // stop claiming otherwise.
+                    return transport === 'stdio'
+                      ? { ...current, transport }
+                      : { ...current, transport, presetId: null, command: '', argsText: '', folder: '' }
+                  })
+                  setShowAdvanced(transport !== 'stdio')
+                }}
               >
                 <option value="stdio">{t('transportStdio')}</option>
                 <option value="streamable-http">{t('transportHttp')}</option>
               </select>
             </label>
-            {editing.transport === 'stdio' ? (
-              <>
-                <label className={css.field}>
-                  <span>{t('command')}</span>
+
+            {editing.transport === 'stdio' && presetForDraft !== undefined ? (
+              // The one value a preset cannot know. A native chooser beats a
+              // typed path: it cannot be mistyped, and it shows what was picked.
+              <div className={`${css.field} ${css.fieldWide}`}>
+                <span>{t('folder')}</span>
+                <div className={css.folderRow}>
                   <input
                     type="text"
-                    value={editing.command}
-                    onChange={(event) => { setEditing({ ...editing, command: event.currentTarget.value }) }}
-                    placeholder="npx"
+                    aria-label={t('folder')}
+                    value={editing.folder}
+                    onChange={(event) => { const folder = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, folder }) }}
+                    placeholder="/Users/you/Documents"
                     spellCheck={false}
                   />
-                </label>
-                <label className={css.field}>
-                  <span>{t('args')}</span>
-                  <textarea
-                    value={editing.argsText}
-                    onChange={(event) => { setEditing({ ...editing, argsText: event.currentTarget.value }) }}
-                    placeholder={t('argsHint')}
-                    rows={3}
-                    spellCheck={false}
-                  />
-                </label>
-                <label className={css.field}>
-                  <span>{t('env')}</span>
-                  <textarea
-                    value={editing.envText}
-                    onChange={(event) => { setEditing({ ...editing, envText: event.currentTarget.value }) }}
-                    placeholder={t('envHint')}
-                    rows={3}
-                    spellCheck={false}
-                  />
-                </label>
-                <label className={css.field}>
-                  <span>{t('timeout')}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={editing.timeoutText}
-                    onChange={(event) => { setEditing({ ...editing, timeoutText: event.currentTarget.value }) }}
-                  />
-                </label>
-              </>
-            ) : (
+                  {chooseFolder !== undefined ? (
+                    <button type="button" className={css.ghostButton} onClick={pickFolder}>{t('chooseFolder')}</button>
+                  ) : null}
+                </div>
+                <small>{t('folderHint')}</small>
+              </div>
+            ) : null}
+
+            {editing.transport === 'stdio' && presetForDraft === undefined ? (
+              <label className={css.field}>
+                <span>{t('command')}</span>
+                <input
+                  type="text"
+                  value={editing.command}
+                  onChange={(event) => { const command = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, command }) }}
+                  placeholder="npx"
+                  spellCheck={false}
+                />
+              </label>
+            ) : null}
+
+            {editing.transport === 'streamable-http' ? (
               <>
                 <label className={css.field}>
                   <span>{t('url')}</span>
                   <input
                     type="text"
                     value={editing.url}
-                    onChange={(event) => { setEditing({ ...editing, url: event.currentTarget.value }) }}
+                    onChange={(event) => { const url = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, url }) }}
                     placeholder="https://example.com/mcp"
                     spellCheck={false}
                   />
@@ -428,7 +631,7 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
                   <span>{t('headers')}</span>
                   <textarea
                     value={editing.headersText}
-                    onChange={(event) => { setEditing({ ...editing, headersText: event.currentTarget.value }) }}
+                    onChange={(event) => { const headersText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, headersText }) }}
                     placeholder={t('headersHint')}
                     rows={3}
                     spellCheck={false}
@@ -440,28 +643,84 @@ export function McpSettingsTab({ list, restart, scope, t }: McpSettingsTabProps)
                     type="number"
                     min={1}
                     value={editing.timeoutText}
-                    onChange={(event) => { setEditing({ ...editing, timeoutText: event.currentTarget.value }) }}
+                    onChange={(event) => { const timeoutText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, timeoutText }) }}
                   />
                 </label>
               </>
-            )}
+            ) : null}
           </div>
+
+          {editing.transport === 'stdio' ? (
+            <div className={css.advanced}>
+              <button
+                type="button"
+                className={css.advancedToggle}
+                aria-expanded={showAdvanced}
+                onClick={() => { setShowAdvanced(value => !value) }}
+              >
+                <IconChevronDownOutline14 size={12} className={css.chevron} aria-hidden="true" />
+                <span>{t('advanced')}</span>
+                <small>{t('advancedHint')}</small>
+              </button>
+              {showAdvanced ? (
+                <div className={css.formGrid}>
+                  {presetForDraft !== undefined ? (
+                    <p className={`${css.presetNote} ${css.fieldWide}`}>
+                      {t('presetCommandNote', { command: editing.command })}
+                    </p>
+                  ) : null}
+                  <label className={css.field}>
+                    <span>{t('args')}</span>
+                    <textarea
+                      value={editing.argsText}
+                      onChange={(event) => { const argsText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, argsText }) }}
+                      placeholder={t('argsHint')}
+                      rows={3}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className={css.field}>
+                    <span>{t('env')}</span>
+                    <textarea
+                      value={editing.envText}
+                      onChange={(event) => { const envText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, envText }) }}
+                      placeholder={t('envHint')}
+                      rows={3}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className={css.field}>
+                    <span>{t('timeout')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editing.timeoutText}
+                      onChange={(event) => { const timeoutText = event.currentTarget.value; setEditing(current => current === null ? current : { ...current, timeoutText }) }}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <label className={css.switchRow}>
             <input
               type="checkbox"
               checked={editing.enabled}
-              onChange={(event) => { setEditing({ ...editing, enabled: event.currentTarget.checked }) }}
+              onChange={(event) => { const enabled = event.currentTarget.checked; setEditing(current => current === null ? current : { ...current, enabled }) }}
             />
             <span>{t('enabledSwitch')}</span>
           </label>
+          {/* The reason Save will not land, named beside the button rather than
+              hidden behind a disabled control the reader has to decode. */}
+          {attempted && problem !== null ? <p className={css.fieldProblem} role="alert">{t(problem)}</p> : null}
           <div className={css.cardActions}>
-            <button type="submit" className={css.primaryButton} disabled={!entryOf(editing).ok}>{t('save')}</button>
-            <button type="button" className={css.ghostButton} onClick={() => { setEditing(null); setSaveFailed(false) }}>{t('cancel')}</button>
+            <button type="submit" className={css.primaryButton} disabled={busy}>{t('save')}</button>
+            <button type="button" className={css.ghostButton} onClick={() => { setEditing(null); setChoosing(false); setSaveFailed(false); setAttempted(false) }}>{t('cancel')}</button>
           </div>
         </form>
       ) : null}
 
-      {servers.length === 0 && snapshot.status === 'ready' && editing === null ? (
+      {servers.length === 0 && snapshot.status === 'ready' && editing === null && !choosing ? (
         <p className={css.empty}>{t('empty')}</p>
       ) : null}
 

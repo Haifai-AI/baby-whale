@@ -99,12 +99,16 @@ function t(key: McpSettingsLocaleKey, params?: Record<string, unknown>): string 
   return text
 }
 
-function renderTab(servers: readonly McpServerEntryView[] = []): { scope: SettingsScope<McpSettingsView> } {
+function renderTab(
+  servers: readonly McpServerEntryView[] = [],
+  chooseFolder?: () => Promise<string | null>,
+): { scope: SettingsScope<McpSettingsView> } {
   const scope = fakeScope(servers)
   const props = {
     list: vi.fn(async () => ({ servers: [] })),
     restart: vi.fn(async () => ({ servers: [] })),
     scope,
+    chooseFolder,
     t,
   } as unknown as McpSettingsTabProps
   render(<McpSettingsTab {...props} />)
@@ -137,7 +141,9 @@ describe('McpSettingsTab transport selector', () => {
 
   it('switches a new server to HTTP and saves the streamable-http transport', async () => {
     const { scope } = renderTab()
+    // Add now opens the quick-start catalog; the manual row is the other way in.
     fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(en.manual) }))
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'cloud' } })
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'streamable-http' } })
     fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: 'https://cloud.example/mcp' } })
@@ -257,5 +263,162 @@ describe('McpSettingsTab tool chips', () => {
     await act(async () => {})
     expect(screen.getByText('echo')).toBeDefined()
     expect(screen.queryByText('b.t')).toBeNull()
+  })
+})
+
+describe('McpSettingsTab quick start', () => {
+  /** Preset labels carry punctuation ("Everything (test)"), so match literally. */
+  function exact(label: string): RegExp {
+    return new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  }
+
+  /** Open the catalog from the header and pick one preset row. */
+  function choosePreset(label: string): void {
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    fireEvent.click(screen.getByRole('button', { name: exact(label) }))
+  }
+
+  it('opens a catalog rather than a blank form, and lists every preset', () => {
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    // Every catalog entry is offered by its plain-language name, so the user
+    // never has to know the npm package behind it.
+    expect(screen.getByRole('button', { name: exact(en.presetFilesystem) })).toBeDefined()
+    expect(screen.getByRole('button', { name: exact(en.presetMemory) })).toBeDefined()
+    expect(screen.getByRole('button', { name: exact(en.presetThinking) })).toBeDefined()
+    expect(screen.getByRole('button', { name: exact(en.presetEverything) })).toBeDefined()
+    expect(screen.getByRole('button', { name: exact(en.manual) })).toBeDefined()
+  })
+
+  it('pre-fills a chosen preset so the command never has to be typed', async () => {
+    renderTab()
+    choosePreset(en.presetMemory)
+    await act(async () => {})
+    expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('memory')
+    // The command is decided by the preset and kept out of the way: the
+    // argument list lives behind Advanced, not in front of the reader.
+    expect(screen.queryByLabelText(/^Arguments/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: exact(en.advanced) }))
+    await act(async () => {})
+    expect((screen.getByLabelText(/^Arguments/) as HTMLTextAreaElement).value)
+      .toContain('@modelcontextprotocol/server-memory')
+  })
+
+  it('asks for the one value a path preset cannot know, and lands it in args', async () => {
+    const { scope } = renderTab([], async () => '/Users/someone/Documents')
+    choosePreset(en.presetFilesystem)
+    await act(async () => {})
+    // The folder has its own field and a native chooser, so the path is never
+    // a hand-written argument.
+    expect(screen.getByLabelText(new RegExp(en.folder))).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: en.chooseFolder }))
+    await act(async () => {})
+    expect((screen.getByLabelText(new RegExp(en.folder)) as HTMLInputElement).value)
+      .toBe('/Users/someone/Documents')
+
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    const saved = scope.getSnapshot().value?.servers ?? []
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({
+      name: 'filesystem',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/Users/someone/Documents'],
+    })
+  })
+
+  it('names the missing folder instead of leaving a dead Save button', async () => {
+    renderTab()
+    choosePreset(en.presetFilesystem)
+    await act(async () => {})
+    // Save stays enabled; pressing it states the problem.
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    expect(screen.getByRole('alert').textContent).toBe(en.folderRequired)
+    // Nothing was written.
+    expect(screen.queryByRole('button', { name: en.save })).not.toBeNull()
+  })
+
+  it('explains a bad name by naming the rule, and blocks the write', async () => {
+    const { scope } = renderTab()
+    choosePreset(en.presetMemory)
+    await act(async () => {})
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'has spaces' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    expect(screen.getByRole('alert').textContent).toBe(en.nameInvalid)
+    expect(scope.getSnapshot().value?.servers ?? []).toHaveLength(0)
+  })
+
+  it('suffixes a second preset server rather than colliding on the namespace', async () => {
+    const { scope } = renderTab()
+    choosePreset(en.presetMemory)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    expect(scope.getSnapshot().value?.servers[0]?.name).toBe('memory')
+
+    // Adding the same preset again must not claim mcp__memory__* twice.
+    choosePreset(en.presetMemory)
+    await act(async () => {})
+    expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('memory-2')
+  })
+
+  it('abandons the preset when the transport leaves stdio', async () => {
+    // A preset is a local command line. Switching to HTTP must not leave a
+    // folder substituted into a server that will never be spawned, and must
+    // not keep claiming to be that preset.
+    const { scope } = renderTab()
+    choosePreset(en.presetFilesystem)
+    await act(async () => {})
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'streamable-http' } })
+    await act(async () => {})
+    // The folder field and the Preset tag are gone; a URL is asked for instead.
+    expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
+    expect(screen.queryByText(en.presetTag)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/^URL/), { target: { value: 'https://cloud.example/mcp' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await act(async () => {})
+    const saved = scope.getSnapshot().value?.servers ?? []
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({ transport: 'streamable-http', url: 'https://cloud.example/mcp' })
+    // No leftover npm package arguments on an HTTP entry.
+    expect(saved[0]?.args ?? []).toEqual([])
+    expect(saved[0]?.command).toBe('')
+  })
+
+  it('keeps a preset-backed server on its folder field when reopened', async () => {
+    const saved: McpServerEntryView = {
+      id: 'srv-fs', name: 'filesystem', enabled: true, transport: 'stdio',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/Users/someone/Documents'],
+      env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+    }
+    renderTab([saved])
+    fireEvent.click(screen.getByRole('button', { name: /filesystem/ }))
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    await act(async () => {})
+    // Recognised as the preset it came from, so the reader still edits a
+    // Folder rather than a raw argument list.
+    expect(screen.getByLabelText(new RegExp(en.folder))).toBeDefined()
+    expect(screen.queryByLabelText(/^Arguments/)).toBeNull()
+  })
+
+  it('drops back to the general form once a preset server is hand-edited', async () => {
+    const edited: McpServerEntryView = {
+      id: 'srv-fs', name: 'filesystem', enabled: true, transport: 'stdio',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/one', '--extra'],
+      env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 60_000,
+    }
+    renderTab([edited])
+    fireEvent.click(screen.getByRole('button', { name: /filesystem/ }))
+    fireEvent.click(screen.getByRole('button', { name: en.edit }))
+    await act(async () => {})
+    // The command line no longer matches the preset, so the honest reading is
+    // a general server: Advanced is open and the raw args are exposed.
+    expect(screen.queryByLabelText(new RegExp(en.folder))).toBeNull()
+    expect((screen.getByLabelText(/^Arguments/) as HTMLTextAreaElement).value).toContain('--extra')
   })
 })

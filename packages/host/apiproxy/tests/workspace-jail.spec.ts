@@ -1,14 +1,15 @@
 /**
  * Workspace jail: separator-boundary containment (same-prefix siblings
- * refused) and symlink anchoring (links out refused, links in allowed,
- * missing refused). Real-filesystem specs under an OS temp root, resolved
- * to canonical spelling first so the boundary logic — not the platform's
- * temp-dir aliasing — is what the assertions exercise.
+ * refused, an already-terminated filesystem root contained) and symlink
+ * anchoring (links out refused, links in allowed, missing refused).
+ * Real-filesystem specs under an OS temp root, resolved to canonical spelling
+ * first so the boundary logic — not the platform's temp-dir aliasing — is what
+ * the assertions exercise.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, realpath, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, parse } from 'node:path'
 import { anchorWorkspacePath, containedPath } from '../src/workspace-jail.ts'
 
 let base: string
@@ -35,6 +36,14 @@ describe('containedPath', () => {
     expect(containedPath(root, join(`${root}-evil`, 'secret.txt'))).toBe(false)
     expect(containedPath(root, base)).toBe(false)
     expect(containedPath(root, join(tmpdir(), 'dsh-wsjail-elsewhere'))).toBe(false)
+  })
+
+  it('contains every path when the root real path already ends in a separator', () => {
+    // A POSIX root realpaths to `/`, which is already separator-terminated and
+    // must not gain a second one; a Windows root ends in a backslash instead.
+    const filesystemRoot = parse(process.cwd()).root
+    expect(containedPath(filesystemRoot, filesystemRoot)).toBe(true)
+    expect(containedPath(filesystemRoot, join(filesystemRoot, 'elsewhere'))).toBe(true)
   })
 })
 

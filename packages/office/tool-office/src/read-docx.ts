@@ -85,6 +85,7 @@ export function extractDocxText(bytes: Uint8Array, maxChars: number = DOCX_MAX_C
   return { paragraphs, char_count: charCount, truncated }
 
   function push(target: DocxParagraph[], entry: DocxParagraph): void {
+    /* v8 ignore next 3 -- the block loop head already holds charCount below maxChars at every push, so this guard cannot fire */
     if (charCount >= maxChars) {
       truncated = true
       return

@@ -133,6 +133,7 @@ export function beginManagedSofficeInstall(onInstalled?: () => void): Promise<So
   }
   // A supported platform without a pinned hash must never fetch: downloading
   // an unverified executable artifact is the failure this gate exists to stop.
+  /* v8 ignore start -- unreachable: managedInstallSupport always pins a sha256 for a supported platform. */
   if (support.sha256 === undefined) {
     state = {
       phase: 'error',
@@ -141,6 +142,7 @@ export function beginManagedSofficeInstall(onInstalled?: () => void): Promise<So
     }
     return Promise.resolve({ ...state })
   }
+  /* v8 ignore stop */
   if (inflight !== undefined) return Promise.resolve({ ...state })
   inflight = runManagedInstall(support.url, support.sha256, onInstalled).finally(() => {
     inflight = undefined

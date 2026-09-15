@@ -44,6 +44,7 @@ export function OfficeArtifactCard({ callId, toolName, block, openFile, openDeta
   }
   const kind = KINDS[preview.kind]
   const displayName = preview.file_name || (path !== undefined ? basename(path) : toolName)
+  /* v8 ignore next -- a defined `preview` above already required the settled `kind` tag, so the running-call arm is unreachable. */
   const meta = 'kind' in block ? block.meta as OfficeMeta | undefined : undefined
   return (
     <div className={css.card} data-whale-artifact={preview.kind}>

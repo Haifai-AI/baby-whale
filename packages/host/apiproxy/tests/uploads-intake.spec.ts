@@ -1,7 +1,9 @@
 /**
  * Upload intake hardening: the uploads directory object itself is validated
- * (a planted symlink is replaced, a non-directory fails loud) and the
- * end-to-end store lands files under `<workspace>/uploads/`.
+ * (a planted symlink is replaced, a non-directory fails loud), the end-to-end
+ * store lands files under `<workspace>/uploads/`, a proposed name that cleans
+ * away to nothing becomes `upload.bin`, and stamping steps past names the
+ * stamp already holds.
  */
 import { describe, expect, it } from 'vitest'
 import { lstat, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
@@ -56,5 +58,27 @@ describe('storeUpload', () => {
     expect(outcome.name).toBe('1000-clip.mp4')
     expect(outcome.size).toBe(3)
     expect([...await readFile(join(root, 'uploads', '1000-clip.mp4'))]).toEqual([1, 2, 3])
+  })
+
+  it('falls back to upload.bin when the proposed name cleans away to nothing', async () => {
+    const root = await workspace()
+    const outcome = await storeUpload(root, '???', new Uint8Array([9]), () => 7)
+    expect(outcome.path).toBe('uploads/7-upload.bin')
+    expect(outcome.name).toBe('7-upload.bin')
+    expect([...await readFile(join(root, 'uploads', '7-upload.bin'))]).toEqual([9])
+  })
+
+  it('steps the counter past every name the stamp already holds', async () => {
+    const root = await workspace()
+    await mkdir(join(root, 'uploads'))
+    await writeFile(join(root, 'uploads', '1000-clip.mp4'), 'first')
+    await writeFile(join(root, 'uploads', '1000-2-clip.mp4'), 'second')
+
+    const outcome = await storeUpload(root, 'clip.mp4', new Uint8Array([4]), () => 1000)
+
+    expect(outcome.path).toBe('uploads/1000-3-clip.mp4')
+    expect(await readFile(join(root, 'uploads', '1000-clip.mp4'), 'utf8')).toBe('first')
+    expect(await readFile(join(root, 'uploads', '1000-2-clip.mp4'), 'utf8')).toBe('second')
+    expect([...await readFile(join(root, 'uploads', '1000-3-clip.mp4'))]).toEqual([4])
   })
 })

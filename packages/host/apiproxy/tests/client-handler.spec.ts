@@ -28,6 +28,9 @@ function scriptedApi(overrides: {
   settings?: Partial<ApiProxy['settings']>
   credentials?: Partial<ApiProxy['credentials']>
   llm?: Partial<ApiProxy['llm']>
+  artifacts?: Partial<ApiProxy['artifacts']>
+  officeRuntime?: Partial<ApiProxy['officeRuntime']>
+  uploads?: Partial<ApiProxy['uploads']>
   respond?: ApiProxy['respond']
 } = {}): ApiProxy {
   async function *empty<F>(): AsyncGenerator<RpcRequest<F>> { /* no frames */ }
@@ -131,17 +134,20 @@ function scriptedApi(overrides: {
     events: { mux: () => empty<MuxFrame>(), host: () => empty<HostFrame>(), ...overrides.events },
     respond: overrides.respond ?? (() => Promise.resolve({ accepted: false as const, reason: 'not-pending' as const })),
     artifacts: {
-      list: async () => ({ rpcId: 'x' as never, result: { ok: true as const, value: { artifacts: [] } } }),
-      preview: async () => ({ rpcId: 'x' as never, result: { ok: true as const, value: { size: 0 } } }),
+      list: r => ok(r, { artifacts: [] }),
+      preview: r => ok(r, { size: 0 }),
       raw: async () => new Response('stub', { headers: { 'content-type': 'text/plain' } }),
       file: async () => new Response('%PDF-stub', { headers: { 'content-type': 'application/pdf' } }),
+      ...overrides.artifacts,
     },
     officeRuntime: {
-      status: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true } } }),
-      install: () => Promise.resolve({ rpcId: 'x' as never, result: { ok: true as const, value: { install: { phase: 'idle' as const, progress: 0 } } } }),
+      status: r => ok(r, { soffice: { found: true, source: 'system' as const }, install: { phase: 'idle' as const, progress: 0 }, managedSupported: true }),
+      install: r => ok(r, { install: { phase: 'idle' as const, progress: 0 } }),
+      ...overrides.officeRuntime,
     },
     uploads: {
       workspaceFile: async () => new Response('{}'),
+      ...overrides.uploads,
     },
     downloads: { sessionLog: async () => new Response('stub', { status: 404 }) },
   }
@@ -824,5 +830,172 @@ describe('config unary surface', () => {
     expect(response.result.ok).toBe(false)
     if (response.result.ok) throw new Error('unreachable')
     expect(response.result.error.code).toBe('bad-request')
+  })
+})
+
+describe('artifact and office-runtime unary surface', () => {
+  it('round-trips the artifact gallery and one preview through their own route rows', async () => {
+    const entry = {
+      path: 'deliverables/q2.xlsx', name: 'q2.xlsx', kind: 'xlsx' as const,
+      size: 2048, modifiedAt: 7, origin: 'deliverable' as const,
+    }
+    const seen: { method: string; payload: unknown }[] = []
+    const record = recorderInto(seen)
+    const api = scriptedApi({
+      artifacts: {
+        list: record('artifacts.list', r => ok(r, { artifacts: [entry] })),
+        preview: record('artifacts.preview', r => ok(r, { size: 2048, preview: { sheets: ['Q2'] } })),
+      },
+    })
+    const c = client(api)
+
+    expect((await c.artifacts.list({ sessionId: sid('s1') })).result)
+      .toEqual({ ok: true, value: { artifacts: [entry] } })
+    expect((await c.artifacts.preview({ sessionId: sid('s1'), path: 'deliverables/q2.xlsx' })).result)
+      .toEqual({ ok: true, value: { size: 2048, preview: { sheets: ['Q2'] } } })
+
+    // Each call reached its own handler row: the payload is parsed per method.
+    expect(seen.map(call => call.method)).toEqual(['artifacts.list', 'artifacts.preview'])
+    expect(seen[0]?.payload).toEqual({ sessionId: 's1' })
+    expect(seen[1]?.payload).toEqual({ sessionId: 's1', path: 'deliverables/q2.xlsx' })
+  })
+
+  it('round-trips the office-runtime status and install calls through their route rows', async () => {
+    const status = {
+      soffice: { found: false, source: 'none' as const },
+      install: { phase: 'error' as const, progress: 0, error: 'download failed' },
+      managedSupported: false,
+    }
+    const seen: { method: string; payload: unknown }[] = []
+    const record = recorderInto(seen)
+    const api = scriptedApi({
+      officeRuntime: {
+        status: record('officeRuntime.status', r => ok(r, status)),
+        install: record('officeRuntime.install', r => ok(r, { install: { phase: 'downloading' as const, progress: 0.5 } })),
+      },
+    })
+    const c = client(api)
+
+    expect((await c.officeRuntime.status({})).result).toEqual({ ok: true, value: status })
+    expect((await c.officeRuntime.install({})).result)
+      .toEqual({ ok: true, value: { install: { phase: 'downloading', progress: 0.5 } } })
+    expect(seen.map(call => call.method)).toEqual(['officeRuntime.status', 'officeRuntime.install'])
+    expect(seen.map(call => call.payload)).toEqual([{}, {}])
+  })
+})
+
+describe('host-only byte channels', () => {
+  it('serves /api/artifacts.raw, forwarding the download flag and the Range header verbatim', async () => {
+    const queries: unknown[] = []
+    const handler = toFetchHandler(scriptedApi({
+      artifacts: {
+        raw: (query) => {
+          queries.push(query)
+          return Promise.resolve(new Response(`raw:${String(queries.length)}`))
+        },
+      },
+    }))
+
+    const ranged = await handler.fetch(new Request(
+      'http://dsh.internal/api/artifacts.raw?session=s1&path=deliverables/clip.mp4&download=1',
+      { headers: { range: 'bytes=0-9' } },
+    ))
+    expect(ranged.status).toBe(200)
+    expect(await ranged.text()).toBe('raw:1')
+
+    const whole = await handler.fetch(new Request(
+      'http://dsh.internal/api/artifacts.raw?session=s1&path=deliverables/clip.mp4',
+    ))
+    expect(await whole.text()).toBe('raw:2')
+
+    // The two optional fields are absent from the impl's query, not present-and-undefined.
+    expect(queries).toEqual([
+      { sessionId: 's1', path: 'deliverables/clip.mp4', download: '1', range: 'bytes=0-9' },
+      { sessionId: 's1', path: 'deliverables/clip.mp4' },
+    ])
+  })
+
+  it('refuses an /api/artifacts.raw request whose session or path query is missing', async () => {
+    const raw = vi.fn(() => Promise.resolve(new Response('never served')))
+    const handler = toFetchHandler(scriptedApi({ artifacts: { raw } }))
+
+    const response = await handler.fetch(new Request('http://dsh.internal/api/artifacts.raw?session=s1'))
+    expect(response.status).toBe(400)
+    expect(await response.text()).toBe('missing or invalid session/path query parameters')
+    expect(raw).not.toHaveBeenCalled()
+  })
+
+  it('serves /api/artifacts.file from its path query and refuses a request without one', async () => {
+    const paths: string[] = []
+    const handler = toFetchHandler(scriptedApi({
+      artifacts: {
+        file: (query) => {
+          paths.push(query.path)
+          return Promise.resolve(new Response('%PDF-preview', { headers: { 'content-type': 'application/pdf' } }))
+        },
+      },
+    }))
+
+    const unaddressed = await handler.fetch(new Request('http://dsh.internal/api/artifacts.file'))
+    expect(unaddressed.status).toBe(400)
+    expect(await unaddressed.text()).toBe('missing or invalid path query parameter')
+
+    const served = await handler.fetch(new Request('http://dsh.internal/api/artifacts.file?path=/cache/previews/a.pdf'))
+    expect(served.status).toBe(200)
+    expect(served.headers.get('content-type')).toBe('application/pdf')
+    expect(await served.text()).toBe('%PDF-preview')
+    expect(paths).toEqual(['/cache/previews/a.pdf'])
+  })
+
+  it('stores a workspace upload and hands the unread POST to the impl as the third argument', async () => {
+    const forwarded: Request[] = []
+    const handler = toFetchHandler(scriptedApi({
+      uploads: {
+        workspaceFile: (query, _signal, request) => {
+          forwarded.push(request)
+          const name = `9-${query.filename}`
+          return Promise.resolve(Response.json({ path: `uploads/${name}`, name, size: 3 }))
+        },
+      },
+    }))
+
+    const stored = await handler.fetch(new Request(
+      'http://dsh.internal/api/workspace.upload?session=s1&filename=clip.mp4',
+      { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: new Uint8Array([1, 2, 3]) },
+    ))
+    expect(stored.status).toBe(200)
+    expect(await stored.json()).toEqual({ path: 'uploads/9-clip.mp4', name: '9-clip.mp4', size: 3 })
+
+    // The route reads only the query and the media type, so the bytes are still
+    // unread when the impl gets the original Request.
+    expect(forwarded).toHaveLength(1)
+    expect(forwarded[0]?.url).toBe('http://dsh.internal/api/workspace.upload?session=s1&filename=clip.mp4')
+    expect(new Uint8Array(await forwarded[0]!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('refuses a workspace upload whose content type is not application/octet-stream', async () => {
+    const workspaceFile = vi.fn(() => Promise.resolve(new Response('never stored')))
+    const handler = toFetchHandler(scriptedApi({ uploads: { workspaceFile } }))
+
+    const wrongType = await handler.fetch(new Request(
+      'http://dsh.internal/api/workspace.upload?session=s1&filename=clip.mp4',
+      { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'plain text' },
+    ))
+    expect(wrongType.status).toBe(415)
+    expect(await wrongType.text()).toBe('content type must be application/octet-stream')
+    expect(workspaceFile).not.toHaveBeenCalled()
+  })
+
+  it('refuses a workspace upload whose session or filename query is missing', async () => {
+    const workspaceFile = vi.fn(() => Promise.resolve(new Response('never stored')))
+    const handler = toFetchHandler(scriptedApi({ uploads: { workspaceFile } }))
+
+    const unaddressed = await handler.fetch(new Request(
+      'http://dsh.internal/api/workspace.upload?filename=clip.mp4',
+      { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: new Uint8Array([1, 2, 3]) },
+    ))
+    expect(unaddressed.status).toBe(400)
+    expect(await unaddressed.text()).toBe('missing or invalid session/filename query parameters')
+    expect(workspaceFile).not.toHaveBeenCalled()
   })
 })

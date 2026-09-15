@@ -139,6 +139,20 @@ describe('web e2e: Cordis tools use their owned cards', () => {
     await expect.poll(() => page.getByText('CORDIS_UI_DONE', { exact: true }).count(), { timeout: 15_000 })
       .toBeGreaterThanOrEqual(1)
 
+    // The three leading calls settle together, so the transcript folds them
+    // into one summary row the way any completed run folds; this scenario has
+    // to open it before the per-tool cards underneath exist in the DOM.
+    // The toggle's accessible name IS the state ("Show"/"Hide"), so the
+    // expansion is asserted by re-querying under the new name rather than by
+    // holding the pre-click locator, which stops matching.
+    const runSummary = page.getByRole('button', { name: 'Show 3 tool calls', exact: true })
+    await runSummary.waitFor({ timeout: 10_000 })
+    await runSummary.click()
+    await expect.poll(
+      () => page.getByRole('button', { name: 'Hide 3 tool calls', exact: true }).count(),
+      { timeout: 10_000 },
+    ).toBe(1)
+
     const inspectRow = page.locator('[data-tool="cordis_inspect_self"]').filter({ hasText: 'Inspect' }).first()
     await inspectRow.waitFor({ timeout: 10_000 })
 
@@ -164,6 +178,13 @@ describe('web e2e: Cordis tools use their owned cards', () => {
     await expect(stopRow.getAttribute('data-state')).resolves.toBe('ok')
     // Stopping withdraws the browser half from every page, probe included.
     await expect.poll(() => page.locator('[data-snapshot-probe]').count(), { timeout: 15_000 }).toBe(0)
+    // Restore the transcript's default shape: this case opened the fold to
+    // reach the cards, and the aria golden below pins the folded view.
+    await page.getByRole('button', { name: 'Hide 3 tool calls', exact: true }).click()
+    await expect.poll(
+      () => page.getByRole('button', { name: 'Show 3 tool calls', exact: true }).count(),
+      { timeout: 10_000 },
+    ).toBe(1)
   })
 
   it.skipIf(MODE === 'record')('matches the conversation aria golden', async () => {

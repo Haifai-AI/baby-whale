@@ -32,6 +32,7 @@ function parseField(name: FieldName, token: string): number[] {
   for (const part of token.split(',')) {
     const stepMatch = /^(.*)\/(\d+)$/.exec(part)
     const step = stepMatch === null ? 1 : Number(stepMatch[2])
+    /* v8 ignore next -- the step pattern's first group always participates, bare for a wildcard. */
     const range = stepMatch === null ? part : (stepMatch[1] ?? '')
     if (!Number.isInteger(step) || step < 1) throw new Error(`cron: invalid step in "${token}"`)
     const expand = (from: number, to: number): void => {
@@ -41,6 +42,7 @@ function parseField(name: FieldName, token: string): number[] {
     if (range === '*') expand(min, max)
     else if (range.includes('-')) {
       const [fromRaw, toRaw] = range.split('-')
+      /* v8 ignore next -- a token that contains "-" always splits into both bounds. */
       if (fromRaw === undefined || toRaw === undefined) throw new Error(`cron: invalid range "${range}"`)
       const from = Number(fromRaw)
       const to = Number(toRaw)
@@ -67,11 +69,13 @@ export function parseCron(expr: string): CronExpr {
   const parts = expr.trim().split(/\s+/)
   if (parts.length !== 5) throw new Error(`cron: expected 5 fields, got ${parts.length}`)
   return {
+    /* v8 ignore start -- the five-field check above proves every field present; the fallbacks answer the index type only. */
     minute: parseField('minute', parts[0] ?? ''),
     hour: parseField('hour', parts[1] ?? ''),
     dom: parseField('dom', parts[2] ?? ''),
     month: parseField('month', parts[3] ?? ''),
     dow: parseField('dow', parts[4] ?? ''),
+    /* v8 ignore stop */
   }
 }
 
@@ -98,9 +102,11 @@ function localParts(timeZone: string, date: Date): LocalParts {
   const parts = formatter.formatToParts(date)
   const get = (type: string): number => {
     const part = parts.find(item => item.type === type)
+    /* v8 ignore next -- Intl emits every part this formatter requests. */
     if (part === undefined) throw new Error(`cron: Intl returned no ${type} part`)
     return Number(part.value)
   }
+  /* v8 ignore next -- the formatter requests the weekday, so its part is defined. */
   const weekday = parts.find(item => item.type === 'weekday')?.value ?? ''
   const weekdayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday)
   return {

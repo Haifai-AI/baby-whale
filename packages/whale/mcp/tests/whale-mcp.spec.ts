@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,7 +11,7 @@ import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import WhaleMcpService, { name as PLUGIN_NAME } from '../src/index.ts'
 import { decideMcpApproval, mcpAskReason, MCP_TOOL_PREFIX } from '../src/approval.ts'
 import { McpSettingsSchema, mountFingerprint, toBridgeConfig } from '../src/config.ts'
-import type { McpServerEntry } from '../src/config.ts'
+import type { McpServerEntry, McpSettings } from '../src/config.ts'
 
 const contexts: Context[] = []
 
@@ -94,6 +94,11 @@ describe('decideMcpApproval', () => {
     expect(decideMcpApproval(execOf('mcp__gone__t'), () => undefined))
       .toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__gone__t"?' })
   })
+
+  it('asks without a server clause when the caller has no ownership source at all', () => {
+    expect(decideMcpApproval(execOf('mcp__orphan__t')))
+      .toEqual({ kind: 'ask', reason: 'run MCP tool "mcp__orphan__t"?' })
+  })
 })
 
 // ---- config unit tests ----
@@ -170,9 +175,13 @@ class MemorySettings extends SettingsProvider {
 /* jscpd:ignore-end */
 
 /** Writes a newline-delimited JSON-RPC MCP fixture server and returns its launch entry. */
-async function writeEchoFixture(options?: { name?: string; tool?: string }): Promise<{ entry: McpServerEntry; dir: string }> {
+async function writeEchoFixture(
+  options?: { name?: string; tool?: string; extraTools?: readonly string[] },
+): Promise<{ entry: McpServerEntry; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'whale-mcp-'))
-  const tool = options?.tool ?? 'echo'
+  const tools = JSON.stringify([options?.tool ?? 'echo', ...(options?.extraTools ?? [])].map(name => ({
+    name, description: 'Echo.', inputSchema: { type: 'object', properties: { message: { type: 'string' } } },
+  })))
   const script = [
     'let buffer = ""',
     'const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\\n")',
@@ -186,7 +195,7 @@ async function writeEchoFixture(options?: { name?: string; tool?: string }): Pro
     '    if (msg.method === "initialize") {',
     '      send({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "echo", version: "1.0.0" } } })',
     '    } else if (msg.method === "tools/list") {',
-    `      send({ jsonrpc: "2.0", id: msg.id, result: { tools: [{ name: ${JSON.stringify(tool)}, description: "Echo.", inputSchema: { type: "object", properties: { message: { type: "string" } } } }] } })`,
+    `      send({ jsonrpc: "2.0", id: msg.id, result: { tools: ${tools} } })`,
     '    } else if (msg.method === "tools/call") {',
     '      send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text: `echo:${msg.params.arguments.message}` }] } })',
     '    }',
@@ -505,83 +514,81 @@ describe('WhaleMcpService', () => {
   }, 30_000)
 
   it('retains a wedged fiber: stuck status, responsive queue, no duplicate mount, recovery only after a real settle', async () => {
-    const { entry, dir } = await writeEchoFixture()
+    const { ctx, manager } = await harness()
+    manager.startupTimeoutMs = 100
+    const seams = manager as unknown as Record<string, unknown>
+    // The wedged-fiber lifecycle needs the fiber-mount seam; on the
+    // pre-fix code it does not exist and this test fails fast.
+    if (typeof seams.mountFiber !== 'function') throw new TypeError('mountFiber seam is missing')
+    seams.startupGraceMs = 50
+    seams.disposeAbandonMs = 50
+    const wedges: WedgeFixture[] = []
+    // Both servers run on stand-in fibers: this test drives the manager's own
+    // startup net and disposal bookkeeping, whose 150ms bound is below a real
+    // child process' spawn-and-initialize time.
+    const healthyFiber = { await: () => Promise.resolve(), dispose: () => Promise.resolve() }
+    seams.mountFiber = (config: { serverName: string }) => {
+      if (config.serverName !== 'wedge') return healthyFiber
+      const wedge = wedgedFiber()
+      wedges.push(wedge)
+      return wedge.fiber
+    }
+    const wedge: McpServerEntry = {
+      id: 'srv-wedge', name: 'wedge', enabled: true, transport: 'stdio',
+      command: 'whatever', args: [], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 10_000,
+    }
+    const entry: McpServerEntry = { ...wedge, id: 'srv-healthy', name: 'healthy' }
+    const mounts = trackMounts()
+    let unhandled = 0
+    const onUnhandled = (): void => { unhandled += 1 }
+    process.on('unhandledRejection', onUnhandled)
     try {
-      const { ctx, manager } = await harness()
-      manager.startupTimeoutMs = 100
-      const seams = manager as unknown as Record<string, unknown>
-      // The wedged-fiber lifecycle needs the fiber-mount seam; on the
-      // pre-fix code it does not exist and this test fails fast.
-      if (typeof seams.mountFiber !== 'function') throw new TypeError('mountFiber seam is missing')
-      seams.startupGraceMs = 50
-      seams.disposeAbandonMs = 50
-      const wedges: WedgeFixture[] = []
-      const proto = WhaleMcpService.prototype as unknown as { mountFiber: (config: unknown) => unknown }
-      const realMountFiber = proto.mountFiber
-      seams.mountFiber = (config: { serverName: string }) => {
-        if (config.serverName !== 'wedge') return realMountFiber.call(manager, config)
-        const wedge = wedgedFiber()
-        wedges.push(wedge)
-        return wedge.fiber
-      }
-      const wedge: McpServerEntry = {
-        id: 'srv-wedge', name: 'wedge', enabled: true, transport: 'stdio',
-        command: 'whatever', args: [], env: {}, cwd: '', url: '', headers: {}, toolCallTimeoutMs: 10_000,
-      }
-      const mounts = trackMounts()
-      let unhandled = 0
-      const onUnhandled = (): void => { unhandled += 1 }
-      process.on('unhandledRejection', onUnhandled)
-      try {
-        // The wedged server mounts FIRST; the healthy one must still mount.
-        await ctx.settings.update(settingsNamespace('mcp'), { servers: [wedge, structuredClone(entry)] })
-        await until(manager, entry.id, 'connected')
-        await until(manager, wedge.id, 'stuck')
-        expect(mounts.countOf('wedge')).toBe(1)
+      // The wedged server mounts FIRST; the healthy one must still mount.
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [wedge, structuredClone(entry)] })
+      await until(manager, entry.id, 'connected')
+      await until(manager, wedge.id, 'stuck')
+      expect(mounts.countOf('wedge')).toBe(1)
 
-        // Status is visible and actionable, and the fiber handle is retained.
-        const row = manager.list().servers.find(candidate => candidate.id === wedge.id)
-        expect(row?.state).toBe('stuck')
-        expect(row?.error).toContain('settle')
-        const cell = cellsOf(manager).get(wedge.id) as { fiber?: unknown } | undefined
-        expect(cell?.fiber).toBe(wedges[0]?.fiber)
+      // Status is visible and actionable, and the fiber handle is retained.
+      const row = manager.list().servers.find(candidate => candidate.id === wedge.id)
+      expect(row?.state).toBe('stuck')
+      expect(row?.error).toContain('settle')
+      const cell = cellsOf(manager).get(wedge.id) as { fiber?: unknown } | undefined
+      expect(cell?.fiber).toBe(wedges[0]?.fiber)
 
-        // Reconciliation of OTHER servers stays responsive, and the wedged
-        // entry is never mounted a second time behind it.
-        await ctx.settings.update(settingsNamespace('mcp'), {
-          servers: [wedge, { ...structuredClone(entry), args: [...entry.args, '-v'] }],
-        })
-        await until(manager, entry.id, 'connected')
-        expect(mounts.countOf('wedge')).toBe(1)
+      // Reconciliation of OTHER servers stays responsive, and the wedged
+      // entry is never mounted a second time behind it.
+      await ctx.settings.update(settingsNamespace('mcp'), {
+        servers: [wedge, { ...structuredClone(entry), args: [...entry.args, '-v'] }],
+      })
+      await until(manager, entry.id, 'connected')
+      expect(mounts.countOf('wedge')).toBe(1)
 
-        // Restart stays bounded and honest: no duplicate mount while the old
-        // fiber still owns its effects.
-        const before = Date.now()
-        const snapshot = await manager.restart({ id: wedge.id })
-        expect(Date.now() - before).toBeLessThan(2_000)
-        expect(snapshot.servers.find(candidate => candidate.id === wedge.id)).toMatchObject({ state: 'stuck' })
-        expect(mounts.countOf('wedge')).toBe(1)
-        expect(wedges).toHaveLength(1)
+      // Restart stays bounded and honest: no duplicate mount while the old
+      // fiber still owns its effects.
+      const before = Date.now()
+      const snapshot = await manager.restart({ id: wedge.id })
+      expect(Date.now() - before).toBeLessThan(2_000)
+      expect(snapshot.servers.find(candidate => candidate.id === wedge.id)).toMatchObject({ state: 'stuck' })
+      expect(mounts.countOf('wedge')).toBe(1)
+      expect(wedges).toHaveLength(1)
 
-        // The wedge eventually settles: the cell demotes to an ordinary
-        // recoverable failure, and only then does a restart mount one fresh
-        // replacement fiber (the abandoned handle is never reused).
-        wedges[0]!.settleAwait()
-        wedges[0]!.settleDispose()
-        await until(manager, wedge.id, 'failed')
-        expect(wedges).toHaveLength(1)
-        await manager.restart({ id: wedge.id })
-        await until(manager, wedge.id, 'stuck')
-        expect(mounts.countOf('wedge')).toBe(2)
-        expect(wedges).toHaveLength(2)
-        expect((cellsOf(manager).get(wedge.id) as { fiber?: unknown } | undefined)?.fiber).toBe(wedges[1]?.fiber)
-        expect(unhandled).toBe(0)
-      } finally {
-        process.off('unhandledRejection', onUnhandled)
-        mounts.restore()
-      }
+      // The wedge eventually settles: the cell demotes to an ordinary
+      // recoverable failure, and only then does a restart mount one fresh
+      // replacement fiber (the abandoned handle is never reused).
+      wedges[0]!.settleAwait()
+      wedges[0]!.settleDispose()
+      await until(manager, wedge.id, 'failed')
+      expect(wedges).toHaveLength(1)
+      await manager.restart({ id: wedge.id })
+      await until(manager, wedge.id, 'stuck')
+      expect(mounts.countOf('wedge')).toBe(2)
+      expect(wedges).toHaveLength(2)
+      expect((cellsOf(manager).get(wedge.id) as { fiber?: unknown } | undefined)?.fiber).toBe(wedges[1]?.fiber)
+      expect(unhandled).toBe(0)
     } finally {
-      await rm(dir, { recursive: true, force: true })
+      process.off('unhandledRejection', onUnhandled)
+      mounts.restore()
     }
   }, 30_000)
 
@@ -781,6 +788,272 @@ describe('WhaleMcpService', () => {
     const manager = ctx.get('mcpStatus') as WhaleMcpService
     expect(manager.list()).toEqual({ servers: [] })
   })
+})
+
+// ---- lifecycle edges: failure containment, disposal outcomes, cleanup ownership ----
+
+/** The manager's stranded-fiber set — cells are internal, tests observe them through this narrow cast. */
+function strandedOf(manager: WhaleMcpService): Set<unknown> {
+  return (manager as unknown as { stranded: Set<unknown> }).stranded
+}
+
+describe('WhaleMcpService lifecycle edges', () => {
+  it('restarting an unknown id leaves the mount set untouched and still answers with a snapshot', async () => {
+    const { manager } = await harness()
+    expect(await manager.restart({ id: 'never-configured' })).toEqual({ servers: [] })
+  })
+
+  it('describes a streamable-http server by its endpoint and records the refused connection', async () => {
+    const { ctx, manager } = await harness()
+    manager.startupTimeoutMs = 2_000
+    const remote: McpServerEntry = {
+      id: 'srv-remote', name: 'remote', enabled: true, transport: 'streamable-http',
+      command: '', args: [], env: {}, cwd: '', url: 'http://127.0.0.1:9/mcp', headers: {}, toolCallTimeoutMs: 1_000,
+    }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [remote] })
+    await until(manager, remote.id, 'failed')
+    const row = manager.list().servers[0]
+    expect(row).toMatchObject({ transport: 'streamable-http', target: 'http://127.0.0.1:9/mcp', state: 'failed' })
+    expect(row?.error).toBeTruthy()
+  }, 30_000)
+
+  it('records a failure verbatim when no fiber can be created at all, and drops the record on removal', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    seams.mountFiber = (config: { serverName: string }) => {
+      if (config.serverName === 'raw') throw 'plain refusal'
+      throw new Error('bridge config refused')
+    }
+    const broken: McpServerEntry = { ...stdioEntry, id: 'srv-broken', name: 'broken' }
+    const raw: McpServerEntry = { ...stdioEntry, id: 'srv-raw', name: 'raw' }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [broken, raw] })
+    await until(manager, broken.id, 'failed')
+    await until(manager, raw.id, 'failed')
+    const rows = new Map(manager.list().servers.map(row => [row.id, row]))
+    expect(rows.get(broken.id)?.error).toBe('bridge config refused')
+    expect(rows.get(raw.id)?.error).toBe('plain refusal')
+
+    // Without a fiber there is nothing to dispose, so removal is immediate.
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [] })
+    await untilCells(manager, cells => cells.size === 0)
+    expect(manager.list().servers).toEqual([])
+  })
+
+  it('keeps a non-Error startup rejection as the recorded reason', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    seams.mountFiber = () => ({
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is the case under test
+      await: () => Promise.reject('stdio child refused to spawn'),
+      dispose: () => Promise.resolve(),
+    })
+    const entry: McpServerEntry = { ...stdioEntry, id: 'srv-rawfail', name: 'rawfail' }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [entry] })
+    await until(manager, entry.id, 'failed')
+    expect(manager.list().servers[0]?.error).toBe('stdio child refused to spawn')
+  })
+
+  it('reports an abandoned mount when the net ticks in the turn where the startup settles, never a false connected', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    manager.startupTimeoutMs = 1_000
+    seams.startupGraceMs = 500
+    // The fiber settles at the 100ms mark and the net ticks in the promise
+    // turn right after that settlement is observed — so the race resolves
+    // with the startup while the abandonment flag is already set. The mount
+    // was declared abandoned and must report that, not `connected`.
+    seams.mountFiber = () => ({
+      await: () => new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(true)
+          queueMicrotask(() => { vi.advanceTimersByTime(1_500) })
+        }, 100)
+      }),
+      dispose: () => Promise.resolve(),
+    })
+    const entry: McpServerEntry = { ...stdioEntry, id: 'srv-late', name: 'late' }
+    vi.useFakeTimers()
+    try {
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [entry] })
+      await vi.advanceTimersByTimeAsync(0)
+      vi.advanceTimersByTime(100)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(manager.list().servers[0]).toMatchObject({ state: 'failed' })
+      expect(manager.list().servers[0]?.error).toContain('did not settle within 1500ms')
+      expect((cellsOf(manager).get(entry.id) as { fiber?: unknown } | undefined)?.fiber).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('contains a disposal that throws synchronously or rejects, so the row still leaves cleanly', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    const warnings = vi.spyOn(ctx.logger, 'warn')
+    seams.mountFiber = (config: { serverName: string }) => ({
+      await: () => Promise.resolve(),
+      dispose: () => {
+        if (config.serverName === 'throwing') throw new Error('dispose exploded')
+        return Promise.reject(new Error('dispose rejected'))
+      },
+    })
+    const throwing: McpServerEntry = { ...stdioEntry, id: 'srv-throwing', name: 'throwing' }
+    const rejecting: McpServerEntry = { ...stdioEntry, id: 'srv-rejecting', name: 'rejecting' }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [throwing, rejecting] })
+    await until(manager, throwing.id, 'connected')
+    await until(manager, rejecting.id, 'connected')
+
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [] })
+    await untilCells(manager, cells => cells.size === 0)
+    expect(strandedOf(manager).size).toBe(0)
+    expect(warnings).toHaveBeenCalledWith(
+      'whale-mcp: disposing server %s failed synchronously: %o', throwing.id, expect.any(Error))
+    expect(warnings).toHaveBeenCalledWith(
+      'whale-mcp: disposing server %s failed: %o', rejecting.id, expect.any(Error))
+  })
+
+  it('strands a removed wedged mount for background cleanup and releases it when the disposal settles', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    manager.startupTimeoutMs = 20
+    seams.startupGraceMs = 10
+    seams.disposeAbandonMs = 30
+    const wedges: WedgeFixture[] = []
+    seams.mountFiber = () => {
+      const wedge = wedgedFiber()
+      wedges.push(wedge)
+      return wedge.fiber
+    }
+    const errors = vi.spyOn(ctx.logger, 'error')
+    const infos = vi.spyOn(ctx.logger, 'info')
+    const first: McpServerEntry = { ...stdioEntry, id: 'srv-first', name: 'first' }
+    const second: McpServerEntry = { ...stdioEntry, id: 'srv-second', name: 'second' }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [first, second] })
+    await until(manager, first.id, 'stuck')
+    await until(manager, second.id, 'stuck')
+
+    // Removing the rows cannot drop the wedged fibers on the floor: both move
+    // to the manager's background cleanup set with their handles retained.
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [] })
+    await untilCells(manager, cells => cells.size === 0)
+    expect(strandedOf(manager).size).toBe(2)
+    expect(manager.list().servers).toEqual([])
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('stranded until it settles'), first.id)
+
+    // Settling the SECOND wedged mount walks past the first server's record.
+    wedges[1]!.settleAwait()
+    wedges[1]!.settleDispose()
+    await untilCount(() => strandedOf(manager).size === 1, 'the second stranded mount to be released')
+    expect(infos).toHaveBeenCalledWith('whale-mcp: stranded mount for server %s settled', second.id)
+
+    wedges[0]!.settleAwait()
+    wedges[0]!.settleDispose()
+    await untilCount(() => strandedOf(manager).size === 0, 'the first stranded mount to be released')
+  })
+
+  it('restarting a stuck server whose cleanup settles during the wait demotes it and remounts fresh', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    manager.startupTimeoutMs = 20
+    seams.startupGraceMs = 10
+    seams.disposeAbandonMs = 200
+    const wedges: WedgeFixture[] = []
+    seams.mountFiber = () => {
+      const wedge = wedgedFiber()
+      wedges.push(wedge)
+      return wedge.fiber
+    }
+    const entry: McpServerEntry = { ...stdioEntry, id: 'srv-demote', name: 'demote' }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [entry] })
+    await until(manager, entry.id, 'stuck')
+    const cell = cellsOf(manager).get(entry.id) as { state?: string; error?: string } | undefined
+
+    // The cleanup settles while the restart is waiting on it: the restart
+    // takes the now-ordinary teardown path and mounts a replacement fiber.
+    const restarted = manager.restart({ id: entry.id })
+    await new Promise(resolve => setTimeout(resolve, 40))
+    wedges[0]!.settleAwait()
+    wedges[0]!.settleDispose()
+    await restarted
+    expect(cell?.state).toBe('failed')
+    expect(cell?.error).toBe('previous mount cleanup eventually settled — restarting')
+    expect(wedges).toHaveLength(2)
+    expect(manager.list().servers[0]).toMatchObject({ state: 'stuck' })
+  })
+
+  it('groups every tool of one server into its row, not only the first', async () => {
+    const { entry, dir } = await writeEchoFixture({ extraTools: ['echo_two'] })
+    try {
+      const { ctx, manager } = await harness()
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
+      await until(manager, entry.id, 'connected')
+      const row = manager.list().servers[0]
+      expect([...(row?.toolNames ?? [])].sort()).toEqual(['mcp__whale__echo', 'mcp__whale__echo_two'])
+      expect([...(row?.localToolNames ?? [])].sort()).toEqual(['echo', 'echo_two'])
+      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__whale__echo_two')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('keeps a disabled server visible as stuck while its cleanup is unsettled instead of stranding it', async () => {
+    const { ctx, manager } = await harness()
+    const seams = manager as unknown as Record<string, unknown>
+    manager.startupTimeoutMs = 20
+    seams.startupGraceMs = 10
+    seams.disposeAbandonMs = 20
+    const wedges: WedgeFixture[] = []
+    seams.mountFiber = () => {
+      const wedge = wedgedFiber()
+      wedges.push(wedge)
+      return wedge.fiber
+    }
+    const entry: McpServerEntry = { ...stdioEntry, id: 'srv-kept', name: 'kept' }
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [entry] })
+    await until(manager, entry.id, 'stuck')
+
+    await ctx.settings.update(settingsNamespace('mcp'), { servers: [{ ...entry, enabled: false }] })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    // A configured (here: disabled) row keeps the wedged mount visible with
+    // its handle; only a REMOVED row moves to the background cleanup set.
+    expect(manager.list().servers[0]).toMatchObject({ enabled: false, state: 'stuck' })
+    expect(cellsOf(manager).has(entry.id)).toBe(true)
+    expect(strandedOf(manager).size).toBe(0)
+
+    // Once the cleanup settles, the retained cell demotes to a retryable
+    // failure instead of vanishing with the disabled row.
+    wedges[0]!.settleAwait()
+    wedges[0]!.settleDispose()
+    await until(manager, entry.id, 'failed')
+  })
+
+  it('contains a reconcile pass that throws and keeps serving the passes after it', async () => {
+    const { entry, dir } = await writeEchoFixture()
+    try {
+      const { ctx, manager } = await harness()
+      const errors = vi.spyOn(ctx.logger, 'error')
+      const scope = (manager as unknown as { settings: { get(): McpSettings } }).settings
+      let failNext = true
+      // A settings read that fails must not kill the serialized reconcile
+      // queue: the pass is logged and the next edit still mounts.
+      ;(manager as unknown as { settings: unknown }).settings = {
+        get: () => {
+          if (!failNext) return scope.get()
+          failNext = false
+          throw new Error('mcp section unreadable')
+        },
+      }
+      await ctx.settings.update(settingsNamespace('mcp'), { servers: [structuredClone(entry)] })
+      await ctx.settings.update(settingsNamespace('mcp'), {
+        servers: [{ ...structuredClone(entry), args: [...entry.args, '-v'] }],
+      })
+      await until(manager, entry.id, 'connected')
+      expect(errors).toHaveBeenCalledWith('whale-mcp: reconcile failed: %o', expect.any(Error))
+      expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__whale__echo')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('McpSettingsSchema', () => {

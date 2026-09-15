@@ -93,7 +93,11 @@ export function WorkbookPreview({ data, t }: {
         {tab === 'original' && hasOriginal && (
           <iframe
             title={data.file_name}
-            src={withApiTokenQuery(`/api/artifacts.file?path=${encodeURIComponent(data.pdfPath ?? '')}`)}
+            src={
+              /* v8 ignore start -- hasOriginal proved pdfPath is a non-empty string, so the empty fallback is a type-narrowing no-op */
+              withApiTokenQuery(`/api/artifacts.file?path=${encodeURIComponent(data.pdfPath ?? '')}`)
+              /* v8 ignore stop */
+            }
             className={css.pdfFrame}
           />
         )}

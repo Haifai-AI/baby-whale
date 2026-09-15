@@ -8,7 +8,10 @@
           baseURL: !!js process.env.DSH_SNAPSHOT_BASE_URL
           thinking: enabled
           reasoningEffort: low
-          streamIdleTimeoutMs: 150
+          # Above the runner's scheduling jitter; the scenario's mock holds
+          # the stream with comment lines for 1200ms, so this window is what
+          # the comments must outlast.
+          streamIdleTimeoutMs: 1000
       - id: agent-spine
         config:
           agents:

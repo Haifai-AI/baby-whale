@@ -10,7 +10,11 @@ import type { McpServerEntryView } from './McpSettingsTab.tsx'
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
 
-/** New id for a server entry; falls back off the secure-context UUID. */
+/**
+ * New id for a server entry; falls back off the secure-context UUID.
+ * @returns A v4 UUID where `crypto.randomUUID` exists, otherwise a
+ * timestamp-and-random id unique within this tab's unsaved entries.
+ */
 export function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()

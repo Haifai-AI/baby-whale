@@ -38,6 +38,15 @@ describe('containedPath', () => {
     expect(containedPath(root, join(tmpdir(), 'dsh-wsjail-elsewhere'))).toBe(false)
   })
 
+  it('falls back to the lexical root when the root does not exist', async () => {
+    // The workspace may be removed while a request is in flight. The lexical
+    // form is then the only evidence available, and it still decides the same
+    // way for an inside path and for an outsider.
+    const vanished = join(base, 'gone-workspace')
+    expect(containedPath(vanished, join(vanished, 'deliverables', 'a.mp4'))).toBe(true)
+    expect(containedPath(vanished, join(base, 'elsewhere'))).toBe(false)
+  })
+
   it('contains every path when the root real path already ends in a separator', () => {
     // A POSIX root realpaths to `/`, which is already separator-terminated and
     // must not gain a second one; a Windows root ends in a backslash instead.

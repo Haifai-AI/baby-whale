@@ -85,7 +85,11 @@ export class WhaleTaskStore extends Service {
     return this.table
   }
 
-  /** All tasks of one workspace, next-run-first. */
+  /**
+   * All tasks of one workspace, next-run-first.
+   * @param workspaceCwd - workspace to scope to; omitted reads every workspace's tasks.
+   * @returns records ordered by ascending `nextRunAt` (a manual task's empty instant sorts first).
+   */
   list(workspaceCwd?: string): WhaleTaskRecord[] {
     const records = [...this.requireTable().entries()].map(([, record]) => record)
     const scoped = workspaceCwd === undefined
@@ -94,17 +98,35 @@ export class WhaleTaskStore extends Service {
     return scoped.sort((left, right) => left.nextRunAt.localeCompare(right.nextRunAt))
   }
 
-  /** One task by id. */
+  /**
+   * One task by id.
+   * @param id - the task's uuid.
+   * @returns the record, or undefined when no task carries that id.
+   */
   get(id: string): WhaleTaskRecord | undefined {
     return this.requireTable().get(id)
   }
 
-  /** Wire views of one workspace, for tools and the board. */
+  /**
+   * Wire views of one workspace, for tools and the board.
+   * @param workspaceCwd - workspace to scope to.
+   * @returns views in the same next-run-first order as {@link WhaleTaskStore.list}.
+   */
   viewsOf(workspaceCwd: string): WhaleTaskView[] {
     return this.list(workspaceCwd).map(taskView)
   }
 
-  /** Create a task, validating its schedule and computing the first arrival. */
+  /**
+   * Create a task, validating its schedule and computing the first arrival.
+   * The owning session's board republishes only after the record is durable,
+   * and only when that session is live.
+   * @param input - name, prompt, schedule, owning session and workspace, and an
+   * optional IANA `tz` (the machine's zone when omitted).
+   * @returns the stored record with its generated id.
+   * @throws Error when a cron expression is invalid or has no occurrence within
+   * the next year, when a one-shot instant is unparsable, or when a scheduled
+   * task's explicit `tz` is unknown.
+   */
   async create(input: WhaleTaskInput): Promise<WhaleTaskRecord> {
     this.validateSchedule(input.schedule, input.tz)
     const tz = input.tz ?? defaultTimeZone()
@@ -127,7 +149,12 @@ export class WhaleTaskStore extends Service {
     return record
   }
 
-  /** Set status (`pause`/`resume`/`done`), recomputing the next run on resume. */
+  /**
+   * Set status (`pause`/`resume`/`done`), recomputing the next run on resume.
+   * @param id - the task's uuid.
+   * @param status - target status; `active` recomputes `nextRunAt` from the current time, other transitions leave it untouched.
+   * @returns the updated record, the unchanged record when the status already matched, or undefined when no task carries that id.
+   */
   async setStatus(id: string, status: 'active' | 'paused' | 'done'): Promise<WhaleTaskRecord | undefined> {
     const record = this.requireTable().get(id)
     if (record === undefined) return undefined
@@ -146,7 +173,11 @@ export class WhaleTaskStore extends Service {
     return updated
   }
 
-  /** Remove a task. */
+  /**
+   * Remove a task.
+   * @param id - the task's uuid.
+   * @returns true when a record was deleted, false when the id was already unknown.
+   */
   async remove(id: string): Promise<boolean> {
     const record = this.requireTable().get(id)
     if (record === undefined) return false
@@ -155,7 +186,12 @@ export class WhaleTaskStore extends Service {
     return true
   }
 
-  /** Tasks due at `now` (scheduled, active, non-manual, nextRunAt reached). */
+  /**
+   * Tasks due at `now` (scheduled, active, non-manual, nextRunAt reached).
+   * @param now - the instant to compare against; a task stays due until
+   * {@link WhaleTaskStore.markDue} advances it, so a late tick still sees it.
+   * @returns due records from every workspace, earliest next run first.
+   */
   dueTasks(now: Date): WhaleTaskRecord[] {
     return this.list().filter(record =>
       record.status === 'active'
@@ -166,6 +202,10 @@ export class WhaleTaskStore extends Service {
   /**
    * Record a delivery: one-shot tasks move to `done`, cron tasks advance to
    * the next arrival, and the board snapshot republishes to the owning session.
+   * @param id - the task's uuid.
+   * @param now - delivery instant, stored as `lastRunAt` and used as the exclusive lower bound for the next cron arrival.
+   * @returns the updated record, or undefined when no task carries that id; a
+   * cron task with no arrival within the next year is closed as `done`.
    */
   async markDue(id: string, now: Date): Promise<WhaleTaskRecord | undefined> {
     const record = this.requireTable().get(id)

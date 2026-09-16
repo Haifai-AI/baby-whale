@@ -4,40 +4,25 @@
 https://github.com/user-attachments/assets/87803b2a-8f83-47b3-afa1-b43b5d46fad5
 
 
-**Baby Whale** is a local-first knowledge-work coworker. Give it a task in
-the chat; it writes the code that builds the finished file — Excel
-workbooks with live formulas, PowerPoint decks, Word documents, PDFs —
-previews them pixel-perfect in the app, and hands them back as
-deliverable cards. Your files, sessions, and workspace never leave your
-machine; only the model API call does.
+**Baby Whale** is a local-first knowledge-work coworker. Give it a task in the chat; it writes the code that builds the finished file — Excel workbooks with live formulas, PowerPoint decks, Word documents, PDFs — previews them pixel-perfect in the app, and hands them back as deliverable cards. Your files, sessions, and workspace never leave your machine; only the model API call does.
 
 ```sh
 npm install -g @haifai/bwhale
 bwhale
 ```
 
-The first run fetches the runtime once (~400 MB) into `~/.bwhale`, checks
-your platform's prerequisites, and opens `http://127.0.0.1:24680`. Later
-runs start instantly and update themselves.
+The first run fetches the runtime once (~400 MB) into `~/.bwhale`, checks your platform's prerequisites, and opens `http://127.0.0.1:24680`. Later runs start instantly and update themselves.
 
 ## What it does
 
-- **Office deliverables** — `xlsx_create` (live formulas, number formats,
-  data bars, native charts, themed banners), `pptx_create` (KPI stat
-  slides, two-column layouts, native charts, speaker notes), `docx_create`
-  (cover pages, callouts, banded tables), PDF generation. Each deck gets a
-  fresh design — palettes and typography are chosen per task, never reused.
-- **Reads what you drop in** — any .xlsx/.csv/.docx lands in the session
-  workspace and `xlsx_read` / `csv_read` / `docx_text` analyze it.
-- **Pixel-perfect previews** — an in-app studio renders workbooks as
-  spreadsheets, decks as slide galleries, documents as pages. A one-time
-  LibreOffice runtime (offered inside the app) makes them exact.
-- **Knowledge-work skills** — a set of skills ships with the Coworker
-  preset; manage them in Settings → Skills. Everything is a plugin —
-  disable the plugin and the section disappears with it.
-- **Scheduled tasks** — recurring tasks with a live board; missed runs are
-  surfaced honestly instead of silently dropped.
+- **Office deliverables** — `xlsx_create` (live formulas, number formats, data bars, native charts, themed banners), `pptx_create` (KPI stat slides, two-column layouts, native charts, speaker notes), `docx_create` (cover pages, callouts, banded tables), PDF generation. Each deck gets a fresh design — palettes and typography are chosen per task, never reused.
+- **Reads what you drop in** — any .xlsx/.csv/.docx lands in the session workspace and `xlsx_read` / `csv_read` / `docx_text` analyze it.
+- **Pixel-perfect previews** — an in-app studio renders workbooks as spreadsheets, decks as slide galleries, documents as pages. A one-time LibreOffice runtime (offered inside the app) makes them exact.
+- **Knowledge-work skills** — a set of skills ships with the Coworker preset; manage them in Settings → Skills. Everything is a plugin — disable the plugin and the section disappears with it.
+- **Scheduled tasks** — recurring tasks with a live board; missed runs are surfaced honestly instead of silently dropped.
 - **Standard mode** — a lighter chat-only preset without the office tools.
+
+<a id="run"></a>
 
 ## Commands
 
@@ -62,22 +47,17 @@ refs:
   DEEPSEEK_API_KEY: sk-your-key-here
 ```
 
-Restart `bwhale`. Everything else — files, sessions, deliverables — stays
-on this machine.
+Restart `bwhale`. Everything else — files, sessions, deliverables — stays on this machine.
 
 ## Privacy
 
-Zero cloud anything: sessions, workspaces, and produced files live in your
-home directory. The only network traffic is the LLM provider call you
-configure, and the one-time runtime downloads you approve.
+Zero cloud anything: sessions, workspaces, and produced files live in your home directory. The only network traffic is the LLM provider call you configure, and the one-time runtime downloads you approve.
 
 ## Heritage
 
-Baby Whale's engine is a fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-(MIT), the open-source agent harness where everything is a plugin, built
-on [Cordis](https://github.com/cordiverse/cordis). The whale coworker
-experience — office skills, deliverables, previews, the `bwhale` launcher —
-is built by [Haifai-AI](https://github.com/Haifai-AI) on that foundation.
+Baby Whale's engine is a fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT), the open-source agent harness where everything is a plugin, built on [Cordis](https://github.com/cordiverse/cordis). The whale coworker experience — office skills, deliverables, previews, the `bwhale` launcher — is built by [Haifai-AI](https://github.com/Haifai-AI) on that foundation.
+
+<a id="run-from-source"></a>
 
 ## Development
 
@@ -87,16 +67,10 @@ pnpm run build
 pnpm dsh web
 ```
 
-Start with the [development guide](docs/development.md) and
-[architecture documentation](docs/architecture.md). For agents, follow
-[AGENTS.md](AGENTS.md). Release engineering lives in
-[scripts/make-bundle.sh](scripts/make-bundle.sh) (macOS/Linux),
-[scripts/make-bundle.ps1](scripts/make-bundle.ps1) (Windows), and
-[.github/workflows/bundle.yml](.github/workflows/bundle.yml).
+Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md). For agents, follow [AGENTS.md](AGENTS.md). Release engineering lives in [scripts/make-bundle.sh](scripts/make-bundle.sh) (macOS/Linux), [scripts/make-bundle.ps1](scripts/make-bundle.ps1) (Windows), and [.github/workflows/bundle.yml](.github/workflows/bundle.yml).
 
 ## License
 
 [MIT](LICENSE)
 
-Third-party dependencies and their licenses are disclosed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

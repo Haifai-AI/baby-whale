@@ -885,6 +885,50 @@ describe('dsh-tool-skill', () => {
     expect(unknownBlock.text).toContain('skill "missing" is unknown or no longer available')
   })
 
+  it('refuses a skill the user disabled in Whale settings', async () => {
+    // The settings gate is the user's own switch, distinct from a skill's
+    // declared model policy: a skill the model MAY invoke is still refused
+    // once the user turns it off.
+    const home = await tempDir('tool-user-disabled')
+    await writeSkill(join(home, '.dsh/skills'), 'toggleable', 'Toggleable', 'Toggleable instructions.')
+    const ctx = await setup(home)
+    ctx.provide('settings', {
+      get: () => ({ disabled: ['toggleable', 7, null] }),
+    })
+
+    const refused = await ctx.tools.execute({
+      signal: testToolSignal, callId: CallId('c1'), name: 'skill', arguments: { name: 'toggleable' },
+    })
+
+    expect(refused.isError).toBe(true)
+    const block = refused.content[0]
+    if (block?.type !== 'text') throw new Error('expected text tool result')
+    expect(block.text).toContain('disabled by the user in Whale settings')
+  })
+
+  it('treats an absent, valueless, or malformed settings gate as nothing disabled', async () => {
+    // Three shapes the lookup must survive without refusing anything: no
+    // settings service at all, a namespace the host never wrote, and a
+    // `disabled` that is not a list.
+    const home = await tempDir('tool-settings-shapes')
+    await writeSkill(join(home, '.dsh/skills'), 'plain', 'Plain', 'Plain instructions.')
+
+    const absent = await setup(home)
+    const absentResult = await absent.tools.execute({
+      signal: testToolSignal, callId: CallId('c1'), name: 'skill', arguments: { name: 'plain' },
+    })
+    expect(absentResult.isError).toBe(false)
+
+    for (const stored of [undefined, { disabled: 'everything' }]) {
+      const ctx = await setup(home)
+      ctx.provide('settings', { get: () => stored })
+      const result = await ctx.tools.execute({
+        signal: testToolSignal, callId: CallId('c2'), name: 'skill', arguments: { name: 'plain' },
+      })
+      expect(result.isError, `stored=${JSON.stringify(stored)}`).toBe(false)
+    }
+  })
+
   it('checks model policy before provider loading and rechecks the loaded definition', async () => {
     const home = await tempDir('tool-policy-before-load')
     const ctx = await setup(home)
@@ -994,6 +1038,19 @@ describe('user-explicit invocation injection', () => {
     expect(block.text).toContain('<skill_content name="hidden-demo">')
     expect(block.text).toContain('Say the magic word: PINEAPPLE.')
     expect(block.text).not.toContain('what does this do')
+  })
+
+  it('leaves a user-disabled skill out of the injected catalog', async () => {
+    // The settings switch governs the automatic path too: a claimed `/<name>`
+    // gesture must not inject a skill the user turned off, even though the
+    // skill itself is user-invocable.
+    const { ctx, agent } = await invokeHarness()
+    ctx.provide('settings', { get: () => ({ disabled: ['hidden-demo'] }) })
+    const decision = await proposeStep(ctx, agent, [gesture('/hidden-demo')])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    const kinds = decision.messages.map(message => (message.source as { kind: string }).kind)
+    expect(kinds).not.toContain('skill-invocation')
+    expect(JSON.stringify(decision.messages)).not.toContain('PINEAPPLE')
   })
 
   it('injects an ordinary skill the same way (one uniform user-explicit path)', async () => {

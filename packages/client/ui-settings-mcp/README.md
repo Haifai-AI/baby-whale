@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The **MCP servers** tab in Web Settings → Plugins: the management surface over the [`whale-mcp`](../../../whale/mcp/README.md) host plugin. Users add, edit, enable, import, restart, and remove MCP servers; the tab shows each server's live connection state and the tools it currently offers the model.
+The **MCP servers** tab in Web Settings → Plugins: the management surface over the [`whale-mcp`](../../whale/mcp/README.md) host plugin. Users add, edit, enable, import, restart, and remove MCP servers; the tab shows each server's live connection state and the tools it currently offers the model.
 
 ## What appears here
 

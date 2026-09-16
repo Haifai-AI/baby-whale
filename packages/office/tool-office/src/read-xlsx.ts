@@ -290,7 +290,11 @@ function coerceCsvCell(token: string): ReadCell {
   return token
 }
 
-/** Spreadsheet-style column letter for a zero-based index. */
+/**
+ * Spreadsheet-style column letter for a zero-based index.
+ * @param index - zero-based column index, never negative (the A1 alphabet starts at 'A' = 0).
+ * @returns the A1-style letters ('A' … 'Z', 'AA' …).
+ */
 export function columnLetter(index: number): string {
   let value = Math.floor(index)
   let letters = ''

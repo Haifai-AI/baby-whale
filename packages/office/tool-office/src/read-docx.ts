@@ -117,6 +117,13 @@ function extractRuns(block: string): RunFragment[] {
   return fragments
 }
 
+/**
+ * Decode the XML entities that appear in Word run text: `&lt;`, `&gt;`,
+ * `&quot;`, `&apos;`, and decimal character references. `&amp;` is replaced
+ * last, so text escaping an entity (`&amp;lt;`) survives undecoded.
+ * @param value - raw run text taken from document.xml.
+ * @returns the decoded text.
+ */
 export function decodeEntities(value: string): string {
   return value
     .replace(/&lt;/g, '<')

@@ -320,6 +320,22 @@ describe('apply (plugin lifecycle)', () => {
     expect(mockClose).toHaveBeenCalled()
   })
 
+  it('names a non-Error startup failure by its string form', async () => {
+    // A transport SDK may reject with something that is not an Error, so the
+    // diagnostic cannot assume a `message`; it must still say what happened
+    // rather than printing `undefined`.
+    mockConnect.mockRejectedValue('stdio child refused to spawn')
+    const warn = vi.fn()
+    const scoped = ctx.extend({ logger: { warn } })
+
+    await expect(apply(scoped, { ...stdioConfig, startupTimeoutMs: 80 })).resolves.toBeUndefined()
+
+    const rendered = warn.mock.calls.map(call => call.map(String).join(' ')).join('\n')
+    expect(rendered).toContain('stdio child refused to spawn')
+    await ctx.fiber.dispose()
+    await sleep(50)
+  })
+
   it('rejects strict startup when the initial tool generation cannot be registered', async () => {
     ctx.tools.register({
       name: 'mcp__srv__remote',

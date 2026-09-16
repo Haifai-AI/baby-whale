@@ -55,6 +55,10 @@ export const FORCE_DOWNLOAD_EXTENSIONS: ReadonlySet<string> = new Set(['.svg'])
  * other units, malformed) yields undefined and the caller serves the
  * whole file. `bytes=a-` means through EOF; `bytes=-n` is a suffix range
  * (start undefined — the caller resolves it against the file size).
+ * @param header - raw `Range` header value; absent or unparsable values yield undefined.
+ * @returns byte offsets clamped to safe integers — a suffix range omits `start`,
+ * an open-ended one ends at MAX_SAFE_INTEGER — or undefined when the header is
+ * absent or not a single `bytes` range.
  */
 export function parseByteRange(header: string | undefined): { start?: number | undefined; end: number } | undefined {
   if (header === undefined) return undefined

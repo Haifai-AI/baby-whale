@@ -821,6 +821,63 @@ describe('FileSystemSkillProvider', () => {
     await expect(ctx.plugin(SkillFileSystem, { watchStabilityThresholdMs: 0 })).rejects.toThrow('watchStabilityThresholdMs')
   })
 
+  it('discovers harness skills from an explicit root and ranks them below bundled ones', async () => {
+    // The harness root is the skills this repository ships for its own agent
+    // (`.agents/skills`). It is a separate root from the app's bundled set, and
+    // its rank decides which copy wins a name collision.
+    const home = await tempDir('skill-harness-root')
+    const harness = join(home, 'harness-skills')
+    const bundled = join(home, 'bundled-skills')
+    await writeSkill(harness, 'harness-only', 'Harness only')
+    await writeSkill(bundled, 'bundled-only', 'Bundled only')
+    await writeSkill(harness, 'collision', 'From harness')
+    await writeSkill(bundled, 'collision', 'From bundled')
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    // Explicit home roots too: the default agent root is this repository's own
+    // `.agents/skills`, whose contents are not this fixture's business.
+    await ctx.plugin(SkillFileSystem, {
+      dshHome: join(home, '.dsh'),
+      agentsHome: join(home, '.agents'),
+      harnessSkillDir: harness,
+      bundledSkillDir: bundled,
+      watch: false,
+    })
+
+    const skills = await ctx.skills.list()
+    expect(skills.map(skill => skill.name).sort()).toEqual(['bundled-only', 'collision', 'harness-only'])
+    expect(skills.find(skill => skill.name === 'harness-only')?.source).toBe('harness')
+    expect(skills.find(skill => skill.name === 'bundled-only')?.source).toBe('bundled')
+    // Bundled outranks harness, so the app's copy wins a name collision. The
+    // summary carries the description, which is what distinguishes the two
+    // copies here.
+    expect(skills.find(skill => skill.name === 'collision')?.description).toBe('From bundled')
+    await ctx.fiber.dispose()
+  })
+
+  it('treats an empty harness root as absent rather than as the working directory', async () => {
+    // An empty string is how a cleared config reaches here, and resolving it
+    // would silently claim the process's own directory as a skill root.
+    const previous = process.env.DSH_HARNESS_SKILL_DIR
+    try {
+      process.env.DSH_HARNESS_SKILL_DIR = ''
+      const home = await tempDir('skill-harness-empty')
+      await writeSkill(join(home, '.dsh/skills'), 'plain-skill', 'Plain')
+      const ctx = new Context()
+      await ctx.plugin(SkillRegistry)
+      await ctx.plugin(SkillFileSystem, {
+        dshHome: join(home, '.dsh'),
+        agentsHome: join(home, '.agents'),
+        watch: false,
+      })
+      expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['plain-skill'])
+      await ctx.fiber.dispose()
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HARNESS_SKILL_DIR
+      else process.env.DSH_HARNESS_SKILL_DIR = previous
+    }
+  })
+
   it('uses default home root resolution without exposing builtin skills', async () => {
     const previousDshHome = process.env.DSH_HOME
     const previousAgentsHome = process.env.DSH_AGENTS_HOME

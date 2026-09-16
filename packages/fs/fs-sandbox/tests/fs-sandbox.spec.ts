@@ -97,6 +97,20 @@ describe('workspace-write containment', () => {
     expect(await readFile(path, 'utf8')).toBe('inside')
   })
 
+  it('a binary write under the workspace lands, and one outside is denied', async () => {
+    // `writeBytes` runs the same fence as `writeText` before delegating; the
+    // binary path is what the office tools use, so it needs the same proof.
+    const inside = join(workspace, 'bytes.bin')
+    const outcome = await fs.writeBytes(await target(inside), new Uint8Array([1, 2, 3]))
+    expect(outcome).toMatchObject({ operation: 'create', size: 3 })
+    expect(await readFile(inside)).toEqual(Buffer.from([1, 2, 3]))
+
+    const outside = join(base, 'escape.bin')
+    await expect(fs.writeBytes(await target(outside), new Uint8Array([9])))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    await expect(readFile(outside)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('a write to the platform temp area lands (parity with the bash runner grant)', async () => {
     const path = join(await mkdtemp(join(tmpdir(), 'dsh-fssbx-tmp-')), 'temp.txt')
     await fs.writeText(await target(path), 'temp')

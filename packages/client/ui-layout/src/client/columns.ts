@@ -60,6 +60,8 @@ export function clampWidth(px: number, min: number, max: number): number {
  * @param viewport - available frame width in px.
  * @param sidebar - sidebar width preference in px (0 = closed).
  * @param details - details width preference in px (0 = closed).
+ * @param expanded - whether the details panel is in file-preview mode, where it
+ * absorbs the frame above EXPANDED_CENTER_MIN and ignores `details`.
  * @returns resolved widths; details 0 means visually closed (never unmounted), while a closed sidebar keeps its compact rail.
  */
 export function computeColumns(viewport: number, sidebar: number, details: number, expanded = false): Columns {

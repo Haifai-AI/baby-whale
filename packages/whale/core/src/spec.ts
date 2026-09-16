@@ -14,6 +14,7 @@ export const whaleSchedule = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cron'), expr: z.string() }),
   z.object({ kind: z.literal('manual') }),
 ])
+/** The schedule a record carries: a one-shot ISO instant, a five-field cron expression, or manual-only. */
 export type WhaleSchedule = z.infer<typeof whaleSchedule>
 
 /** Durable shape of one scheduled task (ISO-8601 timestamps). */
@@ -35,6 +36,7 @@ export const whaleTaskRecord = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 })
+/** One stored task row: its schedule, owning session and workspace, and ISO-8601 timestamps (`tz` is an IANA zone name). */
 export type WhaleTaskRecord = z.infer<typeof whaleTaskRecord>
 
 /** The durable domain: one `tasks` table keyed by task id. */
@@ -57,7 +59,13 @@ export interface WhaleTaskView {
   workspaceCwd: string
 }
 
-/** Project a stored record to the wire view. */
+/**
+ * Project a stored record to the wire view.
+ * @param record - the stored task row.
+ * @returns the board and tool view: a rendered schedule summary, with
+ * `nextRunAt` nulled unless the task is active and `lastRunAt` nulled until its
+ * first delivery.
+ */
 export function taskView(record: WhaleTaskRecord): WhaleTaskView {
   const summary = record.schedule.kind === 'once'
     ? `once at ${record.schedule.at}`

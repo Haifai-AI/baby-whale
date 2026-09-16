@@ -10,6 +10,11 @@ import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
+/**
+ * One file a successful mutation tool reported for this Turn, in settlement
+ * order. `seq` is the settling `tool/result`'s log position, so a reader that
+ * owns a closing seq ({@link producedForClosing}) can exclude late claims.
+ */
 export interface ProducedPath {
   readonly seq: number
   readonly path: string
@@ -141,7 +146,14 @@ export function selectProducedFiles(owner: TurnTailOwnerProps): readonly Produce
   return entries.length === 0 ? null : entries
 }
 
-/** Partition tail entries: delivered claims first, written files second. */
+/**
+ * Partition tail entries: delivered claims first, written files second. Each
+ * side keeps first-seen order and drops repeats within itself, so a path both
+ * written and delivered appears once in each list — the two tail rows present
+ * separate facts, not one selection.
+ * @param entries - Produced paths of one tail, in settlement order.
+ * @returns Delivered claim paths and written working-file paths.
+ */
 export function partitionProduced(entries: readonly ProducedPath[]): {
   readonly delivered: readonly string[]
   readonly written: readonly string[]
@@ -260,13 +272,21 @@ function onlyPathWithBasename(paths: readonly string[], value: string): string |
 
 /**
  * Files claimed through the deliver tool in this Turn — the user-facing
- * deliverables (distinct from every written file above).
+ * deliverables (distinct from every written file above). Entries stay
+ * unfiltered, so a file delivered twice is two claims here.
+ * @param data - Engine-published Deliverables data for one Turn.
+ * @returns Deliver claim entries in settlement order.
  */
 export function deliveredFiles(data: DeliverablesTurnData): readonly ProducedPath[] {
   return data.produced.filter(entry => entry.tool === 'deliver')
 }
 
-/** Written files EXCLUDING deliver claims (the working-files chips row). */
+/**
+ * Written files EXCLUDING deliver claims (the working-files chips row): one
+ * entry per mutation settlement, so a file written and then edited keeps both.
+ * @param data - Engine-published Deliverables data for one Turn.
+ * @returns Write/edit entries in settlement order.
+ */
 export function writtenFiles(data: DeliverablesTurnData): readonly ProducedPath[] {
   return data.produced.filter(entry => entry.tool !== 'deliver')
 }

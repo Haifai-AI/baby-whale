@@ -35,13 +35,33 @@ The bridge mounts with `failOnStartupError: true`, so a failed initial connectio
 
 ## Model Experience
 
+### Bridge MCP tool definitions
+
 #### What the model sees
 
-Every tool advertised by a connected server appears as a native tool named `mcp__<name>__<rawTool>` with the server's description and schema, plus one approval card on the session's first use of each tool. Removal or disablement unregisters the tools immediately.
+Every tool a connected server advertises appears as a native tool named `mcp__<name>__<rawTool>`, carrying the server's own description and input schema, and the manager wraps that visibility: mount, remount, and unwind add or remove the whole set. Removal or disablement unregisters the tools immediately, so the next request no longer offers them.
 
 #### Token effect
 
-Data-dependent schema cost is paid while tools are registered; a re-sync replaces rather than accumulates definitions (see the bridge README for the KV-cache contract).
+Data-dependent and server-scaled: the cost is the server's own descriptions and schemas for as long as the tools stay registered, plus the server-qualified name on every definition and every call. A re-sync replaces the definitions rather than accumulating them; the manager itself adds no prompt section.
+
+#### KV Cache effect
+
+Prefix-stable while the registered set is unchanged: a reconcile that mounts nothing, an unrelated settings edit, or a restart that reproduces the same definitions leaves the reusable prefix intact. Adding, removing, renaming, or re-syncing a server replaces definitions and may invalidate reuse from the first changed schema token; the [bridge README](../../mcp/mcp-client/README.md) owns the full cache contract.
+
+### First-use approval cards
+
+#### What the model sees
+
+One approval card on a session's first call of each MCP tool, with the ask reason `run MCP tool "<tool>" from server "<name>"?`; the server clause is omitted when no live mount's provenance owns that public name. Sessions under the never-prompt policy (danger-full-access) see no card at all.
+
+#### Token effect
+
+Conditional and small: one ask reason per tool per session, with the allowed-once grant remembered by the session's own audit log rather than by a prompt contribution. A server with many tools pays one card on each tool's first use, so a long tool list costs a burst of asks the first time it is exercised.
+
+#### KV Cache effect
+
+Independent of the prompt prefix: no approval content is retained in the assembled request, so asking and answering changes no cached tokens. Reuse is affected only through the tool definitions themselves — a remount after a reconfiguration may replace them, while a same-name remount that reproduces identical definitions leaves the prefix stable.
 
 ## Known Limitations and Deferred Work
 

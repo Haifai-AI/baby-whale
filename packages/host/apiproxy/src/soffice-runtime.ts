@@ -39,7 +39,11 @@ const LIBREOFFICE_SIZE_MB = {
   'x86-64': 294,
 } as const
 
-/** Per-OS managed layout, resolved under {@link appSupportDir}. */
+/**
+ * The per-user directory this app owns for managed installs and caches.
+ * @returns the support directory for this platform: `DSH_APP_SUPPORT` when set
+ * and non-empty, otherwise the platform's per-user application-support path.
+ */
 export function appSupportDir(): string {
   const override = process.env.DSH_APP_SUPPORT
   if (override !== undefined && override !== '') return override
@@ -57,6 +61,7 @@ export function appSupportDir(): string {
  * The managed install's soffice binary when present. Checked before system
  * candidates by the preview layer, so a completed download upgrades the
  * preview pipeline without a restart.
+ * @returns absolute path of the managed binary, or undefined when nothing is installed.
  */
 export function managedSofficePath(): string | undefined {
   const support = appSupportDir()
@@ -68,7 +73,12 @@ export function managedSofficePath(): string | undefined {
   return existsSync(candidate) ? candidate : undefined
 }
 
-/** Where the official artifact for this machine lives, or guided-only. */
+/**
+ * Where the official artifact for this machine lives, or guided-only.
+ * @returns the download descriptor with the pinned size and SHA-256 on macOS;
+ * `supported: false` plus the official guide URL on Windows and Linux, whose
+ * flows need an installer or a package manager.
+ */
 export function managedInstallSupport(): {
   supported: boolean
   url?: string
@@ -105,7 +115,10 @@ export interface SofficeInstallState {
 let state: SofficeInstallState = { phase: 'idle', progress: 0 }
 let inflight: Promise<void> | undefined
 
-/** Snapshot of the current install lifecycle (copy — callers must not mutate). */
+/**
+ * Snapshot of the current install lifecycle (copy — callers must not mutate).
+ * @returns a fresh copy of the module's lifecycle state; mutating it leaves the install untouched.
+ */
 export function sofficeInstallState(): SofficeInstallState {
   return { ...state }
 }

@@ -12,6 +12,10 @@ import { execFileSync } from 'node:child_process'
 import { decodeEntities as decodeXmlEntities, loadWorkbookResilient } from '@deepseek-ai/dsh-tool-office'
 import { managedSofficePath } from './soffice-runtime.ts'
 
+/**
+ * One spreadsheet cell of a bounded preview: the display string the grid
+ * renders, plus the formula behind it when the cell has one.
+ */
 export interface PreviewCell {
   /** Display value (formula cells carry their cached computed result). */
   readonly v: string
@@ -19,6 +23,12 @@ export interface PreviewCell {
   readonly f?: string
 }
 
+/**
+ * One worksheet preview: the detected header row plus the data rows below it,
+ * capped at 100 rows and 60 columns. `total_rows` counts only those data rows
+ * and `total_cols` is the worksheet's full width, so the grid can label what
+ * the cap left out.
+ */
 export interface PreviewSheet {
   readonly name: string
   readonly header: string[]
@@ -27,11 +37,20 @@ export interface PreviewSheet {
   readonly total_cols: number
 }
 
+/**
+ * One slide preview. The title comes from the slide's title placeholder;
+ * when no shape is marked as one, the first bullet line is promoted instead.
+ */
 export interface PreviewSlide {
   readonly title: string
   readonly bullets?: string[]
 }
 
+/**
+ * One document block in reading order. `type` is classified from the
+ * paragraph style and numbering, so the studio can render headings, lists,
+ * quotes, and table rows without re-parsing the XML.
+ */
 export interface PreviewBlock {
   readonly type: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'quote' | 'bullet' | 'number' | 'callout' | 'caption' | 'image' | 'table'
   readonly text: string
@@ -131,7 +150,11 @@ const TEXT_LANGUAGES: Record<string, string> = {
   '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml', '.r': 'r',
 }
 
-/** Which preview bucket a text-ish extension maps to: 'markdown', 'text', or undefined. */
+/**
+ * Which preview bucket a text-ish extension maps to: 'markdown', 'text', or undefined.
+ * @param ext - lowercased extension including the dot ('.md').
+ * @returns the render bucket, or undefined when the extension is not previewed as text.
+ */
 export function textPreviewKind(ext: string): 'markdown' | 'text' | undefined {
   if (ext === '.md' || ext === '.markdown' || ext === '.mdx') return 'markdown'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
@@ -147,7 +170,11 @@ const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.webm'])
 /** Extensions that preview as a native browser audio player. */
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.flac', '.aac', '.opus'])
 
-/** Media preview bucket for an extension; undefined when the type is not a playable medium. */
+/**
+ * Media preview bucket for an extension; undefined when the type is not a playable medium.
+ * @param ext - extension including the dot, any case ('.MP4').
+ * @returns 'video' or 'audio' for a browser-playable medium, undefined otherwise.
+ */
 export function mediaPreviewKind(ext: string): 'video' | 'audio' | undefined {
   const normalized = ext.toLowerCase()
   if (VIDEO_EXTENSIONS.has(normalized)) return 'video'
@@ -158,6 +185,8 @@ export function mediaPreviewKind(ext: string): 'video' | 'audio' | undefined {
 /**
  * Build the media preview payload. Bytes are never parsed — the player rides
  * the raw channel (Range-capable), so the preview only carries identity.
+ * @param filePath - workspace-relative path of the media file.
+ * @returns the video or audio payload carrying only the file's basename.
  */
 export function parseMediaPreview(filePath: string): ParsedPreview {
   if (mediaPreviewKind((/[.][a-z0-9]+$/i.exec(filePath)?.[0] ?? '').toLowerCase()) === 'video') {
@@ -166,7 +195,11 @@ export function parseMediaPreview(filePath: string): ParsedPreview {
   return { kind: 'audio', file_name: basename(filePath) }
 }
 
-/** Shiki grammar hint for a text extension; undefined renders plain monospace. */
+/**
+ * Shiki grammar hint for a text extension; undefined renders plain monospace.
+ * @param ext - lowercased extension including the dot.
+ * @returns the grammar alias the line viewer passes to the highlighter.
+ */
 export function textPreviewLanguage(ext: string): string | undefined {
   return TEXT_LANGUAGES[ext]
 }
@@ -176,6 +209,10 @@ export function textPreviewLanguage(ext: string): string | undefined {
  * bounded preview payload: decoded source capped at {@link TEXT_PREVIEW_BYTES},
  * plus the renderer hint. Binary content decodes to replacement characters —
  * acceptable for a preview of a file the caller believes is text.
+ * @param bytes - the artifact's bytes; only the first {@link TEXT_PREVIEW_BYTES} are decoded.
+ * @param filePath - path supplying the preview's `file_name` and the extension that picks kind and grammar.
+ * @returns the markdown or text payload, with `truncated` set when the file exceeded the decode cap.
+ * @throws Error when the extension is neither markdown nor text; callers gate on {@link textPreviewKind} first.
  */
 export function parseTextPreview(bytes: Uint8Array, filePath: string): ParsedPreview {
   const ext = (/[.][a-z0-9]+$/i.exec(filePath)?.[0] ?? '').toLowerCase()
@@ -307,7 +344,13 @@ function denseCells(row: ExcelJS.Row, width: number): PreviewCell[] {
 
 
 
-/** Parse an .xlsx payload into capped worksheet previews. */
+/**
+ * Parse an .xlsx payload into capped worksheet previews.
+ * @param bytes - the workbook's file bytes.
+ * @param fileName - path supplying the preview's `file_name` (basename only);
+ * the caller may pass a recalculated copy's bytes with the original path.
+ * @returns the sheet previews, or undefined when the bytes are not a readable workbook or no sheet carries content.
+ */
 export async function parseXlsxPreview(bytes: Uint8Array, fileName: string): Promise<ParsedPreview | undefined> {
   try {
     const workbook = await loadWorkbookResilient(bytes)
@@ -392,7 +435,12 @@ export async function parseXlsxPreview(bytes: Uint8Array, fileName: string): Pro
   }
 }
 
-/** Parse a .pptx payload into capped slide previews by harvesting shape text. */
+/**
+ * Parse a .pptx payload into capped slide previews by harvesting shape text.
+ * @param bytes - the presentation's file bytes.
+ * @param fileName - path supplying the preview's `file_name` (basename only).
+ * @returns at most 24 slide previews carrying the first slide's title as the deck title, or undefined when no slide holds text.
+ */
 export function parsePptxPreview(bytes: Uint8Array, fileName: string): ParsedPreview | undefined {
   try {
     const entries = unzipSync(bytes)
@@ -451,7 +499,12 @@ export function parsePptxPreview(bytes: Uint8Array, fileName: string): ParsedPre
   }
 }
 
-/** Parse a .docx payload into capped block previews off word/document.xml. */
+/**
+ * Parse a .docx payload into capped block previews off word/document.xml.
+ * @param bytes - the document's file bytes.
+ * @param fileName - path supplying the preview's `file_name` (basename only).
+ * @returns at most 400 blocks in reading order, or undefined when the archive has no document part or no non-empty text.
+ */
 export function parseDocxPreview(bytes: Uint8Array, fileName: string): ParsedPreview | undefined {
   try {
     const entries = unzipSync(bytes)
@@ -709,6 +762,8 @@ function resolveRange(workbook: ExcelJS.Workbook, ref: string): { text: string[]
  * cached series values into the chart part; XlsxWriter does not, so ranges
  * are resolved against the worksheet data (loaded lazily, only when a
  * reference lacks a cache) via the same resilient loader the grid uses.
+ * @param bytes - the workbook's file bytes, the same payload the grid parsed.
+ * @returns at most 12 chart previews in chart-part order; empty when the workbook embeds none or none parse.
  */
 export async function parseXlsxCharts(bytes: Uint8Array): Promise<PreviewChart[]> {
   try {
@@ -907,7 +962,11 @@ function envHome(name: 'DSH_HOME' | 'HOME' | 'USERPROFILE'): string | undefined 
   return value !== undefined && value.trim() !== '' ? value : undefined
 }
 
-/** The gateway-owned directory receiving converted preview PDFs. */
+/**
+ * The gateway-owned directory receiving converted preview PDFs.
+ * @returns the cache path under `DSH_HOME`, or under the platform home's `.dsh`
+ * directory; `./preview-cache` when neither env var is set.
+ */
 export function previewCacheDir(): string {
   // DSH_HOME is the product home itself; otherwise resolve the platform home
   // and keep the `.dsh` layout identical everywhere (Windows: USERPROFILE).
@@ -923,6 +982,8 @@ export function previewCacheDir(): string {
  * XlsxWriter and openpyxl write them) carried no cached computed result.
  * Such previews show `=SUM(...)` where Excel would show the value — the cue
  * for the recalc round-trip below.
+ * @param preview - any parsed preview; non-xlsx payloads answer false.
+ * @returns true when some grid cell displays its own formula text.
  */
 export function xlsxHasUncachedFormulas(preview: ParsedPreview): boolean {
   if (preview.kind !== 'xlsx') return false
@@ -935,6 +996,10 @@ export function xlsxHasUncachedFormulas(preview: ParsedPreview): boolean {
  * (`--convert-to xlsx`): Calc computes every formula on load and the
  * converted copy carries cached results the parser can read. Cached by
  * source mtime under the preview cache.
+ * @param soffice - absolute path of the LibreOffice binary that performs the conversion.
+ * @param sourcePath - absolute path of the workbook to recalculate; only its bytes are read.
+ * @param cacheDir - directory holding the recalculated copy and a throwaway LibreOffice profile; created when missing.
+ * @param sourceMtimeMs - source modification time, part of the cache key, so a rewritten workbook converts again.
  * @returns the recalculated workbook bytes, or undefined on failure.
  */
 export async function recalcXlsxBytes(

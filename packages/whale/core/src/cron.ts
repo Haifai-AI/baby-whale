@@ -79,7 +79,11 @@ export function parseCron(expr: string): CronExpr {
   }
 }
 
-/** Validate a cron expression, throwing on malformed input. */
+/**
+ * Whether a five-field cron expression parses.
+ * @param expr - whitespace-separated minutes hours dom month dow.
+ * @returns true when {@link parseCron} accepts every field, false otherwise — this predicate never throws.
+ */
 export function isValidCron(expr: string): boolean {
   try {
     parseCron(expr)
@@ -144,7 +148,11 @@ function zonedTimeToUtc(timeZone: string, year: number, month: number, day: numb
   return new Date(guess)
 }
 
-/** Validate an IANA timezone, throwing on an unknown zone. */
+/**
+ * Whether an IANA timezone is usable on this runtime.
+ * @param timeZone - zone name to test, e.g. 'Asia/Shanghai'.
+ * @returns true when `Intl` resolves the zone from this runtime's ICU data, false for an unknown name.
+ */
 export function isValidTimeZone(timeZone: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone })

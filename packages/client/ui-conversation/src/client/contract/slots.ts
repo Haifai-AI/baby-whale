@@ -469,13 +469,13 @@ export interface ProcessControlOwner {
 export type ChatNodeViewProps<Kind extends ChatNodeKind = ChatNodeKind> =
   PropsRuntime<'conversation.chat.node', Kind> & PropsLocale<'conversation'>
 
-/** Owner currency of the details panel's Tool output renderer. */
 /** Owner currency of the whole-panel deliverable preview: the file to render. */
 export interface FilePreviewOwnerProps {
   /** Workspace-relative path (deliverables/… or uploads/…). */
   path: string
 }
 
+/** Owner currency of the details panel's Tool output renderer. */
 export interface DetailsToolOwnerProps {
   /** Frozen selected call slice. */
   block: ToolCallBlock

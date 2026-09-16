@@ -81,7 +81,11 @@ export const MCP_PRESETS: readonly McpPreset[] = [
   },
 ]
 
-/** Look one preset up by id. */
+/**
+ * Look one preset up by id.
+ * @param id - The preset's stable {@link McpPreset.id}.
+ * @returns The matching preset, or undefined for an id this catalog does not offer.
+ */
 export function presetById(id: string): McpPreset | undefined {
   return MCP_PRESETS.find(candidate => candidate.id === id)
 }

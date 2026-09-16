@@ -415,12 +415,28 @@ export interface ConnectionConfig {
    * that is not a bare, canonical authority fails the plugin load.
    */
   trustedHosts?: string[]
+  /**
+   * Pinned host API token: at least 16 URL-safe characters
+   * (`[A-Za-z0-9_-]`). Default (empty): a fresh random token minted at every
+   * server start — the first-party UI learns it from the entry URL, and
+   * non-browser automation reads the token file the web bundle maintains.
+   * Pin only for automation that cannot read that file; a weak pin fails the
+   * plugin load.
+   */
+  apiToken?: string
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+  /**
+   * Total in-flight request-body bytes across all concurrent bridged
+   * requests. Small API calls declare small sizes and never contend; a
+   * second giant arriving while the first is in flight gets 503 instead of
+   * OOMing the host. Default: one per-request maximum.
+   */
+  maxInflightRequestBytes?: number
 }
 ```
 
-来源：[`packages/client/connection/src/index.ts:50`](../packages/client/connection/src/index.ts)
+来源：[`packages/client/connection/src/index.ts:74`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -674,7 +690,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/fs/fs-local/src/index.ts:41`](../packages/fs/fs-local/src/index.ts)
+来源：[`packages/fs/fs-local/src/index.ts:73`](../packages/fs/fs-local/src/index.ts)
 
 <a id="deepseek-aidsh-fs-sandbox"></a>
 
@@ -1398,6 +1414,8 @@ export interface StdioConfig {
   cwd: string
   /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number
+  /** Bound for the initial connection + tool synchronization (ms); omission uses the default. */
+  startupTimeoutMs?: number
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -1420,6 +1438,8 @@ export interface StreamableHttpConfig {
   headers: Record<string, string>
   /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number
+  /** Bound for the initial connection + tool synchronization (ms); omission uses the default. */
+  startupTimeoutMs?: number
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -1439,7 +1459,7 @@ export interface ReconnectConfig {
 }
 ```
 
-来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+来源：[`packages/mcp/mcp-client/src/index.ts:118`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -1673,6 +1693,13 @@ export interface Config {
   /** File-sandbox mode a session starts from (default: `read-only`). */
   mode?: SandboxMode
   /**
+   * Network-egress posture for confined executions (default: `deny` — a file
+   * sandbox is not an exfiltration channel). Opt in to `allow` only for
+   * deployments whose agent work legitimately needs the network; there is no
+   * per-call override, so a model cannot grant itself egress.
+   */
+  egress?: SandboxEgress
+  /**
    * Fallback root for agentless calls and sessions without a cwd (default:
    * `process.cwd()`). Normal agent calls use their session cwd instead.
    */
@@ -1680,7 +1707,7 @@ export interface Config {
 }
 ```
 
-依赖：[`SandboxMode`](subsystems/sandbox.zh.md)
+依赖：[`SandboxEgress`](../packages/sandbox/sandbox/src/index.ts) · [`SandboxMode`](subsystems/sandbox.zh.md)
 
 来源：[`packages/sandbox/sandbox-policy/src/index.ts:67`](../packages/sandbox/sandbox-policy/src/index.ts)
 
@@ -2040,10 +2067,12 @@ export interface Config {
   watchFollowSymlinks?: boolean
   /** Bundled skill root; defaults to `$DSH_BUNDLED_SKILL_DIR` when default roots are included, otherwise mounts none. */
   bundledSkillDir?: string
+  /** Harness-shipped skill root (first-party `.agents/skills`); defaults to `$DSH_HARNESS_SKILL_DIR`. */
+  harnessSkillDir?: string
 }
 ```
 
-来源：[`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+来源：[`packages/skill/skill-filesystem/src/index.ts:51`](../packages/skill/skill-filesystem/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -2991,7 +3020,7 @@ export interface Config {
 export type ToolPresentationMode = 'native' | 'code' | 'both'
 ```
 
-来源：[`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
+来源：[`packages/core/tools/src/index.ts:661`](../packages/core/tools/src/index.ts)
 
 <a id="deepseek-aidsh-typert-loader"></a>
 
@@ -3086,7 +3115,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/bundle/web-app/src/index.ts:42`](../packages/bundle/web-app/src/index.ts)
+来源：[`packages/bundle/web-app/src/index.ts:44`](../packages/bundle/web-app/src/index.ts)
 
 <a id="deepseek-aidsh-web-fetch-http"></a>
 
@@ -3109,10 +3138,17 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /**
+   * Bare-host egress exceptions for private destinations (loopback,
+   * private ranges, link-local, metadata): exact hostnames or IP literals
+   * (no scheme, port, or path) that skip the default-deny egress gate —
+   * the operator opt-in for internal hosts such as dev servers.
+   */
+  egressAllowHosts?: string[]
 }
 ```
 
-来源：[`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+来源：[`packages/web/web-fetch-http/src/index.ts:35`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="deepseek-aidsh-web-search-deepseek"></a>
 
@@ -3190,6 +3226,60 @@ export interface Config {
 
 来源：[`packages/web/web-search-perplexity/src/index.ts:32`](../packages/web/web-search-perplexity/src/index.ts)
 
+<a id="deepseek-aidsh-whale-core"></a>
+
+## `@deepseek-ai/dsh-whale-core`
+
+Requires: `storageDomain` · `tools` · `systemPrompt` · `agents` · `sessions`
+
+```ts config-catalog
+/** Plugin config. */
+export interface Config {
+  /** HQ scheduler tick interval in milliseconds. */
+  intervalMs?: number
+}
+```
+
+Source: [`packages/whale/core/src/index.ts:24`](../packages/whale/core/src/index.ts)
+
+<a id="deepseek-aidsh-whale-guardrails"></a>
+
+## `@deepseek-ai/dsh-whale-guardrails`
+
+Requires: `tools` · `systemPrompt` · `fs`
+
+```ts config-catalog
+/** Plugin config. */
+export interface Config {
+  /**
+   * Ask the human before a mutation overwrites an existing file. Strict
+   * overwrite confirmation is the approval-first coworker posture (there is no
+   * always-allow grant); disable to fall back to the observation policy only.
+   */
+  askOnOverwrite?: boolean
+}
+```
+
+Source: [`packages/whale/guardrails/src/index.ts:30`](../packages/whale/guardrails/src/index.ts)
+
+<a id="deepseek-aidsh-whale-trash"></a>
+
+## `@deepseek-ai/dsh-whale-trash`
+
+Requires: `tools` · `fs` · `systemPrompt`
+
+```ts config-catalog
+/** Plugin config. */
+export interface Config {
+  /** Backup directory name inside the session workspace. */
+  directory?: string
+  /** Maximum bytes copied per backup (default 50 MiB). */
+  maxBackupBytes?: number
+}
+```
+
+Source: [`packages/whale/trash/src/index.ts:25`](../packages/whale/trash/src/index.ts)
+
 <a id="deepseek-aidsh-workflow-worker-thread"></a>
 
 ## `@deepseek-ai/dsh-workflow-worker-thread`
@@ -3252,9 +3342,11 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings`（[`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-general`（[`packages/client/ui-settings-general/src/index.ts`](../packages/client/ui-settings-general/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-settings-mcp` ([`packages/client/ui-settings-mcp/src/index.ts`](../packages/client/ui-settings-mcp/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-models`（[`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory`（[`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-plugins`（[`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar`（[`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-skill`（[`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-subagent`（[`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts)）
@@ -3262,6 +3354,9 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-tool`（[`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-trajectory`（[`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-user-questions`（[`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-whale-artifact` ([`packages/client/ui-whale-artifact/src/index.ts`](../packages/client/ui-whale-artifact/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-whale-artifacts` ([`packages/client/ui-whale-artifacts/src/index.ts`](../packages/client/ui-whale-artifacts/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-whale-tasks` ([`packages/client/ui-whale-tasks/src/index.ts`](../packages/client/ui-whale-tasks/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-workflow-run`（[`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-workspace`（[`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts)）
 - `@deepseek-ai/dsh-command-compact` — 需要 `commands` · `compact`（[`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts)）
@@ -3291,8 +3386,11 @@ export interface Config {
 - `@deepseek-ai/dsh-tool-ask-user` — 需要 `tools` · `userInteraction`（[`packages/interaction/tool-ask-user/src/index.ts`](../packages/interaction/tool-ask-user/src/index.ts)）
 - `@deepseek-ai/dsh-tool-call-timeout-policy` — 需要 `tools`（[`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts)）
 - `@deepseek-ai/dsh-tool-cordis` — 需要 `tools` · `systemPrompt` · `dynamicCordisRunner` · `cordisInspect`（[`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts)）
+- `@deepseek-ai/dsh-tool-deliver` — 需要 `tools` · `fs` · `systemPrompt` ([`packages/whale/tool-deliver/src/index.ts`](../packages/whale/tool-deliver/src/index.ts))
+- `@deepseek-ai/dsh-tool-office` — 需要 `tools` · `fs` · `systemPrompt` ([`packages/office/tool-office/src/index.ts`](../packages/office/tool-office/src/index.ts))
 - `@deepseek-ai/dsh-tool-subagent-control` — 需要 `tools` · `subagents`（[`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts)）
 - `@deepseek-ai/dsh-user-questions`（[`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts)）
+- `@deepseek-ai/dsh-whale-mcp` — 需要 `tools` ([`packages/whale/mcp/src/index.ts`](../packages/whale/mcp/src/index.ts))
 - `@deepseek-ai/dsh-workspace` — 需要 `storageDomain` · `sessionPersistence`（[`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts)）
 
 ## Seam 包（不可直接加载）
@@ -3315,6 +3413,7 @@ export interface Config {
 - `@deepseek-ai/dsh-spill` — 抽象 `SpillStore`（[`packages/spill/spill/src/index.ts`](../packages/spill/spill/src/index.ts)）
 - `@deepseek-ai/dsh-subprocess` — 抽象 `SubprocessRuntime`（[`packages/subprocess/subprocess/src/index.ts`](../packages/subprocess/subprocess/src/index.ts)）
 - `@deepseek-ai/dsh-workflow` — 抽象 `WorkflowEngine`（[`packages/workflow/workflow/src/index.ts`](../packages/workflow/workflow/src/index.ts)）
+
 ## 库包（无插件入口）
 
 由其他包作为库导入；`cordis.yml` 无法加载它们。

@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   convertToPdfCached,
@@ -95,7 +95,7 @@ afterEach(() => {
 function producing(extension: string, payload: string, spec: string): void {
   materialize = (outdir, source, requested) => {
     if (requested !== spec) return
-    const base = source.slice(source.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
+    const base = basename(source).replace(/\.[^.]+$/, '')
     writeFileSync(join(outdir, `${base}.${extension}`), payload)
   }
 }
@@ -228,7 +228,7 @@ describe('convertToPdfCached', () => {
 
   it('separates cached conversions of the same source by mtime and filter spec', async () => {
     materialize = (outdir, source, spec) => {
-      const base = source.slice(source.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
+      const base = basename(source).replace(/\.[^.]+$/, '')
       writeFileSync(join(outdir, `${base}.pdf`), spec)
     }
     const plain = await convertToPdfCached('soffice', sourcePath, cacheDir, mtime)
@@ -253,7 +253,7 @@ describe('convertToPdfCached', () => {
   it('retries with plain pdf when an unknown filter spec produces nothing', async () => {
     materialize = (outdir, source, spec) => {
       if (spec !== 'pdf') return
-      const base = source.slice(source.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
+      const base = basename(source).replace(/\.[^.]+$/, '')
       writeFileSync(join(outdir, `${base}.pdf`), 'fallback bytes')
     }
     const pdf = await convertToPdfCached('soffice', sourcePath, cacheDir, mtime, 'macro:///Unknown')
@@ -291,7 +291,7 @@ describe('recalcXlsxBytes', () => {
   function producingXlsx(payload: string): void {
     materialize = (outdir, source, spec) => {
       if (spec !== 'xlsx') return
-      const base = source.slice(source.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
+      const base = basename(source).replace(/\.[^.]+$/, '')
       writeFileSync(join(outdir, `${base}.xlsx`), payload)
     }
   }

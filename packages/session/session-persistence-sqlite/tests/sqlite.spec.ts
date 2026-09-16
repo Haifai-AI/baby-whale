@@ -474,12 +474,14 @@ describe('SessionPersistenceSqlite schema ownership', () => {
     }
   })
 
-  it('starts no journal retry after its open-relative cutoff', async () => {
+  it('starts no journal retry after its selection cutoff', async () => {
     let attempts = 0
     const BusyDatabase = databaseWithJournalFailure(() => {
       attempts += 1
       return Object.assign(new Error('database is locked'), { errcode: 5 })
     })
+    // The selection's own budget: 0 opens it, 50 leaves 50ms after the first
+    // failure, and 100 is already past the deadline when the pause returns.
     const clock = vi.spyOn(performance, 'now')
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(50)
@@ -503,6 +505,11 @@ describe('SessionPersistenceSqlite schema ownership', () => {
       attempts += 1
       return Object.assign(new Error('database is locked'), { errcode: 5 })
     })
+    // A 50ms budget paced at 10ms allows several attempts. How many fit depends
+    // on the platform's timer granularity, so the assertion is the contract: at
+    // least one retry happens inside the budget, and the pacing stays bounded.
+    // The selection budget is what makes the lower bound platform-independent —
+    // a slow open no longer consumes it before the first transition attempt.
     await expect(openDatabase(
       BusyDatabase,
       await freshDbPath('dsh-sqlite-journal-paced-'),

@@ -398,10 +398,14 @@ describe('PiAiAdapter provider routing', () => {
 
     const result = await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'TIMEOUT' } })
+    // The watchdog fires on a 20ms idle timeout, but the abort still has to
+    // travel through the SDK and close the socket. A second was not enough
+    // under the coverage lane's eight-way partition load, where this failed
+    // intermittently while passing on the same commit elsewhere.
     await Promise.race([
       server.responseClosed,
       new Promise<never>((_resolve, reject) => {
-        setTimeout(() => { reject(new Error('SDK request did not close after idle timeout')) }, 1_000)
+        setTimeout(() => { reject(new Error('SDK request did not close after idle timeout')) }, 15_000)
       }),
     ])
 

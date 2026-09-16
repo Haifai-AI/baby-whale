@@ -69,11 +69,12 @@ export function parseCoveragePartitionCount(raw: string | undefined): number | u
 }
 
 /**
- * Resolve the Vitest timeout arguments used by coverage partitions. Hooks are
- * included: `beforeAll`/`afterEach` own process teardown and fixture cleanup,
- * and those wait on real children, so the same runner contention that
- * overruns a test's budget overruns a hook's. Vitest defaults them
- * separately, so raising one and not the other leaves the other at 10s.
+ * Resolve the paired Vitest timeout arguments used by coverage partitions.
+ *
+ * Hook timeouts are deliberately absent: `--hookTimeout` is accepted and then
+ * ignored once a project's `test` block exists, so passing it here would look
+ * like coverage while changing nothing. Hooks are configured per project in
+ * `vitest.config.ts`, which is the only form that reaches them.
  */
 export function coverageTestTimeoutArgs(raw: string | undefined): string[] {
   if (raw === undefined || raw === '') return []
@@ -81,7 +82,7 @@ export function coverageTestTimeoutArgs(raw: string | undefined): string[] {
   if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
     throw new Error(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer, got ${JSON.stringify(raw)}.`)
   }
-  return [`--testTimeout=${raw}`, `--expect.poll.timeout=${raw}`, `--hookTimeout=${raw}`]
+  return [`--testTimeout=${raw}`, `--expect.poll.timeout=${raw}`]
 }
 
 /** Remove pnpm's package-script separator before forwarding Vitest arguments. */

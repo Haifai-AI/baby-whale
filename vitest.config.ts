@@ -87,6 +87,23 @@ const pwshCoverageExclusions = spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProf
       'packages/shell/pwsh-sandbox/src/**/*.ts',
     ]
 
+// The coverage lanes raise Vitest's per-test budget through
+// DSH_COVERAGE_TEST_TIMEOUT_MS. Hooks need the same budget and cannot get it
+// from the CLI: `--hookTimeout` is accepted and ignored once a project's
+// `test` block exists, so a real-product suite's `afterEach` — which disposes
+// live contexts and waits on real children — stayed at the 10s default while
+// its tests ran on 30s. Setting it per project is the only form that reaches
+// them, which is why it is read here rather than passed as an argument.
+const coverageHookTimeoutMs = ((): number | undefined => {
+  const raw = process.env.DSH_COVERAGE_TEST_TIMEOUT_MS
+  if (raw === undefined || raw === '') return undefined
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+    throw new Error(`vitest config: DSH_COVERAGE_TEST_TIMEOUT_MS must be a positive integer, got ${JSON.stringify(raw)}.`)
+  }
+  return parsed
+})()
+
 const testIncludes = [
   'packages/*/*/tests/**/*.spec.{ts,tsx}',
   'apps/*/tests/**/*.spec.ts',
@@ -140,6 +157,7 @@ export default defineConfig({
         test: {
           name: 'thread-safe',
           execArgv: vitestExecArgv,
+          ...coverageHookTimeoutMs === undefined ? {} : { hookTimeout: coverageHookTimeoutMs },
           // Node 24 has aborted in its CJS lexer (v8::ToLocalChecked Empty
           // MaybeLocal in cjs_lexer::Parse) from worker threads on macOS,
           // Linux, and Windows. Forked workers avoid that shared thread path.
@@ -158,6 +176,7 @@ export default defineConfig({
         test: {
           name: 'process-bound',
           execArgv: vitestExecArgv,
+          ...coverageHookTimeoutMs === undefined ? {} : { hookTimeout: coverageHookTimeoutMs },
           pool: 'forks',
           setupFiles: ['./scripts/test-invariants.ts'],
           include: processBoundTests,

@@ -96,15 +96,13 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
       '    idleSilenceMs: 300',
       '    handoffGraceMs: 300',
       '    scrollbackLines: 20000',
-      // Absolute send bound at the producer's own default, and the tool bound
-      // above it. Both are generous on purpose: this case asserts composed
-      // behavior, never latency, and a loaded shared runner can spend many
-      // seconds starting pwsh before the command it asserts on even runs.
-      '    timeoutMs: 30000',
+      // Absolute send bound at half the tool's, so a stalled send is reported
+      // by the layer that stalled with the output it had already read.
+      '    timeoutMs: 20000',
       '    disposeGraceMs: 500',
       "- name: '@deepseek-ai/dsh-tool-pwsh-persistent'",
       '  config:',
-      '    timeoutMs: 60000',
+      '    timeoutMs: 30000',
       '',
     ].join('\n'))
 
@@ -149,18 +147,16 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     expect(observed).toContain(`cwd=${join(root, 'nested')} keep=loader`)
     expect(observed).not.toContain('DSH_PERSISTENT_PWSH')
 
-    const multiline = text(await execute(
-      'multiline',
-      '$value = "line one"\nWrite-Output "${value}:it\'s fine"',
+    // One send, two input-framing claims: a multi-line submission and a
+    // here-string literal both have to survive the wrapper. They share a call
+    // because every send is a full terminal round trip, and this case runs on a
+    // shared runner where that round trip is the dominant cost.
+    const framing = text(await execute(
+      'framing',
+      '$value = "line one"\n$h = @\'\nalpha\nbeta\n\'@\nWrite-Output "${value}:it\'s fine"\nWrite-Output $h',
     ))
-    expect(multiline).toBe("line one:it's fine")
-    expect(multiline).not.toContain('DSH_PERSISTENT_PWSH')
-
-    const hereString = text(await execute(
-      'here-string',
-      "$h = @'\nalpha\nbeta\n'@\nWrite-Output $h",
-    ))
-    expect(hereString).toBe('alpha\nbeta')
+    expect(framing).toBe("line one:it's fine\nalpha\nbeta")
+    expect(framing).not.toContain('DSH_PERSISTENT_PWSH')
 
     // 300 padded lines fit the configured 20000-line scrollback but not the
     // 16000-character output budget, so the tool must clip and must say which
@@ -187,5 +183,9 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     const exited = text(await execute('exit', 'exit'))
     expect(exited).toContain('next pwsh call starts from the workspace')
     expect(text(await execute('after-exit', 'Write-Output "$PWD"'))).toBe(root)
-  }, 60_000)
+    // The terminal and tool bounds sit below this one on purpose: a wedged send
+    // must report which bound it hit and what it had read, naming the phase in
+    // the tool's own words, rather than letting the test budget expire and
+    // leave "timed out" as the only evidence.
+  }, 240_000)
 })

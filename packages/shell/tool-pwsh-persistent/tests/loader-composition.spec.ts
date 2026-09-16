@@ -96,11 +96,15 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
       '    idleSilenceMs: 300',
       '    handoffGraceMs: 300',
       '    scrollbackLines: 20000',
-      '    timeoutMs: 8000',
+      // Absolute send bound at the producer's own default, and the tool bound
+      // above it. Both are generous on purpose: this case asserts composed
+      // behavior, never latency, and a loaded shared runner can spend many
+      // seconds starting pwsh before the command it asserts on even runs.
+      '    timeoutMs: 30000',
       '    disposeGraceMs: 500',
       "- name: '@deepseek-ai/dsh-tool-pwsh-persistent'",
       '  config:',
-      '    timeoutMs: 20000',
+      '    timeoutMs: 60000',
       '',
     ].join('\n'))
 
@@ -158,19 +162,26 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     ))
     expect(hereString).toBe('alpha\nbeta')
 
-    const large = text(await execute('large-output', '1..12050 | ForEach-Object { $_ }'))
-    // 12050 lines fit the configured 20000-line scrollback but not the output
-    // budget, so the tool must clip and must say which end it clipped. Which
-    // end survives is the backend's: a POSIX PTY retains the whole run and the
-    // tail is cut, while Windows ConPTY keeps a smaller buffer of its own and
-    // the beginning goes first. Both are reported, and that report is the
-    // contract; asserting the POSIX end here would be asserting the platform.
+    // 300 padded lines fit the configured 20000-line scrollback but not the
+    // 16000-character output budget, so the tool must clip and must say which
+    // end it clipped. The volume is driven by characters rather than line count
+    // on purpose: a console host writes once per formatted object, so tens of
+    // thousands of short lines measure the platform's bulk-output throughput
+    // (and timed the command out on the Windows runner) instead of the clipping
+    // contract. Which end survives is the backend's: a POSIX PTY retains the
+    // whole run and the tail is cut, while Windows ConPTY keeps a smaller buffer
+    // of its own and the beginning goes first. Both are reported, and that
+    // report is the contract; asserting the POSIX end here would be asserting
+    // the platform.
+    const filler = 'x'.repeat(100)
+    const large = text(await execute('large-output', `1..300 | ForEach-Object { "$_ ${filler}" }`))
     expect(large).toContain('<response clipped>')
+    const earliest = `1 ${filler}\n2 ${filler}\n3 `
     const lostPrefix = large.includes('beginning of this command output was dropped')
     if (lostPrefix) {
-      expect(large.startsWith('1\n2\n3\n')).toBe(false)
+      expect(large.startsWith(earliest)).toBe(false)
     } else {
-      expect(large.startsWith('1\n2\n3\n')).toBe(true)
+      expect(large.startsWith(earliest)).toBe(true)
     }
 
     const exited = text(await execute('exit', 'exit'))

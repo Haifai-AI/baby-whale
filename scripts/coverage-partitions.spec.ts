@@ -57,6 +57,10 @@ describe('coverage partition timeout', () => {
     expect(coverageTestTimeoutArgs('30000')).toEqual([
       '--testTimeout=30000',
       '--expect.poll.timeout=30000',
+      // Hooks own process teardown and fixture cleanup, and Vitest defaults
+      // them separately, so a lane that raises only the test budget leaves a
+      // real product's afterEach at 10s.
+      '--hookTimeout=30000',
     ])
   })
 

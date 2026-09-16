@@ -179,7 +179,13 @@ describe('LspInstance query and abort', () => {
       + 'else if(m.method==="shutdown")process.stdout.write(fr({id:m.id,result:null}));'
       + 'else if(m.method==="exit")process.exit(0);'
       + '}});'
-    const instance = scriptInstance(script, { killGraceMs: 2_000 })
+    // The grace is this case's whole budget: the fake server must start, read
+    // the request, and answer `$/cancelRequest` inside it, or the instance is
+    // force-killed and the assertion below reads the opposite result. A cold
+    // node start on a loaded runner does not fit in two seconds, which is how
+    // this failed on the native Windows lane while passing on the same commit
+    // elsewhere.
+    const instance = scriptInstance(script, { killGraceMs: 20_000 })
     const controller = new AbortController()
     const pending = run(instance, 'goToDefinition', controller.signal)
     await new Promise<void>(resolve => setTimeout(resolve, 300))

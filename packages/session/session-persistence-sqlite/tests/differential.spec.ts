@@ -269,7 +269,10 @@ describe('SQLite cross-backend differential behavior', () => {
       }
     }), { numRuns: 100, seed: 0x5A17E })
     // A hundred randomized cases, each writing both backends twice over. The
-    // budget has to clear the runner's partition load, not just the work.
-  }, 180_000)
+    // budget is the original one: raising it to three minutes was measured and
+    // did not bring the case inside any bound on the native Windows lane,
+    // where it has failed on every run since the fork's first — a finding for
+    // its own change, not something a larger number fixes.
+  }, 60_000)
 
 })

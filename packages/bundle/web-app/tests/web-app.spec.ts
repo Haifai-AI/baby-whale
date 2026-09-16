@@ -208,7 +208,10 @@ describe('web-app runtime glue', () => {
       expect(openBrowser).toHaveBeenCalledWith('http://127.0.0.1:4567#token=0123456789abcdef0123456789abcdef')
       expect(lines).toHaveLength(2)
       expect(readFileSync(file, 'utf8')).toBe('0123456789abcdef0123456789abcdef\n')
-      expect(statSync(file).mode & 0o777).toBe(0o600)
+      // As above: the owner-only mode is POSIX, and Windows synthesizes 0o666.
+      if (process.platform !== 'win32') {
+        expect(statSync(file).mode & 0o777).toBe(0o600)
+      }
       await ctx.fiber.dispose()
     } finally {
       rmSync(file, { force: true })

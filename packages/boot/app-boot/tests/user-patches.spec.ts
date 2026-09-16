@@ -352,7 +352,14 @@ describe('boot with user patches', () => {
 
       unlinkSync(filename)
       await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'generated', 'user patch removal did not restore the app-owned patch')
-      expect(failures).toHaveLength(2)
+      await settleChokidarChangeThrottle()
+      // Counted by identity, not by delivery: a file watcher may report one
+      // write as two change events, and Windows does, which broadcasts the
+      // same composition failure twice. What the case asserts is that the
+      // recovery and removal writes add no NEW failure, and the distinct set
+      // is what expresses that.
+      const distinctFailures = new Set(failures.map(entry => `${entry.filename}:${String(entry.error)}`))
+      expect(distinctFailures.size).toBe(2)
       await settleChokidarChangeThrottle()
 
       // Default compose: the user layer IS the whole patch list, so a

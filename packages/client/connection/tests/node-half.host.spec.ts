@@ -262,7 +262,12 @@ describe('connection node half', () => {
       await secondFiber.dispose()
     }
     expect(await readFile(join(testHome, '.api-token'), 'utf8')).toBe(`${minted}\n`)
-    expect((await stat(join(testHome, '.api-token'))).mode & 0o777).toBe(0o600)
+    // Owner-only is a POSIX guarantee. Windows has no POSIX mode bits and
+    // reports a synthesized 0o666 for every file, so the permission is
+    // asserted where the platform can express it.
+    if (process.platform !== 'win32') {
+      expect((await stat(join(testHome, '.api-token'))).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('replaces a damaged stored token instead of refusing every request', async () => {

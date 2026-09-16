@@ -16,11 +16,11 @@ The tab binds the `mcp` settings scope (`ctx.settingsScope`) and writes the whol
 
 ## Model Experience
 
-None; this package renders a configuration surface. What it writes reaches the model only through the whale MCP manager and its bridges.
+Indirectly, through the `mcp` servers array it writes: the whale MCP manager mounts each enabled server's bridge, and those bridges own the model-facing tool definitions and results.
 
 #### KV Cache effect
 
-None.
+None from this package, which assembles no request; enabling or disabling a server changes the model-visible tool set through that manager, which owns any resulting prefix invalidation.
 
 ## Known Limitations and Deferred Work
 

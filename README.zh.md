@@ -1,5 +1,9 @@
 # Baby Whale
 
+[English](README.md) | 中文
+
+https://github.com/user-attachments/assets/87803b2a-8f83-47b3-afa1-b43b5d46fad5
+
 **Baby Whale（小鲸鱼）** 是一个本地优先的知识工作协作者。在聊天里交给它一项任务，它会编写代码来生成成品文件——带实时公式的 Excel 工作簿、PowerPoint 演示文稿、Word 文档、PDF——在应用内进行像素级精确的预览，并以交付卡片的形式交还给你。你的文件、会话和工作区永远不会离开你的电脑；只有模型 API 调用会发出。
 
 ```sh
@@ -63,7 +67,7 @@ pnpm run build
 pnpm dsh web
 ```
 
-从 [开发指南](docs/development.md) 与 [架构文档](docs/architecture.md) 开始。代理请遵循 [AGENTS.md](AGENTS.md)。
+从 [开发指南](docs/development.zh.md) 与 [架构文档](docs/architecture.zh.md) 开始。代理请遵循 [AGENTS.md](AGENTS.md)。发布工程位于 [scripts/make-bundle.sh](scripts/make-bundle.sh)（macOS/Linux）、[scripts/make-bundle.ps1](scripts/make-bundle.ps1)（Windows）和 [.github/workflows/bundle.yml](.github/workflows/bundle.yml)。
 
 ## 许可
 

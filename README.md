@@ -1,5 +1,6 @@
 # Baby Whale
 
+English | [中文](README.zh.md)
 
 https://github.com/user-attachments/assets/87803b2a-8f83-47b3-afa1-b43b5d46fad5
 

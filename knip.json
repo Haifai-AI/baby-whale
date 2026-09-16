@@ -7,6 +7,7 @@
     "bwrap",
     "icacls",
     "musl-gcc",
+    "powershell.exe",
     "python3",
     "sandbox-exec",
     "tar",
@@ -159,6 +160,16 @@
       ]
     },
     "packages/client/ui-deliverables": {
+      "entry": [
+        "tests/**/*.spec.tsx"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.tsx"
+      ]
+    },
+    "packages/client/ui-whale-artifacts": {
       "entry": [
         "tests/**/*.spec.tsx"
       ],
@@ -611,6 +622,7 @@
         "tests/**/*.perf.ts",
         "tests/**/*.snapshot.ts",
         "tests/support.ts",
+        "tests/whale-play-seed.ts",
         "src/node-module-stub.ts"
       ],
       "project": [

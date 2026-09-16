@@ -48,7 +48,7 @@ After finishing any user-facing file (spreadsheet, deck, document, PDF, code exp
 
 #### 模型看到的内容
 
-生成的 [`deliver` schema](../../../docs/tool-catalog.md#deepseek-aidsh-tool-deliver)：一个必填的 `paths` 字符串数组，描述为已完成文件的工作区相对路径，一到十个条目。
+生成的 [`deliver` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-deliver)：一个必填的 `paths` 字符串数组，描述为已完成文件的工作区相对路径，一到十个条目。
 
 #### Token 影响
 

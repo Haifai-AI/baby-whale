@@ -81,4 +81,4 @@ Append-only: extraction results follow the reusable request prefix rather than r
 - No office file **preview** tool: the model cannot inspect an existing xlsx/pptx/docx beyond `read_bytes`-style access.
 - No LibreOffice/full-fidelity fidelity guarantees: formatting is the tool's built-in default design, not a template engine.
 - Reading is bounded and samples by position: a sparse sheet whose interesting data sits past the row cap needs an explicit follow-up slice, and only the tabular tools report `truncated` — `docx_text` reports it only on the paragraph-push path, so a document cut off at the block loop can return a partial `text` without the flag.
-- The `tool:office-reads` guidance still tells the model that "analysis outputs still go through the create tools" — a leftover from the removal of `xlsx_create`/`pptx_create`/`docx_create`; creation is Python through `bash` plus `deliver` now.
+- The `tool:office-reads` guidance tells the model that "Analysis outputs still go through the create tools", but this package registers no creation tool — creation is Python through `bash` plus `deliver`, so the sentence names a capability the model must find elsewhere.

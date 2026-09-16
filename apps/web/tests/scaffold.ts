@@ -75,7 +75,7 @@ import { REPO_ROOT, requireDist } from './support.ts'
  * round-trip. It is not a secret: it authorizes nothing outside this
  * temporary loopback host, which the lane tears down with the run.
  */
-export const SCAFFOLD_API_TOKEN = 'web-e2e-scaffold-token-0000'
+const SCAFFOLD_API_TOKEN = 'web-e2e-scaffold-token-0000'
 
 // Host-side web e2e cannot import a browser package: doing so would pull that
 // package's complete TS project into this graph. Mirrored from

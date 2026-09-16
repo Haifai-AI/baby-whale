@@ -37,6 +37,8 @@ npm scope 为 `@deepseek-ai/dsh-*`；Cordis `Service` 子类和函数插件通�
 | [`attachment/`](attachment/README.zh.md) | 持久附件标识、校验、本地内容寻址存储 | 产品：稳定 API |
 | [`spill/`](spill/README.zh.md) | spill 能力系列：存储 seam、本地实现、工具结果 spill 策略 | 产品：稳定 API |
 | [`todo/`](todo/README.zh.md) | 面向模型的 `todo_write` 工具 | 产品：稳定 API |
+| [`office/`](office/README.zh.md) | 面向模型的 Office 文件读取（`xlsx_read`／`csv_read`／`docx_text`）；产物创建走代码路径 | 产品：稳定 API |
+| [`whale/`](whale/README.zh.md) | Whale 协作者层：护栏围栏、任务存储 | 产品：稳定 API |
 | [`plan/`](plan/README.zh.md) | Plan 协作状态，提供直接进入命令与经评审的退出 | 产品：稳定 API |
 | [`preset/`](preset/README.zh.md) | 由 preset `cordis.yml` 按会话组装 agent | 产品：稳定 API |
 | [`guard/`](guard/README.zh.md) | 循环卫生守卫：建议性重复调用提醒 + `tools/execute` 截止时间强制执行器 | 产品：稳定 API |
@@ -65,6 +67,6 @@ npm scope 为 `@deepseek-ai/dsh-*`；Cordis `Service` 子类和函数插件通�
 
 依赖图由工具生成：[docs/module-graph.md](../docs/module-graph.zh.md)（`pnpm run gen-module-graph`，CI 中有新鲜度门禁）。
 
-**扩展插件依赖 Service Definition，绝不依赖具体提供方。** `dsh-agent-loop` 可替换；UI、钩子和工具插件使用 `dsh-agent`。包括 `dsh-agent-spine-demo` 在内的组合包可以依赖主干插件。能力会将需要独立演进的 Service Definition／Service Provider／Consumer 角色分离；详见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)。
+**扩展插件依赖 Service Definition，绝不依赖具体提供方。** `dsh-agent-loop` 可替换；UI、钩子和工具插件使用 `dsh-agent`，组合包则可以依赖主干插件。只有在角色需要独立演进时才拆分（详见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)）。
 
-包 README 覆盖用途、API、扩展点和[模型体验](../docs/cookbook/adding-a-package.zh.md#4-write-the-package-readme)；列入模型无关[省略允许清单](../scripts/verify-package-readme-model-experience.ts)的包除外。它们还要包含 `## Known Limitations and Deferred Work`，或列入其[允许清单](../scripts/verify-package-readme-limitations.ts)。
+包 README 遵循[模型体验](../docs/cookbook/adding-a-package.zh.md#4-write-the-package-readme)与 [Known Limitations](../scripts/verify-package-readme-limitations.ts) 规则，两者各有经审计的[省略允许清单](../scripts/verify-package-readme-model-experience.ts)。

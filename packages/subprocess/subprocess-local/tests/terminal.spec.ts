@@ -192,6 +192,49 @@ describe('LocalTerminalHandle', () => {
     expect(Buffer.concat(chunks).toString('utf8')).toBe('hello €')
   })
 
+  it('answers a cursor-position query so a line editor stops waiting for it', () => {
+    // A PTY pairs the program with whatever is on the other end, and node-pty
+    // does not emulate one. pwsh's PSReadLine asks where the cursor is before
+    // it reads any input; unanswered, it never reads the command at all.
+    const pty = new FakePty()
+    new LocalTerminalHandle(pty.asPty(), new FakeInspector(), 10)
+
+    pty.emitData('\u001b[6n')
+
+    expect(pty.writes).toEqual(['\u001b[1;1R'])
+  })
+
+  it('answers a query split across two reads exactly once', () => {
+    // The escape sequence can straddle a chunk boundary; a scan per chunk would
+    // miss it and leave the editor waiting forever.
+    const pty = new FakePty()
+    new LocalTerminalHandle(pty.asPty(), new FakeInspector(), 10)
+
+    pty.emitData('\u001b[')
+    expect(pty.writes).toEqual([])
+    pty.emitData('6n')
+    expect(pty.writes).toEqual(['\u001b[1;1R'])
+  })
+
+  it('answers every query in one read and leaves ordinary output alone', () => {
+    const pty = new FakePty()
+    new LocalTerminalHandle(pty.asPty(), new FakeInspector(), 10)
+
+    pty.emitData('plain text, no query here')
+    expect(pty.writes).toEqual([])
+    pty.emitData('\u001b[6n-and-\u001b[6n')
+    expect(pty.writes).toEqual(['\u001b[1;1R', '\u001b[1;1R'])
+  })
+
+  it('does not mistake a longer escape sequence for a query', () => {
+    // `CSI 6 n` shares its prefix with cursor movement and other reports.
+    const pty = new FakePty()
+    new LocalTerminalHandle(pty.asPty(), new FakeInspector(), 10)
+
+    pty.emitData('\u001b[6;7H\u001b[?6n\u001b[16n')
+    expect(pty.writes).toEqual([])
+  })
+
   it('rejects unsafe foreground signals and writes after exit', async () => {
     const pty = new FakePty()
     const inspector = new FakeInspector()

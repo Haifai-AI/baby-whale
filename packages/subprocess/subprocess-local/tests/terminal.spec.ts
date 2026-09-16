@@ -226,6 +226,18 @@ describe('LocalTerminalHandle', () => {
     expect(pty.writes).toEqual(['\u001b[1;1R', '\u001b[1;1R'])
   })
 
+  it('leaves the query alone on Windows, where ConPTY is the emulator', () => {
+    // node-pty runs ConPTY on Windows and ConPTY answers the query itself.
+    // A second answer would land in the shell's INPUT, where a line editor
+    // reads it as keystrokes.
+    const pty = new FakePty()
+    new LocalTerminalHandle(pty.asPty(), new FakeInspector(), 10, 'win32')
+
+    pty.emitData('\u001b[6n')
+
+    expect(pty.writes).toEqual([])
+  })
+
   it('does not mistake a longer escape sequence for a query', () => {
     // `CSI 6 n` shares its prefix with cursor movement and other reports.
     const pty = new FakePty()

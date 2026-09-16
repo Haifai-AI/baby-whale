@@ -29,13 +29,16 @@ function signalName(number: number | undefined): NodeJS.Signals | null {
  * (`CSI 6 n`), and the cursor-position report a terminal emulator answers with
  * (`CSI row ; column R`).
  *
- * A PTY is only half a terminal: the kernel pairs the program's side with
+ * A POSIX PTY is only half a terminal: the kernel pairs the program's side with
  * whatever is on the other end, and node-pty gives this process that other end
  * without emulating it. A line editor that asks and hears nothing waits for its
  * answer, so the bytes after it are never read as input — with pwsh on the far
- * side that means PSReadLine swallowed every command whole: the prompt was
- * echoed, nothing ran, and no prompt marker ever followed. Answering is what
- * makes the pairing usable, and it is what a real terminal does.
+ * side that meant PSReadLine swallowed every command whole. Answering is what
+ * makes that pairing usable.
+ *
+ * Windows is excluded because it does not have this half: node-pty runs ConPTY
+ * there, which is the emulator, and answering on its behalf would write a
+ * second report into the shell's input stream.
  *
  * The reported position is the top-left corner. Nothing here tracks a cursor,
  * and the position's only job is to be a well-formed answer: the caller that
@@ -99,7 +102,11 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     this.rootIdentity = inspector.processTree(this.pid).find(member => member.pid === this.pid)
     this.done = this.outcome.promise
     this.dataDisposable = terminal.onData((data) => {
-      this.answerCursorPositionQueries(data)
+      // Only where the pairing has no terminal emulator. Windows reaches this
+      // through ConPTY, which answers cursor-position queries itself; writing
+      // a second answer would put a stray report into the shell's INPUT, where
+      // a line editor reads it as keystrokes.
+      if (this.platform !== 'win32') this.answerCursorPositionQueries(data)
       this.output.write(Buffer.from(data, 'utf8'))
     })
     this.exitDisposable = terminal.onExit(({ exitCode, signal: exitSignal }) => {

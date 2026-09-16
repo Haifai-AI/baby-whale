@@ -35,7 +35,13 @@ export const withoutExtendedPrefix = (path: string): string =>
 
 /**
  * The real, symlink-resolved form of a root, so macOS `/var` versus
- * `/private/var` aliases compare equal. A vanished root falls back to its
+ * `/private/var` aliases compare equal, and a Windows 8.3 short name resolves
+ * to its long form. `.native` rather than the JavaScript implementation is
+ * what makes the second case work: on Windows the JS `realpathSync` leaves
+ * `RUNNER~1` as written, while the async `realpath` this is compared against
+ * expands it — so the root and the candidate landed on paths `path.relative`
+ * reads as unrelated, and every honest file inside a workspace was refused.
+ * The two implementations agree on POSIX. A vanished root falls back to its
  * lexical form rather than throwing.
  * @param root - the jail root directory.
  * @returns the real root.
@@ -43,7 +49,7 @@ export const withoutExtendedPrefix = (path: string): string =>
 function realRootOf(root: string): string {
   const resolved = resolve(root)
   try {
-    return resolve(realpathSync(resolved))
+    return resolve(realpathSync.native(resolved))
   } catch {
     // Vanished root: the lexical form is the best remaining evidence.
     return resolved
@@ -86,15 +92,9 @@ export function containedPath(root: string, absolute: string): boolean {
  *   jail, unreachable through links that stay inside, or missing.
  */
 export async function anchorWorkspacePath(workspaceRoot: string, rel: string): Promise<string | undefined> {
-  const requested = resolve(workspaceRoot, rel)
-  const real = await realpath(requested).catch((error: unknown) => {
-    console.error(`JAILDBG realpath failed: requested=${JSON.stringify(requested)} error=${String(error)}`)
-    return undefined
-  })
-  if (real === undefined) return undefined
-  if (!containedPath(workspaceRoot, real)) {
-    console.error(`JAILDBG not contained: root=${JSON.stringify(workspaceRoot)} realRoot=${JSON.stringify(realRootOf(workspaceRoot))} real=${JSON.stringify(real)}`)
-    return undefined
-  }
+  const real = await realpath(resolve(workspaceRoot, rel)).catch(() => undefined)
+  // Downstream reads AND subprocess inputs must use this anchored result —
+  // re-resolving the request path would re-follow links.
+  if (real === undefined || !containedPath(workspaceRoot, real)) return undefined
   return real
 }

@@ -409,10 +409,13 @@ const withoutExtendedPrefix = (path: string): string =>
 function withinWorkspace(target: string, cwd: string | undefined): boolean {
   if (cwd === undefined) return false
   // The fs backend may hand back symlink-realified absolute paths (macOS
-  // /var → /private/var), so the boundary is realified too.
+  // /var → /private/var), so the boundary is realified too. `.native` is what
+  // also expands a Windows 8.3 short name; the JavaScript implementation
+  // leaves `RUNNER~1` as written while the fs service's own resolution
+  // expands it, which put an honest in-workspace target outside its root.
   let root = resolve(cwd)
   try {
-    root = resolve(realpathSync(root))
+    root = resolve(realpathSync.native(root))
   } catch {
     // Vanished workspace: the lexical form is the best remaining evidence.
   }

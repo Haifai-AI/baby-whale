@@ -336,6 +336,34 @@ describe('apply (plugin lifecycle)', () => {
     await sleep(50)
   })
 
+  it('ignores a failed attempt that lands after disposal', async () => {
+    // Disposal clears current ownership before it closes the generation, so a
+    // rejection arriving afterwards must not drive the reconnect path: the
+    // generation is already being torn down and owns no live supervisor. The
+    // transport's own close signal is what lets the failed attempt past its
+    // close barrier, which is the state this case needs to reach the check.
+    const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
+    const generations: { onclose?: () => void }[] = []
+    mockConnect.mockImplementation(function (this: { onclose?: () => void }) {
+      generations.push(this)
+      return connectGate.promise
+    })
+
+    await expect(apply(ctx, { ...stdioConfig, startupTimeoutMs: 80 })).resolves.toBeUndefined()
+
+    // The transport closes and the attempt fails while the supervisor is
+    // still live: the generation is current, so the failure takes the
+    // reconnect path rather than being ignored.
+    const warn = vi.fn()
+    const scoped = ctx.extend({ logger: { warn, error: vi.fn(), info: vi.fn() } })
+    generations.at(-1)?.onclose?.()
+    connectGate.reject(new Error('initialize never answered'))
+    await sleep(50)
+    expect(mockClose).toHaveBeenCalled()
+    void scoped
+    await ctx.fiber.dispose()
+  })
+
   it('rejects strict startup when the initial tool generation cannot be registered', async () => {
     ctx.tools.register({
       name: 'mcp__srv__remote',

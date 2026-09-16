@@ -86,9 +86,15 @@ export function containedPath(root: string, absolute: string): boolean {
  *   jail, unreachable through links that stay inside, or missing.
  */
 export async function anchorWorkspacePath(workspaceRoot: string, rel: string): Promise<string | undefined> {
-  const real = await realpath(resolve(workspaceRoot, rel)).catch(() => undefined)
-  // Downstream reads AND subprocess inputs must use this anchored result —
-  // re-resolving the request path would re-follow links.
-  if (real === undefined || !containedPath(workspaceRoot, real)) return undefined
+  const requested = resolve(workspaceRoot, rel)
+  const real = await realpath(requested).catch((error: unknown) => {
+    console.error(`JAILDBG realpath failed: requested=${JSON.stringify(requested)} error=${String(error)}`)
+    return undefined
+  })
+  if (real === undefined) return undefined
+  if (!containedPath(workspaceRoot, real)) {
+    console.error(`JAILDBG not contained: root=${JSON.stringify(workspaceRoot)} realRoot=${JSON.stringify(realRootOf(workspaceRoot))} real=${JSON.stringify(real)}`)
+    return undefined
+  }
   return real
 }

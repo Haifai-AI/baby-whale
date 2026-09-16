@@ -268,6 +268,8 @@ describe('SQLite cross-backend differential behavior', () => {
         await verifyBackend(name, join(directory, name), events, batchSizes)
       }
     }), { numRuns: 100, seed: 0x5A17E })
-  }, 60_000)
+    // A hundred randomized cases, each writing both backends twice over. The
+    // budget has to clear the runner's partition load, not just the work.
+  }, 180_000)
 
 })

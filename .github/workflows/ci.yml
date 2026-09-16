@@ -431,7 +431,12 @@ jobs:
     timeout-minutes: 120
     env:
       DSH_COVERAGE_MAX_WORKERS: '6'
-      DSH_COVERAGE_PARTITIONS: '8'
+      # Sized to the runner, like the Linux lane's: the hosted Windows image is
+      # four vCPUs, and eight instrumented partitions on it starved suites whose
+      # budgets are already generous — a randomized differential case and a
+      # twenty-three-grammar lazy load both timed out without being wrong. The
+      # self-hosted failover pool is large enough to keep eight.
+      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '8' || '4' }}
       # Instrumented process and polling fixtures can exceed Vitest's defaults
       # under the complete lane's concurrent gate load.
       DSH_COVERAGE_TEST_TIMEOUT_MS: '30000'

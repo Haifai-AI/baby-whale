@@ -45,9 +45,12 @@ describe('highlightToHtml', () => {
     // First touch returns the plain fallback (undefined) and starts the import.
     for (const alias of LAZY_ALIASES) expect(highlightToHtml('x', alias)).toBeUndefined()
     // Once every grammar has registered, the same call highlights.
+    // Twenty-three grammars arrive through dynamic import, so this wait is a
+    // budget for the module loader rather than for the assertion. Five seconds
+    // is ample on an idle machine and not on a partition-loaded runner.
     await vi.waitFor(() => {
       for (const alias of LAZY_ALIASES) expect(highlightToHtml('x', alias)).toContain('shiki')
-    }, { timeout: 5_000 })
+    }, { timeout: 30_000 })
   })
 })
 

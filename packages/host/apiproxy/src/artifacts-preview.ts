@@ -9,6 +9,7 @@
 import ExcelJS from 'exceljs'
 import { unzipSync } from 'fflate'
 import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
 import { decodeEntities as decodeXmlEntities, loadWorkbookResilient } from '@deepseek-ai/dsh-tool-office'
 import { managedSofficePath } from './soffice-runtime.ts'
 
@@ -911,7 +912,7 @@ export async function convertToPdfCached(
     .update(filterSpec ?? 'pdf')
     .digest('hex')
     .slice(0, 16)
-  const pdfPath = `${cacheDir}/${key}.pdf`
+  const pdfPath = join(cacheDir, `${key}.pdf`)
   try {
     const info = await (await import('node:fs/promises') as typeof import('node:fs/promises')).stat(pdfPath)
     if (info.isFile() && info.size > 0) return pdfPath
@@ -930,7 +931,7 @@ export async function convertToPdfCached(
   })
   // soffice --outdir writes into cacheDir under the source basename.
   const sourceBase = basename(sourcePath).replace(/\.[^.]+$/, '')
-  const produced = `${cacheDir}/${sourceBase}.pdf`
+  const produced = join(cacheDir, `${sourceBase}.pdf`)
   const exists = async (): Promise<boolean> => {
     try {
       return (await (await import('node:fs/promises') as typeof import('node:fs/promises')).stat(produced)).isFile()
@@ -945,7 +946,7 @@ export async function convertToPdfCached(
   if (!await exists() && spec !== 'pdf') await convertWith('pdf')
   try {
     if (!await exists()) return undefined
-    const target = `${cacheDir}/${key}.pdf`
+    const target = join(cacheDir, `${key}.pdf`)
     /* v8 ignore next -- equal only for a source basename that is the hash of its own path, a fixed point no path satisfies. */
     if (produced !== target) {
       await (await import('node:fs/promises') as typeof import('node:fs/promises')).rename(produced, target)
@@ -1012,7 +1013,7 @@ export async function recalcXlsxBytes(
   const { mkdir, readFile, rename, stat } = await import('node:fs/promises') as typeof import('node:fs/promises')
   const { execFile } = await import('node:child_process') as typeof import('node:child_process')
   const key = `${createHash('sha1').update(sourcePath).update(String(sourceMtimeMs)).digest('hex').slice(0, 16)}.recalc.xlsx`
-  const target = `${cacheDir}/${key}`
+  const target = join(cacheDir, key)
   try {
     const info = await stat(target)
     if (info.isFile() && info.size > 0) return new Uint8Array(await readFile(target))

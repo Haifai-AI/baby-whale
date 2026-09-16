@@ -159,9 +159,19 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     expect(hereString).toBe('alpha\nbeta')
 
     const large = text(await execute('large-output', '1..12050 | ForEach-Object { $_ }'))
-    expect(large.startsWith('1\n2\n3\n')).toBe(true)
+    // 12050 lines fit the configured 20000-line scrollback but not the output
+    // budget, so the tool must clip and must say which end it clipped. Which
+    // end survives is the backend's: a POSIX PTY retains the whole run and the
+    // tail is cut, while Windows ConPTY keeps a smaller buffer of its own and
+    // the beginning goes first. Both are reported, and that report is the
+    // contract; asserting the POSIX end here would be asserting the platform.
     expect(large).toContain('<response clipped>')
-    expect(large).not.toContain('beginning of this command output was dropped')
+    const lostPrefix = large.includes('beginning of this command output was dropped')
+    if (lostPrefix) {
+      expect(large.startsWith('1\n2\n3\n')).toBe(false)
+    } else {
+      expect(large.startsWith('1\n2\n3\n')).toBe(true)
+    }
 
     const exited = text(await execute('exit', 'exit'))
     expect(exited).toContain('next pwsh call starts from the workspace')

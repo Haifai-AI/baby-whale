@@ -139,8 +139,8 @@ export function prepareOfficeRuntime(): void {
     return
   }
 
-  const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? `${home}/.whale-office-venv`
-  const pythonBin = `${venvDir}/bin/python`
+  const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? join(home, '.whale-office-venv')
+  const pythonBin = join(venvDir, 'bin', 'python')
   // The marker pins the locked set: bump OFFICE_LIBS_MARKER with the lock.
   const marker = join(venvDir, OFFICE_LIBS_MARKER)
   // Only advertise a FINISHED install: a half-built venv (binary present,

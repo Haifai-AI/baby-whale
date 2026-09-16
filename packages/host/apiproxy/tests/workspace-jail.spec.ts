@@ -9,8 +9,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, realpath, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, parse } from 'node:path'
-import { anchorWorkspacePath, containedPath } from '../src/workspace-jail.ts'
+import { join, parse, win32 } from 'node:path'
+import { anchorWorkspacePath, containedPath, withoutExtendedPrefix } from '../src/workspace-jail.ts'
 
 let base: string
 let root: string
@@ -53,6 +53,30 @@ describe('containedPath', () => {
     const filesystemRoot = parse(process.cwd()).root
     expect(containedPath(filesystemRoot, filesystemRoot)).toBe(true)
     expect(containedPath(filesystemRoot, join(filesystemRoot, 'elsewhere'))).toBe(true)
+  })
+})
+
+describe('withoutExtendedPrefix', () => {
+  it('treats the extended-length prefix as the same path, on either side', () => {
+    // Node adds `\\?\` when it resolves through one realpath implementation and
+    // omits it through another, and `path.relative` then reports the two
+    // spellings as living on different roots. On Windows that refused every
+    // honest file inside a workspace, so both sides are normalized first. The
+    // spellings are Windows ones by construction, and `path.win32` decides
+    // them identically on every host.
+    expect(withoutExtendedPrefix('\\\\?\\C:\\ws')).toBe('C:\\ws')
+    expect(withoutExtendedPrefix('\\\\?\\C:\\ws\\notes.txt')).toBe('C:\\ws\\notes.txt')
+    expect(withoutExtendedPrefix('C:\\ws')).toBe('C:\\ws')
+    // A UNC root keeps its own leading pair rather than losing both.
+    expect(withoutExtendedPrefix('\\\\?\\UNC\\server\\share')).toBe('\\\\server\\share')
+  })
+
+  it('leaves a prefixed and an unprefixed path on one root after normalization', () => {
+    const root = withoutExtendedPrefix('\\\\?\\C:\\ws')
+    const target = withoutExtendedPrefix('C:\\ws\\deliverables\\notes.txt')
+    expect(win32.relative(root, target)).toBe('deliverables\\notes.txt')
+    // The sibling escape stays refused at the same time.
+    expect(win32.relative(root, 'C:\\ws-evil\\secret.txt').startsWith('..')).toBe(true)
   })
 })
 

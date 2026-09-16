@@ -21,6 +21,19 @@ import { realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 
 /**
+ * Drop Windows' extended-length prefix. Node's synchronous and promise
+ * `realpath` spellings disagree about adding `\\?\`, and `path.relative`
+ * treats a prefixed and an unprefixed path as living on different roots — so
+ * comparing a realpathed root against a realpathed candidate refused every
+ * honest file inside a workspace on Windows. A UNC root keeps its own leading
+ * pair rather than losing both.
+ * @param path - an absolute path, with or without the prefix.
+ * @returns the same path without it.
+ */
+export const withoutExtendedPrefix = (path: string): string =>
+  path.replace(/^\\\\\?\\UNC\\/, '\\\\').replace(/^\\\\\?\\/, '')
+
+/**
  * The real, symlink-resolved form of a root, so macOS `/var` versus
  * `/private/var` aliases compare equal. A vanished root falls back to its
  * lexical form rather than throwing.
@@ -52,7 +65,7 @@ function realRootOf(root: string): string {
  * @returns true for the root itself and paths strictly beneath it.
  */
 export function containedPath(root: string, absolute: string): boolean {
-  const rel = relative(realRootOf(root), absolute)
+  const rel = relative(withoutExtendedPrefix(realRootOf(root)), withoutExtendedPrefix(absolute))
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 

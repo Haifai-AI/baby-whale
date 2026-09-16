@@ -389,6 +389,19 @@ function sessionPermissionPreset(session: unknown): string | undefined {
 }
 
 /**
+ * Drop Windows' extended-length prefix. Node's synchronous and promise
+ * `realpath` spellings disagree about adding `\\?\`, and `path.relative`
+ * treats a prefixed and an unprefixed path as living on different roots — so
+ * comparing a realpathed root against a realpathed candidate refused every
+ * honest file inside a workspace on Windows. A UNC root keeps its own leading
+ * pair rather than losing both.
+ * @param path - an absolute path, with or without the prefix.
+ * @returns the same path without it.
+ */
+const withoutExtendedPrefix = (path: string): string =>
+  path.replace(/^\\\\\?\\UNC\\/, '\\\\').replace(/^\\\\\?\\/, '')
+
+/**
  * Whether the resolved target sits inside the session workspace root.
  * @param target - absolute resolved target path.
  * @param cwd - the session workspace root, when known.
@@ -408,7 +421,7 @@ function withinWorkspace(target: string, cwd: string | undefined): boolean {
   // then ends `C:\ws\` while the target continues `C:\ws\file`, so every file
   // inside the workspace read as outside it and faced an approval card it
   // should not have. `relative` also keeps the same-prefix sibling case out.
-  const rel = relative(root, target)
+  const rel = relative(withoutExtendedPrefix(root), withoutExtendedPrefix(target))
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 

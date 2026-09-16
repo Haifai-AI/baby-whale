@@ -65,5 +65,8 @@
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

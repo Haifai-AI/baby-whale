@@ -197,7 +197,14 @@ describe('the per-slot report budget', () => {
 })
 
 describe('the real workspace surface', () => {
-  it('collects every declared slot with a teachable contract', { timeout: 30_000 }, () => {
+  // The scan globs, reads, and TypeScript-parses every package source file
+  // twice over, which costs about a second on a developer machine but far more
+  // on a shared Windows runner: the coverage lane runs its partitions
+  // concurrently there, so this single-threaded scan competes with three peers
+  // for four vCPUs while the platform's file scanner inspects each read. The
+  // assertion is the catalog's content, never its latency, so the budget is
+  // sized for the slowest measured lane rather than the fastest one.
+  it('collects every declared slot with a teachable contract', { timeout: 120_000 }, () => {
     const entries = collectSlotEntries(process.cwd())
     expect(entries.length).toBeGreaterThan(30)
     for (const entry of entries) {

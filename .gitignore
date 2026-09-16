@@ -16,6 +16,12 @@ coverage/
 .oxlint-contract-*/
 .oxlintrc.contract-*.json
 oxlint-contract-*.ts
+# Typert generator scratch: `copyFixture` creates one dot-directory per case
+# under the tests root and removes it on teardown, so an interrupted or
+# failed run leaves trees behind. Two of them were committed into the fork's
+# initial commit and stayed there; nothing legitimate is a dot-directory
+# under this tests root.
+packages/typert/generator/tests/.*/
 .humanize/
 tmp/
 .claude/commands/

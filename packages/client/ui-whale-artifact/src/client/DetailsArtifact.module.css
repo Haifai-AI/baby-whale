@@ -21,24 +21,24 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  color: #ffffff;
-  font-size: 9px;
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.4px;
   flex: none;
 }
 
 .iconxlsx {
-  background: var(--dsw-static-green-500);
+  background: var(--dsw-alias-file-sheet);
 }
 
 .iconpptx {
-  background: var(--dsw-static-amber-500);
+  background: var(--dsw-alias-file-slides);
 }
 
 .icondocx {
-  background: var(--dsw-static-blue-500);
+  background: var(--dsw-alias-file-doc);
 }
 
 .headText {
@@ -69,12 +69,12 @@
 .truncated {
   padding: 8px 12px;
   font-size: 11px;
-  color: var(--dsw-static-neutral-bluish-600);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .footer {
   padding: 6px 12px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--dsw-alias-brand-text);
   opacity: 0.5;
   border-top: 1px solid var(--dsw-alias-border-l1);
@@ -110,7 +110,7 @@
   color: var(--dsw-alias-brand-text);
   opacity: 0.65;
   padding: 5px 12px;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--dsw-radius-sm) var(--dsw-radius-sm) 0 0;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -139,7 +139,7 @@
   color: var(--dsw-alias-brand-text);
   border-right: 1px solid var(--dsw-alias-border-l2);
   padding-right: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--dsw-font-mono);
 }
 
 .formula {
@@ -148,7 +148,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--dsw-font-mono);
 }
 
 .gridWrap {
@@ -184,19 +184,19 @@
   width: 90px;
   min-width: 90px;
   max-width: 200px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--dsw-font-mono);
 }
 
 .headerCell {
   position: sticky;
   top: 24px;
   z-index: 1;
-  background: var(--dsw-static-blue-900);
-  color: #ffffff;
+  background: var(--dsw-office-ink);
+  color: var(--dsw-alias-label-primary-foreground);
   font-weight: 600;
   text-align: left;
   padding: 5px 8px;
-  border: 1px solid var(--dsw-static-blue-950);
+  border: 1px solid var(--dsw-office-ink-deep);
   border-top: none;
   width: 90px;
   max-width: 200px;
@@ -223,14 +223,14 @@
   background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-brand-text);
   opacity: 0.6;
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
   padding: 4px 8px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-left: none;
   width: 40px;
   white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--dsw-font-mono);
 }
 
 .cell {
@@ -249,7 +249,7 @@
 }
 
 .cellSelected {
-  outline: 2px solid var(--dsw-static-blue-500);
+  outline: 2px solid var(--dsw-alias-file-doc);
   outline-offset: -2px;
   background: var(--dsw-alias-interactive-bg-active) !important;
 }
@@ -264,6 +264,10 @@
   overflow: auto;
   flex: 1;
   min-height: 0;
+  /* The gallery sits on the elevated module surface, so its thumb takes the
+     elevated pair (rebinding contract in ui-theme's scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .slidePage {
@@ -271,9 +275,9 @@
   right: 8px;
   bottom: 8px;
   padding: 2px 8px;
-  border-radius: 6px;
-  background: rgba(15, 18, 25, 0.78);
-  color: #ffffff;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-tooltip-bg);
+  color: var(--dsw-alias-label-primary-foreground);
   font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -284,14 +288,14 @@
   position: relative;
   aspect-ratio: 16 / 9;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
   padding: 16px 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--dsw-shadow-lv1);
 }
 
 .slideAccent {
@@ -300,17 +304,17 @@
   left: 0;
   right: 0;
   height: 5px;
-  background: var(--dsw-static-blue-500);
+  background: var(--dsw-alias-file-doc);
 }
 
 .slideTitle {
   justify-content: center;
-  background: var(--dsw-static-blue-950);
-  border-color: var(--dsw-static-blue-950);
+  background: var(--dsw-office-ink-deep);
+  border-color: var(--dsw-office-ink-deep);
 }
 
 .slideDeckTitle {
-  color: #ffffff;
+  color: var(--dsw-alias-label-primary-foreground);
   font-size: 16px;
   font-weight: 700;
   overflow: hidden;
@@ -321,13 +325,13 @@
 
 .slideTitleText {
   margin-top: 4px;
-  color: var(--dsw-static-blue-950);
+  color: var(--dsw-office-ink-deep);
   font-size: 14px;
   font-weight: 600;
 }
 
 .slideSubtitle {
-  color: var(--dsw-static-neutral-bluish-600);
+  color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   font-style: italic;
 }
@@ -335,7 +339,7 @@
 .slideBullets {
   margin: 4px 0 0;
   padding-left: 18px;
-  color: var(--dsw-static-neutral-bluish-750);
+  color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   line-height: 1.7;
 }
@@ -347,43 +351,43 @@
   margin: 16px 16px 0;
   padding: 26px 30px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  border-radius: var(--dsw-radius-xs);
+  box-shadow: var(--dsw-shadow-lv1);
   overflow: auto;
   flex: 1;
   min-height: 0;
 }
 
 .docTitle {
-  color: var(--dsw-static-blue-950);
+  color: var(--dsw-office-ink-deep);
   font-size: 20px;
   font-weight: 700;
   margin-bottom: 12px;
 }
 
 .h1 {
-  color: var(--dsw-static-blue-900);
+  color: var(--dsw-office-ink);
   font-size: 17px;
   font-weight: 700;
   margin: 14px 0 5px;
 }
 
 .h2 {
-  color: var(--dsw-static-blue-800);
+  color: var(--dsw-office-ink-soft);
   font-size: 15px;
   font-weight: 600;
   margin: 12px 0 4px;
 }
 
 .h3 {
-  color: var(--dsw-static-blue-600);
+  color: var(--dsw-office-ink-soft);
   font-size: 14px;
   font-weight: 600;
   margin: 10px 0 3px;
 }
 
 .paragraph {
-  color: var(--dsw-static-neutral-bluish-850);
+  color: var(--dsw-alias-label-primary);
   font-size: 14px;
   line-height: 1.75;
   margin: 8px 0;
@@ -391,17 +395,17 @@
 }
 
 .quote {
-  color: var(--dsw-static-neutral-bluish-700);
+  color: var(--dsw-alias-label-secondary);
   font-size: 14px;
   font-style: italic;
   line-height: 1.7;
   margin: 10px 0;
   padding: 6px 14px;
-  border-left: 3px solid var(--dsw-static-blue-300);
+  border-left: 2px solid var(--dsw-alias-border-l3);
 }
 
 .bullet {
-  color: var(--dsw-static-neutral-bluish-800);
+  color: var(--dsw-alias-label-primary);
   font-size: 14px;
   line-height: 1.7;
   margin: 4px 0 4px 20px;

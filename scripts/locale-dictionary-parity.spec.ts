@@ -82,6 +82,8 @@ interface Dictionary {
   name: string
   /** Declared keys, sorted. */
   keys: string[]
+  /** Declared key -> literal value, for the keys whose value is a plain string. */
+  values: Map<string, string>
 }
 
 /**
@@ -125,7 +127,7 @@ function dictionariesIn(file: string): Dictionary[] {
       const literal = unwrap(decl.initializer)
       if (literal === undefined || !ts.isObjectLiteralExpression(literal)) continue
       if (localeOf(decl.name.text) === undefined) continue
-      found.push({ file: rel, name: decl.name.text, keys: keysOf(literal) })
+      found.push({ file: rel, name: decl.name.text, keys: keysOf(literal), values: valuesOf(literal) })
     }
   }
 
@@ -171,7 +173,7 @@ function dictionariesIn(file: string): Dictionary[] {
         // The namespace expression's source text identifies the pair, so the
         // zh and en calls for one namespace meet and calls for different
         // namespaces stay apart.
-        found.push({ file: rel, name: `${tag.text}@register:${ns.getText(source)}`, keys: keysOf(dictionary) })
+        found.push({ file: rel, name: `${tag.text}@register:${ns.getText(source)}`, keys: keysOf(dictionary), values: valuesOf(dictionary) })
       }
     }
     if (ts.isArrayLiteralExpression(node) && node.elements.length === 2) {
@@ -183,7 +185,7 @@ function dictionariesIn(file: string): Dictionary[] {
         if (tag === undefined || !ts.isStringLiteral(tag)) continue
         if (literal === undefined || !ts.isObjectLiteralExpression(literal)) continue
         if (tag.text !== 'zh' && tag.text !== 'en') continue
-        found.push({ file: rel, name: `${tag.text}@inline:${site}`, keys: keysOf(literal) })
+        found.push({ file: rel, name: `${tag.text}@inline:${site}`, keys: keysOf(literal), values: valuesOf(literal) })
       }
     }
     ts.forEachChild(node, visit)
@@ -200,6 +202,61 @@ function keysOf(literal: ts.ObjectLiteralExpression): string[] {
     if (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)) keys.push(prop.name.text)
   }
   return keys.sort()
+}
+
+/**
+ * String values of one dictionary literal. A value that is not a plain string
+ * (a function, a nested object, a template with substitutions) is simply absent:
+ * the language check below can only judge text it can read, and a missing entry
+ * must not read as a mismatch.
+ * @param literal - the dictionary object literal.
+ * @returns declared key -> literal string value.
+ */
+function valuesOf(literal: ts.ObjectLiteralExpression): Map<string, string> {
+  const values = new Map<string, string>()
+  for (const prop of literal.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue
+    if (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name)) continue
+    const value = unwrap(prop.initializer)
+    if (value !== undefined && ts.isStringLiteralLike(value)) values.set(prop.name.text, value.text)
+  }
+  return values
+}
+
+/**
+ * Whether a string carries Han characters. The single test this gate can apply
+ * without a translator: Chinese copy contains Han, English copy does not.
+ */
+function hasHan(text: string): boolean {
+  return /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u.test(text)
+}
+
+/**
+ * Keys whose value sits in the wrong language. Key symmetry alone cannot see a
+ * swapped VALUE — a `zh` entry holding English text and its `en` partner
+ * holding Chinese — which is exactly the mistake that ships a Chinese fold row
+ * to an English reader. Values that are pure placeholders, symbols, or product
+ * names are legitimately Latin in both, so only a value that reads as
+ * translated prose is judged.
+ * @param zh - the Chinese-side dictionary.
+ * @param en - the English-side dictionary.
+ * @returns one problem line per misplaced value.
+ */
+function languageProblems(zh: Dictionary, en: Dictionary): string[] {
+  const problems: string[] = []
+  for (const [key, zhValue] of zh.values) {
+    const enValue = en.values.get(key)
+    if (enValue === undefined) continue
+    if (hasHan(zhValue) || !hasHan(enValue)) continue
+    // A `zh` value with no Han whose `en` partner has Han: the two sides are
+    // inverted. Ignore values that are all placeholders, digits, or symbols,
+    // which carry no language at all.
+    if (!/[A-Za-z]{2}/u.test(zhValue)) continue
+    const found = JSON.stringify(zhValue)
+    const partner = JSON.stringify(enValue)
+    problems.push(`${zh.file} ${key}: the zh value reads as English (${found}) while the en value reads as Chinese (${partner})`)
+  }
+  return problems
 }
 
 /** Look through `satisfies`/`as`/parenthesized wrappers to the literal. */
@@ -298,6 +355,7 @@ describe('shipped locale dictionaries', () => {
       const enOnly = en.keys.filter(k => !zh.keys.includes(k))
       if (zhOnly.length > 0) problems.push(`${zh.file} ${zh.name} has keys absent from ${en.name}: ${zhOnly.join(', ')}`)
       if (enOnly.length > 0) problems.push(`${en.file} ${en.name} has keys absent from ${zh.name}: ${enOnly.join(', ')}`)
+      problems.push(...languageProblems(zh, en))
     }
 
     // The shipped dictionary count only grows; a collapse means discovery or

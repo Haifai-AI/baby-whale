@@ -284,6 +284,10 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       try { await generation.close() } catch { /* transport already gone */ }
       const quiesced = hasClosed() || await waitForClose(closed.promise)
       attemptSettled = true
+      /* v8 ignore next -- v8 records -1 (no data) for this branch's fall-through
+         and gives that path no mapped location, so the gate reports it uncovered
+         even in a run that takes it. The arm is live: a superseded generation
+         owns no supervisor, and the reconnect path belongs to its replacement. */
       if (!isCurrent(generation)) return
       if (!quiesced) {
         client = undefined

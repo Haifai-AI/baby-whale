@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -72,7 +72,10 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 
 describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader composition', () => {
   it('preserves cwd and environment across calls', async () => {
-    root = await mkdtemp(join(tmpdir(), 'dsh-persistent-pwsh-loader-'))
+    // Real path, not the raw temp path: pwsh reports `$PWD` as the shell
+    // resolved it, and macOS aliases `/var` to `/private/var`, so comparing
+    // against the unresolved spelling fails on a correct shell.
+    root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-persistent-pwsh-loader-')))
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [
       "- name: '@deepseek-ai/dsh-agent'",
@@ -93,11 +96,13 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
       '    idleSilenceMs: 300',
       '    handoffGraceMs: 300',
       '    scrollbackLines: 20000',
-      '    timeoutMs: 8000',
+      // Absolute send bound at half the tool's, so a stalled send is reported
+      // by the layer that stalled with the output it had already read.
+      '    timeoutMs: 20000',
       '    disposeGraceMs: 500',
       "- name: '@deepseek-ai/dsh-tool-pwsh-persistent'",
       '  config:',
-      '    timeoutMs: 20000',
+      '    timeoutMs: 30000',
       '',
     ].join('\n'))
 
@@ -142,26 +147,45 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     expect(observed).toContain(`cwd=${join(root, 'nested')} keep=loader`)
     expect(observed).not.toContain('DSH_PERSISTENT_PWSH')
 
-    const multiline = text(await execute(
-      'multiline',
-      '$value = "line one"\nWrite-Output "${value}:it\'s fine"',
+    // One send, two input-framing claims: a multi-line submission and a
+    // here-string literal both have to survive the wrapper. They share a call
+    // because every send is a full terminal round trip, and this case runs on a
+    // shared runner where that round trip is the dominant cost.
+    const framing = text(await execute(
+      'framing',
+      '$value = "line one"\n$h = @\'\nalpha\nbeta\n\'@\nWrite-Output "${value}:it\'s fine"\nWrite-Output $h',
     ))
-    expect(multiline).toBe("line one:it's fine")
-    expect(multiline).not.toContain('DSH_PERSISTENT_PWSH')
+    expect(framing).toBe("line one:it's fine\nalpha\nbeta")
+    expect(framing).not.toContain('DSH_PERSISTENT_PWSH')
 
-    const hereString = text(await execute(
-      'here-string',
-      "$h = @'\nalpha\nbeta\n'@\nWrite-Output $h",
-    ))
-    expect(hereString).toBe('alpha\nbeta')
-
-    const large = text(await execute('large-output', '1..12050 | ForEach-Object { $_ }'))
-    expect(large.startsWith('1\n2\n3\n')).toBe(true)
+    // 300 padded lines fit the configured 20000-line scrollback but not the
+    // 16000-character output budget, so the tool must clip and must say which
+    // end it clipped. The volume is driven by characters rather than line count
+    // on purpose: a console host writes once per formatted object, so tens of
+    // thousands of short lines measure the platform's bulk-output throughput
+    // (and timed the command out on the Windows runner) instead of the clipping
+    // contract. Which end survives is the backend's: a POSIX PTY retains the
+    // whole run and the tail is cut, while Windows ConPTY keeps a smaller buffer
+    // of its own and the beginning goes first. Both are reported, and that
+    // report is the contract; asserting the POSIX end here would be asserting
+    // the platform.
+    const filler = 'x'.repeat(100)
+    const large = text(await execute('large-output', `1..300 | ForEach-Object { "$_ ${filler}" }`))
     expect(large).toContain('<response clipped>')
-    expect(large).not.toContain('beginning of this command output was dropped')
+    const earliest = `1 ${filler}\n2 ${filler}\n3 `
+    const lostPrefix = large.includes('beginning of this command output was dropped')
+    if (lostPrefix) {
+      expect(large.startsWith(earliest)).toBe(false)
+    } else {
+      expect(large.startsWith(earliest)).toBe(true)
+    }
 
     const exited = text(await execute('exit', 'exit'))
     expect(exited).toContain('next pwsh call starts from the workspace')
     expect(text(await execute('after-exit', 'Write-Output "$PWD"'))).toBe(root)
-  }, 60_000)
+    // The terminal and tool bounds sit below this one on purpose: a wedged send
+    // must report which bound it hit and what it had read, naming the phase in
+    // the tool's own words, rather than letting the test budget expire and
+    // leave "timed out" as the only evidence.
+  }, 240_000)
 })

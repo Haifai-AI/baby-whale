@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SessionId as sessionId, type SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent'
 import { launchWebScaffold, webSnapshotMode, type WebScaffold } from './scaffold.ts'
+import { authHeaders } from './support.ts'
 
 const MODE = webSnapshotMode()
 const INITIAL = 'Explain event sourcing in one sentence.'
@@ -22,10 +23,10 @@ const WAKING = 'And add one concrete example.'
 type RpcResult<T> = { ok: true; value: T } | { ok: false; error: { code: string; message: string } }
 
 /** POST one unary RPC through the real HTTP carrier and unwrap its result. */
-async function rpc<T>(baseUrl: string, method: string, payload: unknown): Promise<RpcResult<T>> {
+async function rpc<T>(baseUrl: string, apiToken: string, method: string, payload: unknown): Promise<RpcResult<T>> {
   const response = await fetch(`${baseUrl}/api/${method}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...authHeaders(apiToken) },
     body: JSON.stringify({
       type: 'client-request',
       rpcId: `interrupt-e2e-${method}-${crypto.randomUUID()}`,
@@ -90,7 +91,7 @@ describe.skipIf(MODE === 'record')('web e2e: subagent.interrupt over the real co
     })
 
     // A live parent Agent through the real API; no workspace or browser.
-    const created = await rpc<{ sessionId: string }>(scaffold.baseUrl, 'session.create', {
+    const created = await rpc<{ sessionId: string }>(scaffold.baseUrl, scaffold.apiToken, 'session.create', {
       cwd: scaffold.workspaceCwd,
     })
     if (!created.ok) throw new Error(`session.create failed: ${created.error.code}`)
@@ -120,7 +121,7 @@ describe.skipIf(MODE === 'record')('web e2e: subagent.interrupt over the real co
 
   it('parks a queued follow-up on interrupt and resumes it FIFO on a waking send', async () => {
     // Queue the follow-up while the turn is still open, then interrupt.
-    const queued = await rpc<{ messageId: string }>(scaffold.baseUrl, 'subagent.prompt', {
+    const queued = await rpc<{ messageId: string }>(scaffold.baseUrl, scaffold.apiToken, 'subagent.prompt', {
       parentSessionId: parentId,
       childSessionId: childId,
       mode: 'continuable',
@@ -129,7 +130,7 @@ describe.skipIf(MODE === 'record')('web e2e: subagent.interrupt over the real co
     expect(queued).toMatchObject({ ok: true })
 
     const settled = scaffold.whenTurnSettled()
-    const interrupted = await rpc<{ accepted: true }>(scaffold.baseUrl, 'subagent.interrupt', {
+    const interrupted = await rpc<{ accepted: true }>(scaffold.baseUrl, scaffold.apiToken, 'subagent.interrupt', {
       parentSessionId: parentId,
       childSessionId: childId,
       mode: 'continuable',
@@ -151,7 +152,7 @@ describe.skipIf(MODE === 'record')('web e2e: subagent.interrupt over the real co
 
     // Only an explicit waking send resumes the parked queue, FIFO, then the
     // child runs both turns to completion and settles.
-    const waking = await rpc<{ messageId: string }>(scaffold.baseUrl, 'subagent.prompt', {
+    const waking = await rpc<{ messageId: string }>(scaffold.baseUrl, scaffold.apiToken, 'subagent.prompt', {
       parentSessionId: parentId,
       childSessionId: childId,
       mode: 'continuable',

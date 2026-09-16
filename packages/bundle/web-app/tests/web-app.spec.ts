@@ -7,7 +7,7 @@
 
 import { EventEmitter } from 'node:events'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -16,12 +16,31 @@ import { Context } from '@deepseek-ai/cordis'
 import { createLaunchEnvironmentSnapshot, DSH_LAUNCH_ENVIRONMENT_KEY } from '@deepseek-ai/dsh-launch-environment'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
-import { apply, Config, internals } from '../src/index.ts'
+import { apiTokenFile, apply, Config, internals } from '../src/index.ts'
 
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   spawn: vi.fn(),
 }))
+
+// The token publication's diagnostic has to name a reason even when the
+// thrower hands it something that is not an Error. node:fs always throws
+// Error instances, so reaching that fallback needs a seam; this flag gives
+// the real module one.
+const fsFailure = vi.hoisted(() => ({ value: undefined as unknown }))
+
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...original,
+    // Delegate through the captured original: the file's own import binding
+    // resolves to this mock, so calling it by name here would recurse.
+    writeFileSync: (...args: Parameters<typeof original.writeFileSync>): void => {
+      if (fsFailure.value !== undefined) throw fsFailure.value
+      original.writeFileSync(...args)
+    },
+  }
+})
 
 vi.mock('node:os', async importOriginal => ({
   ...await importOriginal<typeof import('node:os')>(),
@@ -163,6 +182,120 @@ describe('web-app runtime glue', () => {
     expect(assembly.sections.find(entry => entry.name === 'app:web-surface')?.text)
       .toContain('rebuilding the affected Web artifacts')
     await ctx.fiber.dispose()
+  })
+
+  it('hands the instance token to the operator as a URL fragment and publishes the token file', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    ctx.provide('connection', { apiToken: '0123456789abcdef0123456789abcdef' } as never)
+    const file = apiTokenFile(4567)
+    rmSync(file, { force: true })
+    try {
+      const lines: string[] = []
+      const log = vi.spyOn(console, 'log').mockImplementation((message) => { lines.push(String(message)) })
+      const openBrowser = vi.fn(async () => {})
+      internals.openBrowser = openBrowser
+      apply(ctx, new Config({ openBrowser: true, printUrl: true, surfaceContext: false, trustedHosts: [] }))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(log).toHaveBeenCalledWith(
+        'dsh web: http://127.0.0.1:4567#token=0123456789abcdef0123456789abcdef'
+        + ' (LAN: http://192.168.1.5:4567#token=0123456789abcdef0123456789abcdef)',
+      )
+      expect(openBrowser).toHaveBeenCalledWith('http://127.0.0.1:4567#token=0123456789abcdef0123456789abcdef')
+      expect(lines).toHaveLength(2)
+      expect(readFileSync(file, 'utf8')).toBe('0123456789abcdef0123456789abcdef\n')
+      // As above: the owner-only mode is POSIX, and Windows synthesizes 0o666.
+      if (process.platform !== 'win32') {
+        expect(statSync(file).mode & 0o777).toBe(0o600)
+      }
+      await ctx.fiber.dispose()
+    } finally {
+      rmSync(file, { force: true })
+    }
+  })
+
+  it('prints the plain URL and writes no token file without a connection sibling', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    const file = apiTokenFile(4567)
+    rmSync(file, { force: true })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, trustedHosts: [] }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567 (LAN: http://192.168.1.5:4567)')
+    expect(existsSync(file)).toBe(false)
+    await ctx.fiber.dispose()
+  })
+
+  it('names a non-Error publication failure by its string form', async () => {
+    // A thrower that is not an Error has no `message` to read; the diagnostic
+    // must still say what happened rather than printing `undefined`.
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    ctx.provide('connection', { apiToken: '0123456789abcdef0123456789abcdef' } as never)
+    let release: () => void
+    const settlement = new Promise<void>((resolve) => { release = resolve })
+    provideLoader(ctx, () => settlement)
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    fsFailure.value = { toString: () => 'a bare refusal' }
+    try {
+      apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: false, trustedHosts: [] }))
+      release!()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(String(diagnostic.mock.calls[0]?.[0])).toContain('could not publish the API token file because a bare refusal')
+      await ctx.fiber.dispose()
+    } finally {
+      fsFailure.value = undefined
+    }
+  })
+
+  it('owns a deferred token-publication failure instead of an unhandled rejection', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, createLaunchEnvironmentSnapshot([
+      { source: 'process', values: {} },
+    ]))
+    ctx.provide('webServer', fakeHttpServer('0.0.0.0').server)
+    ctx.provide('connection', { apiToken: '0123456789abcdef0123456789abcdef' } as never)
+    const file = apiTokenFile(4567)
+    rmSync(file, { force: true, recursive: true })
+    // A directory at the token path makes the publication's non-recursive
+    // discard throw deterministically after Loader settlement.
+    mkdirSync(file)
+    const rejections: unknown[] = []
+    const onRejection = (reason: unknown): void => { rejections.push(reason) }
+    process.on('unhandledRejection', onRejection)
+    try {
+      let release: () => void
+      const settlement = new Promise<void>((resolve) => { release = resolve })
+      provideLoader(ctx, () => settlement)
+      const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+      apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: false, trustedHosts: [] }))
+      release!()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(diagnostic).toHaveBeenCalledTimes(1)
+      expect(String(diagnostic.mock.calls[0]?.[0])).toContain('web-app: could not publish the API token file because')
+      // The settlement callback runs on a following turn; let any unowned
+      // rejection surface before asserting there was none.
+      await new Promise(resolve => setImmediate(resolve))
+      expect(rejections).toEqual([])
+      await ctx.fiber.dispose()
+    } finally {
+      process.off('unhandledRejection', onRejection)
+      rmSync(file, { recursive: true, force: true })
+    }
   })
 
   it('skips the surface context when disabled (the one-shot layer): no prompt section, no bash variables', async () => {

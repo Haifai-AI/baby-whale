@@ -6,6 +6,7 @@ import {
   type ClientRequest,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { ClientConnectionRpc } from '../rpc.ts'
+import { resolveApiToken } from './api-token.ts'
 import { randomUuid } from './random-uuid.ts'
 
 const INTERNAL_BASE = 'http://dsh.internal'
@@ -21,7 +22,15 @@ export type RpcFetch = (input: URL, init: RequestInit) => Promise<Response>
  * @returns caller that owns request correlation and response-envelope validation.
  */
 export function createWebConnectionRpc(doFetch?: RpcFetch): ClientConnectionRpc {
-  const send: RpcFetch = doFetch ?? ((input, init) => globalThis.fetch(input, init))
+  // The default transport carries the instance token like WebApiClient does;
+  // an explicit transport override owns its own credentials.
+  const send: RpcFetch = doFetch ?? (async (input, init) => {
+    const token = resolveApiToken()
+    if (token === undefined) return globalThis.fetch(input, init)
+    const headers = new Headers(init.headers)
+    headers.set('authorization', `Bearer ${token}`)
+    return globalThis.fetch(input, { ...init, headers })
+  })
   return {
     async call(channel, endpoint, payload, signal) {
       assertTarget(channel, endpoint)

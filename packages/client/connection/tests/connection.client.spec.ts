@@ -319,4 +319,33 @@ describe('connection lifecycle', () => {
       controller.stop()
     }
   })
+
+  it('stop() during backoff cancels the wait: a restart runs exactly one loop', async () => {
+    const api = new FakeApiClient()
+    const states: ConnectionState[] = []
+    let connected = 0
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const controller = new ConnectionController(api, {
+      onConnected: () => { connected++ },
+      onStateChange: state => states.push(state),
+    }, { ...FAST, backoffBaseMs: 400, backoffFactor: 1, backoffMaxMs: 400 })
+    controller.start()
+    try {
+      await vi.waitFor(() => { expect(connected).toBe(1) })
+      api.failStreams(new Error('torn'))
+      // The first loop is now parked in its backoff wait.
+      await vi.waitFor(() => { expect(states).toContain('reconnecting') })
+      controller.stop()
+      controller.start()
+      // The new loop connects at once, not after the orphaned backoff.
+      await vi.waitFor(() => { expect(connected).toBe(2) })
+      // Past the orphaned 400ms backoff: it must not have woken a second loop.
+      await new Promise(resolve => setTimeout(resolve, 500))
+      expect(api.callsOf('host.describe')).toHaveLength(2)
+      expect(api.openMuxCount).toBe(1)
+    } finally {
+      controller.stop()
+      warnSpy.mockRestore()
+    }
+  })
 })

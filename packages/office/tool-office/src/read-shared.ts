@@ -49,6 +49,7 @@ export function shapeCellValue(value: unknown): ReadCell {
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>
     if (typeof record.formula === 'string') {
+      /* v8 ignore next -- the enclosing test already proved formula is a string */
       const formulaText = typeof record.formula === 'string' ? record.formula : ''
       return { formula: `=${formulaText}` }
     }
@@ -63,6 +64,7 @@ export function shapeCellValue(value: unknown): ReadCell {
     }
   }
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+  /* v8 ignore next -- numbers already returned above, so this test can only ever be false */
   if (typeof value === 'number') return value
   return ''
 }

@@ -23,8 +23,11 @@ const roots: string[] = []
 const dshBuildWorkflows = [
   'build-exe-for-python-sdk.yml',
   'ci.yml',
+  // The DeepSeek e2e workflow was folded away; its jobs and their environment
+  // live in ci.yml now. Each entry must exist — a stale name makes the loop
+  // throw ENOENT and the guard silently stops checking anything.
   'e2b-e2e.yml',
-  'e2e.yml',
+  'landlock-run.yml',
   'release.yml',
   'release-publish.yml',
   'sandbox.yml',

@@ -1,5 +1,6 @@
 /** Sidebar runtime-setup card: one-time LibreOffice download for previews. */
 import { useCallback, useEffect, useState } from 'react'
+import type { JSX } from 'react'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './RuntimeSetupCard.module.css'
@@ -40,7 +41,7 @@ export function RuntimeSetupCard({ connection, wide, t }: RuntimeSetupCardProps)
     try {
       const response = await connection.api.officeRuntime.status({})
       const value = response.result.ok ? response.result.value : undefined
-      if (value !== undefined) setStatus(value as unknown as RuntimeStatus)
+      if (value !== undefined) setStatus(value)
     } catch {
       // The card simply stays hidden when the host does not answer.
     }
@@ -85,7 +86,9 @@ export function RuntimeSetupCard({ connection, wide, t }: RuntimeSetupCardProps)
       {phase !== 'error' && <p className={css.note}>{t('runtime.body')}</p>}
       {running && (
         <div className={css.progress} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-          <div className={css.progressFill} style={{ width: `${pct}%` }} />
+          {/* Scaled rather than resized: a percentage width relayouts the bar on
+              every progress frame, and the fill is a single solid block. */}
+          <div className={css.progressFill} style={{ transform: `scaleX(${pct / 100})` }} />
         </div>
       )}
       {running && <p className={css.note}>{status.install.message ?? `${pct}%`}</p>}

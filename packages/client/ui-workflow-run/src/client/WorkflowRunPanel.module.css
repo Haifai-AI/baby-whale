@@ -24,11 +24,10 @@
 .runLeading {
   display: inline-flex;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   align-items: center;
   justify-content: center;
-  margin-right: 0;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -88,11 +87,10 @@
 .phaseLeading {
   display: inline-flex;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   align-items: center;
   justify-content: center;
-  margin-right: 0;
   color: var(--dsw-alias-label-tertiary);
 }
 

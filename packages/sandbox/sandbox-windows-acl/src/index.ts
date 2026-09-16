@@ -22,7 +22,10 @@
  *
  * Known boundaries (inherent to restricted tokens, not this port):
  *  - writes are restricted; reads, network, and process visibility are NOT
- *    (WRITE_RESTRICTED intersects only write accesses);
+ *    (WRITE_RESTRICTED intersects only write accesses), so the sandbox-local
+ *    chain refuses this rung for network-deny policies instead of silently
+ *    leaving egress open — Windows confinement needs an explicit egress
+ *    allow until the runner confines the network itself;
  *  - console isolation is unavailable — children share the host console
  *    (CREATE_NO_WINDOW / CREATE_NEW_CONSOLE children die with
  *    STATUS_DLL_INIT_FAILED under the restriction);

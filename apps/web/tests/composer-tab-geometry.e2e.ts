@@ -309,7 +309,7 @@ describe('web e2e: input card position across view tabs', () => {
     // Scrollbars must take layout space here or the scenario proves nothing;
     // see the file header for the measurement behind dropping this argument.
     browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] })
-    page = await newEnglishPage(browser, WIDE_VIEWPORT.height)
+    page = await newEnglishPage(browser, scaffold.apiToken, WIDE_VIEWPORT.height)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

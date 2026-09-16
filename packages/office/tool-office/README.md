@@ -1,36 +1,84 @@
 # `@deepseek-ai/dsh-tool-office`
 
-Model-facing office artifact generation tools over the [filesystem seam](../fs/README.md): `xlsx_create`, `pptx_create`, and `docx_create`.
+English | [中文](README.zh.md)
 
-Each tool generates a real binary document (Excel 2007+ workbook, PowerPoint 16:9 deck, Word document) and writes it through `ctx.fs.writeBytes` — the same atomic, observed, sandboxed write path `dsh-tool-fs` uses, so artifacts respect the mounted fs policy and show up in the deliverables UI as produced files.
+Model-facing office READ tools over the [filesystem seam](../../fs/fs/README.md): `xlsx_read`, `csv_read`, and `docx_text`.
+
+Each tool resolves a workspace-relative path against the calling session's cwd, reads at most 25 MB through `ctx.fs.readBytes`, and returns a bounded JSON-safe extraction instead of the raw file. Reading is the package's whole job: office CREATION is code-first, driven by running Python (`openpyxl` / `python-pptx` / `python-docx` / `reportlab`) through the bash tool and surfacing the result with `deliver`.
 
 ## Tools
 
-| Tool | Output | Key behavior |
+| Tool | Input | Key behavior |
 |---|---|---|
-| `xlsx_create` | `.xlsx` | styled header row, frozen first row, fitted column widths, number-typed cells stay numeric |
-| `pptx_create` | `.pptx` | 16:9 deck: title slide + content slides with accent bar, theme colors `{ primary, accent }` |
-| `docx_create` | `.docx` | title, headings 1-3, paragraphs, quotes, bullets, numbered lists |
+| `xlsx_read` | `.xlsx` | Per-sheet header, sampled rows, per-column type hints, A1 merged ranges, formulas kept as `{ formula: "=…" }` |
+| `csv_read` | delimited text | Delimiter sniffing over `,`, `;`, tab, and `|`, RFC-4180 quoting, numeric coercion, bounded sample |
+| `docx_text` | `.docx` | Title, headings 1-3, paragraphs, bullets, numbered items, and table rows as markdown-like lines |
 
-Artifact paths resolve under the calling session's workspace cwd (`exec.agent.session.header.cwd`), mirroring `dsh-tool-fs`.
+Two bounds exist and they differ: the tool argument `max_rows` accepts up to 400 (defaults 100 for `xlsx_read`, 200 for `csv_read`), while extraction itself samples at most 200 rows and 64 columns per sheet and reports `truncated`. `docx_text` has no row argument; it stops at 24000 characters. Sampled values are shaped, never raw: dates become `YYYY-MM-DD`, booleans `TRUE`/`FALSE`, rich text is joined, error cells render as `{error:…}`. Banner-style workbooks that our own writers produce — a wide merged title on row 1 and the header on row 2 — are detected and reported with `title` and the header taken from row 2, so the data sample does not begin on the banner.
 
 ## Preview data
 
-Each successful tool result carries a bounded **preview** in `presentationMeta` (the client renders it from the tool result node's `meta`): capped sheet rows/columns, slide bullets, and document blocks. Caps live in `src/preview.ts`; anything cut sets `truncated: true`. Previews are JSON-safe and replayable; they are derived from the tool arguments so they never round-trip file bytes.
+Extraction payloads are JSON-safe and replayable by construction, which is why the tools present generic read cards carrying `locations` rather than a bespoke preview renderer. The host preview service shares two helpers with this package — `loadWorkbookResilient` and `decodeEntities` — so the two xlsx readers cannot drift on which workbooks they can open or how they decode OOXML text.
 
 ## Model Experience
 
-### What the model sees
+### `tool:office` and `tool:office-reads` system-prompt guidance
 
-- Three tool declarations with per-tool schemas (sheets/slides/blocks) plus a shared `tool:office` guidance section; the section text above is what the model reads when assembling a prompt.
-- Each call returns a short envelope: path, format, counts, byte size.
+#### What the model sees
 
-### Token effect
+Two fixed guidance sections at order 105: `tool:office`, which routes creation to Python and `deliver`, and `tool:office-reads`, which names the three read tools and their bounds.
 
-One guidance paragraph plus tool schemas; constant per session.
+##### Verbatim `tool:office` section text
+
+```markdown
+Reading user files: use xlsx_read/csv_read/docx_text on uploaded spreadsheets and documents before analyzing them. Creating office files is done by WRITING AND RUNNING PYTHON CODE (openpyxl / python-pptx / python-docx / reportlab) through the bash tool using $DSH_OFFICE_PYTHON, then surfacing finished outputs with the deliver tool.
+```
+
+##### Verbatim `tool:office-reads` section text
+
+```markdown
+Reading user files: use xlsx_read on uploaded .xlsx workbooks (per-sheet header, sampled rows, column-type hints, merged ranges, formulas), csv_read on delimited text, and docx_text on .docx documents before analyzing or transforming them. Extraction is bounded; request follow-up slices only when genuinely needed. Analysis outputs still go through the create tools.
+```
+
+#### Token effect
+
+Fixed: both paragraphs ship on every assembled request while the package is mounted, and neither varies with how many files a session reads.
+
+#### KV Cache effect
+
+Prefix-stable: both sections keep their text and order for the life of the mount, so a loaded prefix containing them stays reusable across turns.
+
+### Office read tool definitions
+
+#### What the model sees
+
+The generated [`xlsx_read`](../../../docs/tool-catalog.md#deepseek-aidsh-tool-office), [`csv_read`](../../../docs/tool-catalog.md#deepseek-aidsh-tool-office), and [`docx_text`](../../../docs/tool-catalog.md#deepseek-aidsh-tool-office) schemas: a required `file_path` on each, plus an optional `max_rows` on the two tabular tools whose description states the default and the hard cap.
+
+#### Token effect
+
+Fixed schema cost on every request where the tools are visible; the descriptions themselves carry the sampling policy, so the model does not need to discover the cap by trial.
+
+#### KV Cache effect
+
+Prefix-stable while the registered set and visibility are unchanged; plugin lifecycle or scoped restrictions that alter the tool set may invalidate reuse from the first changed definition.
+
+### Extracted read results
+
+#### What the model sees
+
+Each result renders as `<path>…</path>`, `<type>xlsx|csv|docx</type>`, and a `<content>` block holding the JSON payload or, for `docx_text`, the markdown-like text. Sheet payloads carry `name`, `total_rows`, `total_cols`, an optional `header` and banner `title`, sampled `rows`, `column_types`, and up to 32 `merged_ranges`; both tabular tools set `truncated`. Stable failures are `unreadable workbook (exceljs failed, stripped-drawing retry also failed)` and `not a docx package (missing word/document.xml)`; an oversized file fails at the seam's 25 MB read bound.
+
+#### Token effect
+
+Conditional and file-dependent: one extraction is up to 400 sampled rows or 24000 characters, and follow-up slices append more. A wide workbook is charged at up to 64 columns per row, so the model controls the cost mainly through the two row parameters.
+
+#### KV Cache effect
+
+Append-only: extraction results follow the reusable request prefix rather than rewriting it, so reading a large file does not invalidate cached prefix tokens. Only a change to the registered tool set or the guidance paragraphs affects reuse.
 
 ## Known Limitations and Deferred Work
 
-- No office file **reader/preview** tool: the model cannot inspect an existing xlsx/pptx/docx beyond `read_bytes`-style access; `read_back` tooling for office formats is deferred.
-- No LibreOffice/full-fidelity fidelity guarantees: formatting is the tool's built-in default design (navy `#1E3A5F` primary, blue `#2F6FB2` accent), not a template engine.
-- Binary writes use the `writeBytes` seam; a backend that does not implement it throws on first use.
+- No office file **preview** tool: the model cannot inspect an existing xlsx/pptx/docx beyond `read_bytes`-style access.
+- No LibreOffice/full-fidelity fidelity guarantees: formatting is the tool's built-in default design, not a template engine.
+- Reading is bounded and samples by position: a sparse sheet whose interesting data sits past the row cap needs an explicit follow-up slice, and only the tabular tools report `truncated` — `docx_text` reports it only on the paragraph-push path, so a document cut off at the block loop can return a partial `text` without the flag.
+- The `tool:office-reads` guidance tells the model that "Analysis outputs still go through the create tools", but this package registers no creation tool — creation is Python through `bash` plus `deliver`, so the sentence names a capability the model must find elsewhere.

@@ -76,7 +76,7 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     scaffold = await launchWebScaffold({ replayFixture: FIXTURE, paceMs: 5 })
     await seedSession(scaffold, await readFile(SEED_FIXTURE, 'utf8'), 'details-session-lifecycle-seed')
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await appFrame(page).waitFor({ timeout: 30_000 })

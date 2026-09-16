@@ -54,6 +54,8 @@ describe('coverage partition count', () => {
 
 describe('coverage partition timeout', () => {
   it('applies one configured timeout to tests and polling', () => {
+    // No `--hookTimeout`: Vitest accepts it and ignores it once a project's
+    // `test` block exists, so hooks are configured in vitest.config.ts instead.
     expect(coverageTestTimeoutArgs('30000')).toEqual([
       '--testTimeout=30000',
       '--expect.poll.timeout=30000',

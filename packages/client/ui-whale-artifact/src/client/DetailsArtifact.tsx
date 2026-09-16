@@ -13,6 +13,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { OfficePreviewData } from './whale-preview.ts'
 import { filePathOf, formatBytes, previewOf } from './whale-preview.ts'
+import { DocxPage, SlideCard } from './office-pages.tsx'
 import type { NS } from './locales.ts'
 import css from './DetailsArtifact.module.css'
 
@@ -153,38 +154,13 @@ export function SlideGallery({ preview }: { preview: Extract<OfficePreviewData, 
         <span className={css.slidePage}>1 / {total}</span>
       </div>
       {preview.slides.map((slide, index) => (
-        <div key={index} className={css.slide}>
-          <span className={css.slideAccent} />
-          <span className={css.slideTitleText}>{slide.title}</span>
-          {slide.subtitle !== undefined && <span className={css.slideSubtitle}>{slide.subtitle}</span>}
-          {slide.bullets !== undefined && (
-            <ul className={css.slideBullets}>
-              {slide.bullets.map((bullet, bulletIndex) => <li key={bulletIndex}>{bullet}</li>)}
-            </ul>
-          )}
-          <span className={css.slidePage}>{index + 2} / {total}</span>
-        </div>
+        <SlideCard key={index} slide={slide} css={css} pageLabel={`${index + 2} / ${total}`} />
       ))}
     </div>
   )
 }
 
-/** Document studio: a readable paper page. */
+/** Document studio: a readable paper page (shared body, studio locals). */
 export function DocPage({ preview }: { preview: Extract<OfficePreviewData, { kind: 'docx' }> }) {
-  return (
-    <div className={css.page}>
-      {preview.title !== undefined && <div className={css.docTitle}>{preview.title}</div>}
-      {preview.blocks.map((block, index) => {
-        switch (block.type) {
-          case 'heading1': return <div key={index} className={css.h1}>{block.text}</div>
-          case 'heading2': return <div key={index} className={css.h2}>{block.text}</div>
-          case 'heading3': return <div key={index} className={css.h3}>{block.text}</div>
-          case 'quote': return <div key={index} className={css.quote}>{block.text}</div>
-          case 'bullet': return <div key={index} className={css.bullet}>• {block.text}</div>
-          case 'number': return <div key={index} className={css.bullet}>{index + 1}. {block.text}</div>
-          case 'paragraph': return <div key={index} className={css.paragraph}>{block.text}</div>
-        }
-      })}
-    </div>
-  )
+  return <DocxPage preview={preview} css={css} />
 }

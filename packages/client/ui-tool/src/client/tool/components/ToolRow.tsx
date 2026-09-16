@@ -1,10 +1,13 @@
 // ToolRow: the single-line tool summary row (figma component set 122:9479) —
-// 16px leading slot (state dot / tool icon, chevron on hover or expanded) + title +
-// separator dot + FILL-truncated summary, drawn through the shared
+// 20px leading tile (state dot / tool icon, chevron on hover or expanded) + title +
+// FILL-truncated summary, drawn through the shared
 // DisclosureRow chrome with the whole row as the expand toggle (click /
 // Enter / Space, icon→chevron hover preview). The collapsed row is always
 // one line; every row with body, output, or a card material (terminal, diff,
 // read, search, web) is expandable; the summary stays inline while open.
+// The row draws no separator between the title and the summary: the title's
+// medium weight over the summary's regular is the boundary (DESIGN.md,
+// Process Row).
 // The expanded body — an IN/OUT gutter-labeled card (figma 1249:35657) for
 // text input/output, the run_code program through CodeBlock, or a card
 // primitive (TerminalBlock, DiffBlock, ReadBlock, SearchBlock, WebBlock) for a
@@ -207,10 +210,9 @@ export function ToolRow({
         keepContentWhenOpen
         onToggle={toggleExpand}
         collapsedContent={summaryText !== '' && (
-          /* An empty summary drops the separator with it (a row that is only
-             its title shows no trailing dot). */
+          /* An empty summary drops with it (a row that is only its title shows
+             nothing trailing). */
           <>
-            <span className={css.sep} aria-hidden />
             {fileLink ? (
               <button
                 type="button"

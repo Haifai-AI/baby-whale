@@ -1,5 +1,5 @@
 /**
- * Whale task board plugin, node half. Pure UI plugin: the empty apply exists
+ * Artifacts tab plugin, node half. Pure UI plugin: the empty apply exists
  * so the plugin appears in the host cordis.yml / Loader; the browser half ships
  * via exports["./client"].
  */

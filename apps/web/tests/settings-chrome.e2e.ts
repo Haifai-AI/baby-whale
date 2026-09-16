@@ -19,7 +19,7 @@ import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { ZH_BROWSER_LOCALE, saveFailureShot } from './support.ts'
+import { ZH_BROWSER_LOCALE, newTestPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/settings-chrome', import.meta.url))
 const DIALOG_EXPECTED = join(SNAPSHOT_DIR, 'dialog.expected.md')
@@ -40,7 +40,7 @@ describe('web e2e: settings modal and General preferences', () => {
     browser = await chromium.launch()
     // Chinese browser: the shared page asserts the localized settings surface
     // the client derives from it (the English default has its own spec below).
-    page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    page = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -309,7 +309,7 @@ describe('web e2e: settings modal and General preferences', () => {
     // user-settings home. Its fresh origin has no theme localStorage and still
     // converges to dark before the settings dialog opens.
     const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
-    const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    const secondPage = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     const secondTripwire = watchConsole(secondPage)
     try {
       expect(second.baseUrl).not.toBe(scaffold.baseUrl)
@@ -368,7 +368,7 @@ describe('web e2e: settings modal and General preferences', () => {
     await reloaded.getByRole('button', { name: '插话发送' }).waitFor({ timeout: 10_000 })
 
     const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
-    const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    const secondPage = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     const secondTripwire = watchConsole(secondPage)
     try {
       expect(second.baseUrl).not.toBe(scaffold.baseUrl)
@@ -434,7 +434,7 @@ describe('web e2e: settings modal and General preferences', () => {
     // A Chinese browser on another port still receives the explicit English
     // preference from the shared Host settings document.
     const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
-    const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    const secondPage = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     const secondTripwire = watchConsole(secondPage)
     try {
       expect(second.baseUrl).not.toBe(scaffold.baseUrl)
@@ -468,7 +468,7 @@ describe('web e2e: settings modal and General preferences', () => {
     // distinguish detection from the default — the zh scenarios above supply
     // the discriminating half (a Chinese browser must NOT land on the default).
     const fresh = await launchWebScaffold({})
-    const enPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'en-US' })
+    const enPage = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: 'en-US' })
     const enTripwire = watchConsole(enPage)
     onTestFailed(() => saveFailureShot(enPage, 'web-e2e-settings-browser-language'))
     try {
@@ -494,7 +494,7 @@ describe('web e2e: settings modal and General preferences', () => {
     // neither zh nor en, so resolution falls to FALLBACK_LOCALE (en) rather
     // than to Chinese.
     const fresh = await launchWebScaffold({})
-    const frPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'fr-FR' })
+    const frPage = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: 'fr-FR' })
     const frTripwire = watchConsole(frPage)
     onTestFailed(() => saveFailureShot(frPage, 'web-e2e-settings-unshipped-language'))
     try {

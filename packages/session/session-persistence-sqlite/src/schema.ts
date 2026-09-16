@@ -64,7 +64,7 @@ type DatabaseSyncConstructor = typeof import('node:sqlite')['DatabaseSync']
  * @param Database - lazily imported Node SQLite constructor.
  * @param path - SQLite path, including `:memory:`.
  * @param journalMode - validated journal pragma.
- * @param busyTimeoutMs - validated maximum wait for a competing SQLite lock.
+ * @param busyTimeoutMs - validated maximum wait per competing SQLite lock.
  * @returns the configured database handle.
  * @throws when connection settings, schema ownership, or SQLite setup cannot be validated.
  */
@@ -74,12 +74,11 @@ export async function openDatabase(
   journalMode: JournalMode,
   busyTimeoutMs: number,
 ): Promise<DatabaseSync> {
-  const deadline = performance.now() + busyTimeoutMs
   const db = new Database(path, { timeout: busyTimeoutMs })
   try {
     configureConnectionSecurity(db, path)
     configureDatabase(Database, db, path)
-    await selectJournalMode(db, path, journalMode, deadline)
+    await selectJournalMode(db, path, journalMode, busyTimeoutMs)
     configureDurability(db, path)
     return db
   } catch (error: unknown) {
@@ -148,12 +147,25 @@ function configureDatabase(
   }
 }
 
+/**
+ * Select the durable journal mode, retrying a busy transition for up to
+ * `busyTimeoutMs`. The retry budget starts here, not at open: opening the file
+ * and initializing the schema can itself wait on a competing lock, and charging
+ * that wait to this transition would leave a busy transition with no retry at
+ * all wherever those earlier steps are slow. Every other lock wait in this
+ * module is likewise bounded per statement by the driver's own busy timeout.
+ * @param db - the open database handle.
+ * @param path - SQLite path, used in the rejection message.
+ * @param journalMode - validated journal mode to select.
+ * @param busyTimeoutMs - validated maximum wait for the transition's lock.
+ */
 async function selectJournalMode(
   db: DatabaseSync,
   path: string,
   journalMode: JournalMode,
-  deadline: number,
+  busyTimeoutMs: number,
 ): Promise<void> {
+  const deadline = performance.now() + busyTimeoutMs
   let result: unknown
   while (true) {
     try {

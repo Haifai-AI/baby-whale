@@ -23,8 +23,9 @@ import {
   fitProducedFiles, ProducedFiles, type ProducedFilesProps,
 } from '../src/client/ProducedFiles.tsx'
 import {
-  basename, deliverablesDefinition, producedFileMentions, producedForClosing, selectProducedFiles,
-  type DeliverablesTurnData,
+  basename, deliverablesDefinition, deliveredFiles, partitionProduced, producedFileMentions, producedForClosing,
+  selectProducedFiles, writtenFiles,
+  type DeliverablesTurnData, type ProducedPath,
 } from '../src/client/turn-deliverables.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as applyInvariant } from '../src/invariant.ts'
@@ -292,6 +293,32 @@ describe('produced-file Turn data', () => {
     ])
     expect(deliverablesOf(value, 1)?.produced.map(entry => entry.path)).toEqual(['deliverables/deck.pptx'])
   })
+
+  it('declines the tail when every claim settles after the closing assistant', () => {
+    expect(selectProducedFiles(tailOwner(produced([8, 'later.txt']), 6))).toBeNull()
+  })
+
+  it('partitions a tail into deduplicated delivered claims and written files', () => {
+    const entries: readonly ProducedPath[] = [
+      { seq: 1, path: 'deliverables/deck.pptx', tool: 'deliver' },
+      { seq: 2, path: 'src/app.ts', tool: 'write' },
+      { seq: 3, path: 'deliverables/deck.pptx', tool: 'deliver' },
+      { seq: 4, path: 'src/app.ts', tool: 'edit' },
+      { seq: 5, path: 'deliverables/notes.txt', tool: 'deliver' },
+    ]
+
+    expect(partitionProduced(entries)).toEqual({
+      delivered: ['deliverables/deck.pptx', 'deliverables/notes.txt'],
+      written: ['src/app.ts'],
+    })
+    // The claim and working-file readers keep the tail's own entries, so a
+    // caller counting either side sees the raw facts rather than the partition.
+    const data: DeliverablesTurnData = { produced: entries }
+    expect(deliveredFiles(data).map(entry => entry.path)).toEqual([
+      'deliverables/deck.pptx', 'deliverables/deck.pptx', 'deliverables/notes.txt',
+    ])
+    expect(writtenFiles(data).map(entry => entry.path)).toEqual(['src/app.ts', 'src/app.ts'])
+  })
 })
 
 describe('viewless calls (wire view soft-fell to nothing)', () => {
@@ -348,6 +375,20 @@ describe('viewless calls (wire view soft-fell to nothing)', () => {
       call(2, 'd1', { card: 'generic', title: 'Delivered', kind: 'other' }, 1, 'deliver', '{"paths":["deliverables/deck.pptx"]}'),
       result(3, 'd1'),
     ])
+    expect(producedForClosing(deliverablesOf(value))).toEqual([])
+  })
+
+  it('recovers nothing from arguments that never reached the log as text or from an unnamed call', () => {
+    const value = settled(
+      // A non-string `arguments` value holds no JSON to read.
+      at(2, 'tool/call', { turn: 1, step: 1, callId: 'raw', name: 'write', arguments: 42 }),
+      result(3, 'raw'),
+      // A parseable argument whose mutation target is not a path string.
+      bareCall(4, 'numeric-target', 'write', '{"file_path":123}'),
+      result(5, 'numeric-target'),
+      at(6, 'tool/call', { turn: 1, step: 1, callId: 'unnamed', name: 42, arguments: '{"file_path":"notes.md"}' }),
+      result(7, 'unnamed'),
+    )
     expect(producedForClosing(deliverablesOf(value))).toEqual([])
   })
 })
@@ -458,6 +499,33 @@ describe('ProducedFiles row', () => {
     bounds.mockRestore()
   })
 
+  it('renders delivered claims as cards above the written-file chips', () => {
+    const openFile = vi.fn<(path: string) => void>()
+    const openFilePreview = vi.fn<(path: string) => void>()
+    const view = render(
+      <ProducedFiles
+        matched={[
+          { seq: 1, path: 'deliverables/deck.pptx', tool: 'deliver' },
+          { seq: 2, path: 'src/app.ts', tool: 'write' },
+        ]}
+        openFile={openFile}
+        openFilePreview={openFilePreview}
+        {...capability(true)}
+        t={t}
+      />,
+    )
+
+    expect(view.getByText('交付文件')).toBeTruthy()
+    const row = view.container.querySelector('[data-produced-files-row]')
+    if (!(row instanceof HTMLElement)) throw new Error('produced row missing')
+    // The written working file stays a chip in the row; the claim above it is
+    // a card whose Preview gesture routes through the pane opener.
+    fireEvent.click(within(row).getByRole('button', { name: '打开 src/app.ts' }))
+    expect(openFile).toHaveBeenCalledWith('src/app.ts')
+    fireEvent.click(view.getByText('预览'))
+    expect(openFilePreview).toHaveBeenCalledWith('deliverables/deck.pptx')
+  })
+
   it('keeps the folder action absent without overflow or a local native opener', () => {
     const openFile = vi.fn<(path: string) => void>()
     const openFilePreview = vi.fn<(path: string) => void>()
@@ -534,10 +602,13 @@ describe('plugin registration', () => {
     const ctx = new Context()
     await ctx.plugin(SlotRegistry).await()
     await ctx.plugin(ConversationEventRegistry).await()
-    // The owning view's child declaration, stood up by a bench root entry.
+    // The owning view's child declarations, stood up by a bench root entry.
     ctx.slots.register({
       name: 'root',
-      children: { 'conversation.chat.turnTail': { kind: 'chain', scope: 'session' } },
+      children: {
+        'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
+        'conversation.details.fileview': { kind: 'single', scope: 'session' },
+      },
     } as never, () => null)
     const hostDescription = { getSnapshot: () => undefined, subscribe: () => () => {} }
     ctx.provide('connection', {
@@ -560,6 +631,16 @@ describe('plugin registration', () => {
       hooks: { hostDescription },
     })
 
+    // The details panel's whole-panel preview seat takes the session id and
+    // hands the pane the same connection the tail entry reads.
+    const [fileview] = ctx.slots.entries('conversation.details.fileview')
+    expect(fileview).toBeDefined()
+    const fileviewInject = fileview?.inject as ((sessionId: string) => unknown) | undefined
+    expect(fileviewInject?.('sess-pane')).toEqual({
+      connection: { api: { settings: {} }, isLoopback: false, hostDescription },
+      sessionId: 'sess-pane',
+    })
+
     // The prose face is live while the plugin is: a produced turn yields a
     // resolver whose matches open through the owner-supplied opener.
     const opened: string[] = []
@@ -577,6 +658,7 @@ describe('plugin registration', () => {
 
     await fiber.dispose()
     expect(ctx.slots.entries('conversation.chat.turnTail')).toHaveLength(0)
+    expect(ctx.slots.entries('conversation.details.fileview')).toHaveLength(0)
     // Fiber teardown retracts the service: the consumer's ctx.get sees the off state.
     expect((ctx as unknown as { get(name: string): unknown }).get('chatFileMentions')).toBeUndefined()
   })

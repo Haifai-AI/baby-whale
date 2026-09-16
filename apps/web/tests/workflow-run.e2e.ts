@@ -56,7 +56,7 @@ describe.skipIf(MODE === 'record')('web e2e: durable workflow run in Chat', () =
       paceMs: 50,
     })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

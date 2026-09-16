@@ -1,17 +1,15 @@
 # bwhale — Baby Whale in one command
 
-Local-first knowledge-work coworker: give it a task, get back finished
-Excel workbooks, PowerPoint decks, Word documents, and PDFs — built by
-code, previewed pixel-perfect, and never leaving your machine.
+English | [中文](README.zh.md)
+
+Local-first knowledge-work coworker: give it a task, get back finished Excel workbooks, PowerPoint decks, Word documents, and PDFs — built by code, previewed pixel-perfect, and never leaving your machine.
 
 ```bash
 npm install -g bwhale
 bwhale
 ```
 
-First run fetches the runtime once (~400 MB, from this project's GitHub
-Releases) into `~/.bwhale`, checks your platform's prerequisites, and
-opens `http://127.0.0.1:24680`. Later runs start instantly.
+First run fetches the runtime once (~400 MB, from this project's GitHub Releases) into `~/.bwhale`, checks your platform's prerequisites, and opens `http://127.0.0.1:24680`. Later runs start instantly.
 
 ## Commands
 
@@ -24,21 +22,14 @@ opens `http://127.0.0.1:24680`. Later runs start instantly.
 | `bwhale stop` | Stop a running server (closing the browser doesn't — `--stop` works too) |
 | `bwhale --version` | Report the installed runtime version |
 
-Supported platforms: macOS (arm64 + x64), Linux (x64 + arm64), and
-Windows (x64 — PowerShell powers the shell tools; the launcher tells
-you exactly what is missing via `bwhale doctor`).
+Supported platforms: macOS (arm64 + x64), Linux (x64 + arm64), and Windows (x64 — PowerShell powers the shell tools; the launcher tells you exactly what is missing via `bwhale doctor`).
 
 ## What it checks and installs
 
-The app ships with its own Node — you only need the platform basics, and
-`bwhale doctor` tells you exactly what's missing and the platform-native
-command to get it:
+The app ships with its own Node — you only need the platform basics, and `bwhale doctor` tells you exactly what's missing and the platform-native command to get it:
 
-- **macOS** — nothing else required; office libraries install themselves
-  on first boot
-- **Linux** — `git` required; `python3` for office-file creation;
-  `libreoffice` optional (pixel-perfect previews, also installable
-  in-app later)
+- **macOS** — nothing else required; office libraries install themselves on first boot
+- **Linux** — `git` required; `python3` for office-file creation; `libreoffice` optional (pixel-perfect previews, also installable in-app later)
 
 Connect a model (one-time): create `~/.dsh/.credentials.yaml`:
 
@@ -52,8 +43,6 @@ then `chmod 600 ~/.dsh/.credentials.yaml`.
 
 ## Privacy
 
-Files, sessions, history, and the workspace live entirely on your machine.
-The only network calls are the model provider you configure, the one-time
-runtime download, and update checks.
+Files, sessions, history, and the workspace live entirely on your machine. The only network calls are the model provider you configure, the one-time runtime download, and update checks.
 
 MIT — a knowledge-work product built on the DeepSeek Harness.

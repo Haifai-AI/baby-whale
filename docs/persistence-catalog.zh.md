@@ -1007,3 +1007,20 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 ```
 
 来源：[`packages/web/web-search-deepseek/src/provider.ts:83`](../packages/web/web-search-deepseek/src/provider.ts)
+
+### `whale/*`
+
+<a id="whaletask-board--log-only"></a>
+
+#### `whale/task-board` — log-only
+
+```ts persistence-catalog
+/**
+ * Whole-list task snapshot for the owning session's workspace, after every
+ * task mutation or delivery. Log-only UI state; never a history source.
+ * @param data - the complete task board of the owning workspace.
+ */
+'whale/task-board': { tasks: WhaleTaskView[] }
+```
+
+来源：[`packages/whale/core/src/types.ts:36`](../packages/whale/core/src/types.ts)

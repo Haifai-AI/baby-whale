@@ -9,6 +9,14 @@ import { describe, expect, it } from 'vitest'
  * Host and Browser bundle handoffs, then crosses the shared `/api` HTTP route.
  */
 
+/**
+ * The fixture's pinned instance token. The connection host mints a random one
+ * per boot and every `/api` call must present it; a fixture that cannot read
+ * the host's token file pins its own and hands it to the client half through
+ * the entry-URL fragment, exactly as the launcher hands it to a browser.
+ */
+const FIXTURE_API_TOKEN = 'built-lib-fixture-token-0000'
+
 const packageDir = fileURLToPath(new URL('..', import.meta.url))
 const root = resolve(packageDir, '../../..')
 const artifact = (path: string): string => join(root, path)
@@ -47,7 +55,7 @@ describe.skipIf(!requiredArtifacts)('Goal Remote built LIB chain', () => {
       import { createServer } from 'node:http'
       import * as cordis from '@deepseek-ai/cordis'
 
-      const urls = ${JSON.stringify(urls)}
+      const urls = ${JSON.stringify({ ...urls, apiToken: FIXTURE_API_TOKEN })}
       const { Context } = cordis
       const { default: AgentRegistry } = await import(urls.agent)
       const connectionHost = await import(urls.connectionHost)
@@ -67,7 +75,7 @@ describe.skipIf(!requiredArtifacts)('Goal Remote built LIB chain', () => {
         tapIndex() { return () => {} },
         port: 0,
       })
-      await host.plugin({ inject: connectionHost.inject, apply: connectionHost.apply })
+      await host.plugin({ inject: connectionHost.inject, apply: connectionHost.apply }, { apiToken: urls.apiToken })
       await host.plugin(TypertRegistry)
       await host.plugin(AgentRegistry)
       await host.plugin(TypertRemoteService)
@@ -113,7 +121,7 @@ describe.skipIf(!requiredArtifacts)('Goal Remote built LIB chain', () => {
           load(handoff) { handoffs.set(handoff.id, handoff) },
         },
       }
-      globalThis.location = { hostname: '127.0.0.1', origin, search: '' }
+      globalThis.location = { hostname: '127.0.0.1', origin, search: '', hash: '#token=' + urls.apiToken }
       await import(urls.registryClient)
       await import(urls.connectionClient)
       await import(urls.apiGatewayClient)

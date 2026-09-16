@@ -25,7 +25,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, conversationContextKey, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, conversationContextKey, newTestPage, saveFailureShot } from './support.ts'
 
 const MODE = webSnapshotMode()
 const OVERLAY = fileURLToPath(new URL('../../../examples/web-schedule/cordis.yml', import.meta.url))
@@ -228,7 +228,7 @@ describe.skipIf(MODE === 'record')('web e2e: conversational reminders', () => {
     )
 
     browser = await chromium.launch()
-    page = await browser.newPage({
+    page = await newTestPage(browser, scaffold.apiToken, {
       viewport: { width: 1680, height: 1000 },
       locale: 'en-US',
       timezoneId: AT_BROWSER_ZONE,

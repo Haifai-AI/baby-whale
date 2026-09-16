@@ -338,7 +338,12 @@ describe('scrollbar.css base-surface binding', () => {
     expect(thumbColor).toBeDefined()
     const indirection = varReferences(thumbColor!)[0]
     expect(indirection).toBe(`${INDIRECTION_PREFIX}thumb`)
-    expect(varReferences(declaration('background', '::-webkit-scrollbar-thumb')!)).toEqual([indirection])
+    // `background-color`, not the `background` shorthand: the WebKit thumb rule
+    // also sets `background-clip`, and a shorthand carrying `var()` alongside
+    // another background longhand is expanded by the CSSOM into longhands that
+    // serialize as empty — the declaration would then read as absent while
+    // still rendering a colour.
+    expect(varReferences(declaration('background-color', '::-webkit-scrollbar-thumb')!)).toEqual([indirection])
   })
 })
 

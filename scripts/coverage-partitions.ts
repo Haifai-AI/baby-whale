@@ -68,7 +68,14 @@ export function parseCoveragePartitionCount(raw: string | undefined): number | u
   return parsed
 }
 
-/** Resolve the paired Vitest timeout arguments used by coverage partitions. */
+/**
+ * Resolve the paired Vitest timeout arguments used by coverage partitions.
+ *
+ * Hook timeouts are deliberately absent: `--hookTimeout` is accepted and then
+ * ignored once a project's `test` block exists, so passing it here would look
+ * like coverage while changing nothing. Hooks are configured per project in
+ * `vitest.config.ts`, which is the only form that reaches them.
+ */
 export function coverageTestTimeoutArgs(raw: string | undefined): string[] {
   if (raw === undefined || raw === '') return []
   const parsed = Number.parseInt(raw, 10)

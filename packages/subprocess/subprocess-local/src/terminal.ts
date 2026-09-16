@@ -25,6 +25,44 @@ function signalName(number: number | undefined): NodeJS.Signals | null {
 }
 
 /**
+ * The device-status request a program writes to ask where the cursor is
+ * (`CSI 6 n`), and the cursor-position report a terminal emulator answers with
+ * (`CSI row ; column R`).
+ *
+ * A POSIX PTY is only half a terminal: the kernel pairs the program's side with
+ * whatever is on the other end, and node-pty gives this process that other end
+ * without emulating it. A line editor that asks and hears nothing waits for its
+ * answer, so the bytes after it are never read as input — with pwsh on the far
+ * side that meant PSReadLine swallowed every command whole. Answering is what
+ * makes that pairing usable.
+ *
+ * Windows is excluded because it does not have this half: node-pty runs ConPTY
+ * there, which is the emulator, and answering on its behalf would write a
+ * second report into the shell's input stream.
+ *
+ * The reported position is the top-left corner. Nothing here tracks a cursor,
+ * and the position's only job is to be a well-formed answer: the caller that
+ * asked is a line editor measuring where rendering may begin.
+ */
+const CURSOR_POSITION_QUERY = '\u001b[6n'
+const CURSOR_POSITION_REPORT = '\u001b[1;1R'
+
+/**
+ * The trailing prefix of a query split across two reads, which must be held
+ * back so the next read completes it instead of losing it.
+ * @param text - the accumulated output, query matches included.
+ * @returns the longest suffix that begins a query, or an empty string.
+ */
+function pendingQueryPrefix(text: string): string {
+  const longest = Math.min(CURSOR_POSITION_QUERY.length - 1, text.length)
+  for (let length = longest; length > 0; length -= 1) {
+    const suffix = text.slice(-length)
+    if (CURSOR_POSITION_QUERY.startsWith(suffix)) return suffix
+  }
+  return ''
+}
+
+/**
  * A local terminal whose process-session ownership stays below the PTY backend.
  * The seam's terminate() promise — no write, inspection, or signal in flight
  * after settlement — holds here without operation tracking only because every
@@ -45,6 +83,8 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
   private trackedDescendants: ProcessIdentity[] = []
   /** The spawned shell's start identity; scans stop adopting members once the root pid no longer carries it. */
   private readonly rootIdentity: ProcessIdentity | undefined
+  /** Trailing prefix of a cursor-position query split across two reads. */
+  private queryCarry = ''
 
   /**
    * @param terminal - allocated node-pty process.
@@ -61,7 +101,14 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     this.pid = terminal.pid
     this.rootIdentity = inspector.processTree(this.pid).find(member => member.pid === this.pid)
     this.done = this.outcome.promise
-    this.dataDisposable = terminal.onData((data) => { this.output.write(Buffer.from(data, 'utf8')) })
+    this.dataDisposable = terminal.onData((data) => {
+      // Only where the pairing has no terminal emulator. Windows reaches this
+      // through ConPTY, which answers cursor-position queries itself; writing
+      // a second answer would put a stray report into the shell's INPUT, where
+      // a line editor reads it as keystrokes.
+      if (this.platform !== 'win32') this.answerCursorPositionQueries(data)
+      this.output.write(Buffer.from(data, 'utf8'))
+    })
     this.exitDisposable = terminal.onExit(({ exitCode, signal: exitSignal }) => {
       if (this.exited) return
       this.exited = true
@@ -78,6 +125,23 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
   async write(data: string): Promise<void> {
     if (this.exited) throw new Error('terminal process has exited')
     this.terminal.write(data)
+  }
+
+  /**
+   * Answer every cursor-position query this read carried, once per query, the
+   * way the terminal emulator the program believes it is talking to would. See
+   * {@link CURSOR_POSITION_QUERY}: an unanswered query stalls a line editor
+   * before it reads any input.
+   * @param data - one decoded read from the PTY.
+   */
+  private answerCursorPositionQueries(data: string): void {
+    const scan = this.queryCarry + data
+    let index = scan.indexOf(CURSOR_POSITION_QUERY)
+    while (index >= 0) {
+      this.terminal.write(CURSOR_POSITION_REPORT)
+      index = scan.indexOf(CURSOR_POSITION_QUERY, index + CURSOR_POSITION_QUERY.length)
+    }
+    this.queryCarry = pendingQueryPrefix(scan)
   }
 
   // Local inspection is synchronous; the seam returns a promise for remote transports.

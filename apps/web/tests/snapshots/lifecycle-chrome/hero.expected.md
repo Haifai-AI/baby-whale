@@ -20,7 +20,7 @@
 - button "Settings":
   - img
   - text: Settings
-- text: Into the Unknown Preview
+- text: Into the Darkness Preview
 - button "Choose workspace":
   - img
   - text: workspace
@@ -38,6 +38,6 @@
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
-- text: Details
+- tablist: Details
 - button "Close details"
 - text: Click a tool row in the message flow to view its details

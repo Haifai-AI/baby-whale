@@ -37,8 +37,8 @@ Groups hold `packages/<group>/<pkg>/`; names stay `@deepseek-ai/dsh-<pkg>`. **Gr
 | [`attachment/`](attachment/README.md) | Durable attachment identity, validation, local content-addressed storage | Product — stable API |
 | [`spill/`](spill/README.md) | Spill capability family: storage seam, local impl, tool-result spill policy | Product — stable API |
 | [`todo/`](todo/README.md) | The model-facing `todo_write` tool | Product — stable API |
-| [`office/`](office/README.md) | Model-facing office artifact generation: `xlsx_create`/`pptx_create`/`docx_create` | Product — stable API |
-| [`whale/`](whale/README.md) | Whale coworker layer: guardrail fences, task store (in progress) | Product — stable API |
+| [`office/`](office/README.md) | Model-facing office file reads (`xlsx_read`/`csv_read`/`docx_text`); artifact creation is code-first | Product — stable API |
+| [`whale/`](whale/README.md) | Whale coworker layer: guardrail fences, task store | Product — stable API |
 | [`plan/`](plan/README.md) | Plan collaboration state with a direct entry command and reviewed exit | Product — stable API |
 | [`preset/`](preset/README.md) | Per-session agent composition from preset `cordis.yml` files | Product — stable API |
 | [`guard/`](guard/README.md) | Loop-hygiene guards: advisory repeat-call reminders + the `tools/execute` deadline enforcer | Product — stable API |
@@ -67,6 +67,6 @@ New packages join existing groups; new groups update their README and this table
 
 The dependency graph is generated: [docs/module-graph.md](../docs/module-graph.md) (`pnpm run gen-module-graph`, freshness-gated in CI).
 
-**Extension plugins depend on Service Definitions, never concrete providers.** `dsh-agent-loop` is swappable; UI, hook, and tool plugins use `dsh-agent`. Composition bundles, including `dsh-agent-spine-demo`, may depend on spine plugins. Capabilities separate Service Definition / Service Provider / Consumer roles when they evolve independently; see [capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md).
+**Extension plugins depend on Service Definitions, never concrete providers.** `dsh-agent-loop` is swappable; UI, hook, and tool plugins use `dsh-agent`, while composition bundles may depend on spine plugins. Roles split only when they evolve independently ([capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)).
 
-Package READMEs cover purpose, APIs, extension points, and [Model Experience](../docs/cookbook/adding-a-package.md#4-write-the-package-readme) unless on the model-agnostic [omission allowlist](../scripts/verify-package-readme-model-experience.ts). They also carry `## Known Limitations and Deferred Work` or use its [allowlist](../scripts/verify-package-readme-limitations.ts).
+Package READMEs follow the [Model Experience](../docs/cookbook/adding-a-package.md#4-write-the-package-readme) and [Known Limitations](../scripts/verify-package-readme-limitations.ts) rules, each with its audited [omission allowlist](../scripts/verify-package-readme-model-experience.ts).

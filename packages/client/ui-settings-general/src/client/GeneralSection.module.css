@@ -1,12 +1,18 @@
-/* Feature-contributed rows own their chrome and separators; the section
- * strips the trailing separator wherever the column ends. */
+/* One settings group: the macOS inset card. Rows inside share the card's
+ * horizontal inset and draw their own separators; the last row's separator is
+ * removed because a rule directly above the card's own edge is a double line. */
 
 .section {
   display: flex;
   flex-direction: column;
   width: 100%;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-3);
 }
 
-.section > :global([data-slot='settings.general.item']) > :last-child {
-  border-bottom: none;
+.section > :global([data-slot='settings.general.item']) > :last-child::after {
+  display: none;
 }

@@ -448,19 +448,34 @@ export interface ChatNodeOwnerProps {
   /** Render a historical image group through the attachment slot. */
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /**
+   * The turn's process-reading control, supplied only to a Node that can offer
+   * it — in practice the turn footer. Omitted for a Node outside a settled
+   * turn (the live turn has no footer), which is exactly when no control
+   * should render; the pair travels together so neither half can be missed.
+   */
+  processControl?: ProcessControlOwner | undefined
+}
+
+/** The turn footer's process-reading control, as the owner supplies it. */
+export interface ProcessControlOwner {
+  /** Whether this Node's turn currently hides its process rows. */
+  hidden: boolean
+  /** Hide or reveal this Node's turn's process rows. */
+  toggle: () => void
 }
 
 /** Full props of one registered keyed Chat business renderer. */
 export type ChatNodeViewProps<Kind extends ChatNodeKind = ChatNodeKind> =
   PropsRuntime<'conversation.chat.node', Kind> & PropsLocale<'conversation'>
 
-/** Owner currency of the details panel's Tool output renderer. */
 /** Owner currency of the whole-panel deliverable preview: the file to render. */
 export interface FilePreviewOwnerProps {
   /** Workspace-relative path (deliverables/… or uploads/…). */
   path: string
 }
 
+/** Owner currency of the details panel's Tool output renderer. */
 export interface DetailsToolOwnerProps {
   /** Frozen selected call slice. */
   block: ToolCallBlock
@@ -794,6 +809,18 @@ export interface ChatViewInjected {
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
   /** Hand a call off to the trajectory view: write the one-shot inspect target and switch tabs. */
   inspectCall: (callId: CallId) => void
+  /**
+   * Open or close one tool run's rows against their default (run key = the
+   * run's first Node key). The transcript store owns the set; the view only
+   * reports the gesture, so the fold survives a view switch and a reload.
+   */
+  toggleToolRun: (runKey: string) => void
+  /**
+   * Hide or reveal one turn's process rows (tool calls and reasoning), leaving
+   * its prose. Per turn because the reader decides on the answer they just
+   * read; the set survives a view switch and a reload.
+   */
+  toggleTurnProcess: (turn: number) => void
   /**
    * Per-session scroll memory surviving view switches (in-memory, never
    * persisted): the view saves on every scroll and restores on remount; a

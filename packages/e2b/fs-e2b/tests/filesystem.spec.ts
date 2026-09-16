@@ -549,6 +549,36 @@ describe('E2BFileSystem atomic writes and edits', () => {
     await expect(fs.stat(target)).resolves.toMatchObject({ version: outcome.version, size: 14 })
   })
 
+  it('writes raw bytes as a create and as an update, reporting the payload size', async () => {
+    const { fs, remote } = await setup()
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    const created = await fs.writeBytes(await fs.resolve('raw.bin'), bytes, { kind: 'createIfAbsent' })
+    expect(created).toMatchObject({ operation: 'create', size: 4 })
+    expect(remote.nodes.get('/workspace/raw.bin')?.mode).toBe(0o600)
+
+    const updated = await fs.writeBytes(await fs.resolve('raw.bin'), new Uint8Array([9]))
+    expect(updated).toMatchObject({ operation: 'update', size: 1 })
+  })
+
+  it('refuses a byte write that would overwrite an existing file', async () => {
+    const { fs } = await setup()
+    await fs.writeText(await fs.resolve('taken.bin'), 'here')
+    await expectCode(fs.writeBytes(await fs.resolve('taken.bin'), new Uint8Array([1]), { kind: 'createIfAbsent' }), 'FS_NOT_OBSERVED')
+  })
+
+  it('hands the binary writer an exact byte copy of a pooled buffer', async () => {
+    // A pooled buffer carries unrelated bytes around the requested range, and
+    // the SDK's write takes the whole ArrayBuffer: the slice is what keeps the
+    // neighbouring bytes out of the file.
+    const { fs, remote } = await setup()
+    const pool = new Uint8Array([0xaa, 0xbb, 0x68, 0x69, 0xcc, 0xdd])
+    const view = new Uint8Array(pool.buffer, 2, 2)
+    await fs.writeBytes(await fs.resolve('slice.bin'), view, { kind: 'createIfAbsent' })
+    const binary = remote.writes.filter(entry => typeof entry.data !== 'string')
+    expect(binary).toHaveLength(1)
+    expect(new Uint8Array(binary[0]!.data as unknown as ArrayBuffer)).toEqual(new Uint8Array([0x68, 0x69]))
+  })
+
   it('preserves replacement mode, normalizes only CRLF for diffs, and changes version on external writes', async () => {
     const remote = new FakeRemote()
     remote.file('/workspace/file.txt', 'old\r\nline\rlone', 0o640)

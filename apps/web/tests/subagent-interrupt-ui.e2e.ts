@@ -128,7 +128,7 @@ describe.skipIf(MODE === 'record')('web e2e: composer interrupt for a running co
       replayChildFixtures: [parentTurnPath],
     })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname
       if (path.startsWith('/api/')) apiCalls.push(path)

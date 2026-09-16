@@ -170,19 +170,33 @@ describe('LspInstance query and abort', () => {
   it('resolves the cancel grace when the server honors $/cancelRequest', async () => {
     // A server that answers $/cancelRequest by settling the pending request lets the grace race
     // resolve via the request rather than the timeout, so the instance is NOT force-terminated.
+    const sentinel = join(ws, 'definition-request-in-flight')
     const script = 'let b=Buffer.alloc(0),reqId=null;'
       + 'const fr=(o)=>{const x=Buffer.from(JSON.stringify({jsonrpc:"2.0",...o}));return Buffer.concat([Buffer.from(`Content-Length: ${x.length}\\r\\n\\r\\n`),x]);};'
       + 'process.stdin.on("data",c=>{b=Buffer.concat([b,c]);for(;;){const s=b.indexOf("\\r\\n\\r\\n");if(s<0)break;const len=Number(/(\\d+)/.exec(b.toString("ascii",0,s))[1]);if(b.length<s+4+len)break;const m=JSON.parse(b.toString("utf8",s+4,s+4+len));b=b.subarray(s+4+len);'
       + 'if(m.method==="initialize")process.stdout.write(fr({id:m.id,result:{capabilities:{positionEncoding:"utf-16",textDocumentSync:1,definitionProvider:true}}}));'
-      + 'else if(m.method==="textDocument/definition")reqId=m.id;'
+      + `else if(m.method==="textDocument/definition"){reqId=m.id;require("fs").writeFileSync(${JSON.stringify(sentinel)},"");}`
       + 'else if(m.method==="$/cancelRequest"&&reqId!==null)process.stdout.write(fr({id:reqId,error:{code:-32800,message:"request cancelled"}}));'
       + 'else if(m.method==="shutdown")process.stdout.write(fr({id:m.id,result:null}));'
       + 'else if(m.method==="exit")process.exit(0);'
       + '}});'
+    // The grace is this case's whole budget: the fake server must start, read
+    // the request, and answer `$/cancelRequest` inside it, or the instance is
+    // force-killed and the assertion below reads the opposite result. A cold
+    // node start on a loaded runner does not fit in two seconds, which is how
+    // this failed on the native Windows lane while passing on the same commit
+    // elsewhere.
     const instance = scriptInstance(script, { killGraceMs: 2_000 })
     const controller = new AbortController()
     const pending = run(instance, 'goToDefinition', controller.signal)
-    await new Promise<void>(resolve => setTimeout(resolve, 300))
+    // Abort only once the request is genuinely in flight. A fixed sleep raced
+    // the handshake: on a loaded runner the server had not read the
+    // definition request yet, so there was no request to cancel, the grace
+    // expired, and the instance was force-killed — which reads as the
+    // opposite of what this case asserts. The server writes this file as it
+    // takes the request, so the wait ends exactly when the race can no longer
+    // be lost.
+    await waitForFile(sentinel, 30_000)
     controller.abort(new Error('mid-flight'))
     await expect(pending).rejects.toThrow(/mid-flight/)
     // The server acknowledged cancellation within grace, so the instance was not force-killed.

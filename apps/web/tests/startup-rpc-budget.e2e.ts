@@ -36,7 +36,7 @@ afterAll(async () => {
 
 describe('startup RPC budget', () => {
   it('keeps cold-boot settings.describe at the mirror count', async () => {
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     watchConsole(page)
     const calls: string[] = []
     page.on('request', (request) => {

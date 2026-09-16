@@ -97,6 +97,20 @@ describe('workspace-write containment', () => {
     expect(await readFile(path, 'utf8')).toBe('inside')
   })
 
+  it('a binary write under the workspace lands, and one outside is denied', async () => {
+    // `writeBytes` runs the same fence as `writeText` before delegating; the
+    // binary path is what the office tools use, so it needs the same proof.
+    const inside = join(workspace, 'bytes.bin')
+    const outcome = await fs.writeBytes(await target(inside), new Uint8Array([1, 2, 3]))
+    expect(outcome).toMatchObject({ operation: 'create', size: 3 })
+    expect(await readFile(inside)).toEqual(Buffer.from([1, 2, 3]))
+
+    const outside = join(base, 'escape.bin')
+    await expect(fs.writeBytes(await target(outside), new Uint8Array([9])))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    await expect(readFile(outside)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('a write to the platform temp area lands (parity with the bash runner grant)', async () => {
     const path = join(await mkdtemp(join(tmpdir(), 'dsh-fssbx-tmp-')), 'temp.txt')
     await fs.writeText(await target(path), 'temp')
@@ -171,7 +185,7 @@ describe('workspace-write with the filesystem root as the workspace (a root endi
     // A degenerate but valid config: the filesystem root containing the target.
     // It exercises the separator-suffixed-root branch on POSIX and Windows.
     const rootCtx = new Context()
-    await rootCtx.plugin(SandboxPolicyService, { mode: 'workspace-write', workspaceRoot: parse(base).root })
+    await rootCtx.plugin(SandboxPolicyService, { mode: 'workspace-write', egress: 'deny', workspaceRoot: parse(base).root })
     const rootFiber = await rootCtx.plugin(SandboxedFileSystem, { cwd: workspace })
     const rootFs = rootCtx.fs as SandboxedFileSystem
     try {
@@ -199,7 +213,7 @@ describe('the per-call policy override (escalation)', () => {
     await boot('read-only')
     const path = join(workspace, 'escalated.txt')
     // Default read-only would deny; the per-call workspace-write policy allows it (contained).
-    await fs.writeText(await target(path), 'granted', undefined, undefined, { mode: 'workspace-write', workspaceRoot: workspace })
+    await fs.writeText(await target(path), 'granted', undefined, undefined, { mode: 'workspace-write', egress: 'deny', workspaceRoot: workspace })
     expect(await readFile(path, 'utf8')).toBe('granted')
     // A neighboring plain call still runs under the read-only default.
     await expect(fs.writeText(await target(join(workspace, 'plain.txt')), 'x'))
@@ -209,7 +223,7 @@ describe('the per-call policy override (escalation)', () => {
   it('a danger-full-access stamp bypasses the fence for that call', async () => {
     await boot('read-only')
     const path = join(outside, 'granted-full.txt')
-    await fs.writeText(await target(path), 'full', undefined, undefined, { mode: 'danger-full-access', workspaceRoot: workspace })
+    await fs.writeText(await target(path), 'full', undefined, undefined, { mode: 'danger-full-access', egress: 'deny', workspaceRoot: workspace })
     expect(await readFile(path, 'utf8')).toBe('full')
   })
 })

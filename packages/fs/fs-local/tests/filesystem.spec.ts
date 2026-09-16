@@ -8,6 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { constants as bufferConstants } from 'node:buffer'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, unlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -594,6 +595,53 @@ describe('writeText', () => {
     const rejected = results.filter(r => r.status === 'rejected')
     expect(rejected).toHaveLength(1)
     expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: 'FS_STALE_VERSION' })
+    expect(lockCount(fs)).toBe(0)
+  })
+})
+
+describe('writeBytes', () => {
+  const bytes = new TextEncoder().encode('binary payload')
+
+  it('createIfAbsent creates a new file and reports its size', async () => {
+    const target = await fs.resolve('new.bin')
+    const outcome = await fs.writeBytes(target, bytes, { kind: 'createIfAbsent' })
+    expect(outcome).toMatchObject({ operation: 'create', size: bytes.byteLength })
+    expect(await readFile(join(dir, 'new.bin'))).toEqual(Buffer.from(bytes))
+  })
+
+  it('reports an update over an existing file, preserving its mode', async () => {
+    await writeFile(join(dir, 'a.bin'), 'old', { mode: 0o640 })
+    const target = await fs.resolve('a.bin')
+    const outcome = await fs.writeBytes(target, bytes)
+    expect(outcome.operation).toBe('update')
+    expect(await readFile(join(dir, 'a.bin'))).toEqual(Buffer.from(bytes))
+  })
+
+  it('createIfAbsent rejects an existing file as FS_NOT_OBSERVED', async () => {
+    await writeFile(join(dir, 'a.bin'), 'old')
+    const target = await fs.resolve('a.bin')
+    await expect(fs.writeBytes(target, bytes, { kind: 'createIfAbsent' }))
+      .rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' })
+    expect(await readFile(join(dir, 'a.bin'), 'utf8')).toBe('old')
+  })
+
+  it('rejects a stale version and releases the lock', async () => {
+    await writeFile(join(dir, 'a.bin'), 'old')
+    const target = await fs.resolve('a.bin')
+    const stale = await versionOf(target)
+    await writeFile(join(dir, 'a.bin'), 'moved on')
+    await expect(fs.writeBytes(target, bytes, { kind: 'replaceIfVersion', version: stale }))
+      .rejects.toMatchObject({ code: 'FS_STALE_VERSION' })
+    expect(lockCount(fs)).toBe(0)
+    expect(await readFile(join(dir, 'a.bin'), 'utf8')).toBe('moved on')
+  })
+
+  it('honours an aborted signal and releases the lock', async () => {
+    const target = await fs.resolve('a.bin')
+    const abort = new AbortController()
+    abort.abort()
+    await expect(fs.writeBytes(target, bytes, { kind: 'createIfAbsent' }, abort.signal)).rejects.toThrow()
+    expect(existsSync(join(dir, 'a.bin'))).toBe(false)
     expect(lockCount(fs)).toBe(0)
   })
 })

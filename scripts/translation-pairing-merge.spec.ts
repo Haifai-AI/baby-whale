@@ -261,7 +261,11 @@ function expectMergedPair(fixture: Fixture): void {
   )
 }
 
-describe('translation pairing merge composition', { timeout: 15_000 }, () => {
+// Every case drives real `git` subprocesses through the merge driver, and the
+// slowest ran 13.3s on the Windows lane against this budget: a runner that is
+// busy by a further fifth would fail a case that asserts composed merge
+// behavior, not latency.
+describe('translation pairing merge composition', { timeout: 120_000 }, () => {
   it('rejects a pairing-record path outside the repository', () => {
     const fixture = createFixture(false)
 

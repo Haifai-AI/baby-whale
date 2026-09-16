@@ -11,18 +11,39 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { createWriteStream } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { finished } from 'node:stream/promises'
+import { finished, pipeline } from 'node:stream/promises'
 
 /** Pinned Document Foundation release the managed installer fetches. */
-const LIBREOFFICE_VERSION = '26.2.4'
+const LIBREOFFICE_VERSION = '26.2.6'
 
-/** Per-OS managed layout, resolved under {@link appSupportDir}. */
+/**
+ * Pinned SHA-256 of each managed macOS artifact, captured from the official
+ * Document Foundation release bytes. A version bump without fresh pins fails
+ * the install loudly instead of fetching an unverified disk image.
+ */
+const LIBREOFFICE_SHA256 = {
+  aarch64: '94bb3248df074c225490a8a6d1d9dc87c7d6783dbb7a8e9f0d0c3d94348552af',
+  'x86-64': '135b8a95b8133396d54bf8e726dbc0066145efa0d785963fc3d4592acbfcfe5b',
+} as const
+
+/** Display size (MiB) of each managed artifact, from the official content lengths. */
+const LIBREOFFICE_SIZE_MB = {
+  aarch64: 284,
+  'x86-64': 294,
+} as const
+
+/**
+ * The per-user directory this app owns for managed installs and caches.
+ * @returns the support directory for this platform: `DSH_APP_SUPPORT` when set
+ * and non-empty, otherwise the platform's per-user application-support path.
+ */
 export function appSupportDir(): string {
   const override = process.env.DSH_APP_SUPPORT
   if (override !== undefined && override !== '') return override
@@ -40,6 +61,7 @@ export function appSupportDir(): string {
  * The managed install's soffice binary when present. Checked before system
  * candidates by the preview layer, so a completed download upgrades the
  * preview pipeline without a restart.
+ * @returns absolute path of the managed binary, or undefined when nothing is installed.
  */
 export function managedSofficePath(): string | undefined {
   const support = appSupportDir()
@@ -51,20 +73,29 @@ export function managedSofficePath(): string | undefined {
   return existsSync(candidate) ? candidate : undefined
 }
 
-/** Where the official artifact for this machine lives, or guided-only. */
+/**
+ * Where the official artifact for this machine lives, or guided-only.
+ * @returns the download descriptor with the pinned size and SHA-256 on macOS;
+ * `supported: false` plus the official guide URL on Windows and Linux, whose
+ * flows need an installer or a package manager.
+ */
 export function managedInstallSupport(): {
   supported: boolean
   url?: string
   guideUrl?: string
   sizeMb?: number
+  sha256?: string
 } {
   if (process.platform === 'darwin') {
-    const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64'
-    const dmgArch = process.arch === 'arm64' ? 'aarch64' : 'x86-64'
+    // The mirror directory spells Intel `x86_64` while the file spells it
+    // `x86-64`; the pin tables key on the file spelling.
+    const key = process.arch === 'arm64' ? 'aarch64' : 'x86-64'
+    const dir = key === 'aarch64' ? 'aarch64' : 'x86_64'
     return {
       supported: true,
-      url: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/mac/${arch}/LibreOffice_${LIBREOFFICE_VERSION}_MacOS_${dmgArch}.dmg`,
-      sizeMb: 281,
+      url: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/mac/${dir}/LibreOffice_${LIBREOFFICE_VERSION}_MacOS_${key}.dmg`,
+      sizeMb: LIBREOFFICE_SIZE_MB[key],
+      sha256: LIBREOFFICE_SHA256[key],
     }
   }
   // Both flows need an interactive installer or a package manager; the
@@ -84,7 +115,10 @@ export interface SofficeInstallState {
 let state: SofficeInstallState = { phase: 'idle', progress: 0 }
 let inflight: Promise<void> | undefined
 
-/** Snapshot of the current install lifecycle (copy — callers must not mutate). */
+/**
+ * Snapshot of the current install lifecycle (copy — callers must not mutate).
+ * @returns a fresh copy of the module's lifecycle state; mutating it leaves the install untouched.
+ */
 export function sofficeInstallState(): SofficeInstallState {
   return { ...state }
 }
@@ -93,11 +127,13 @@ export function sofficeInstallState(): SofficeInstallState {
  * Kick the managed download+install; single-flight. Safe to call again while
  * running (returns the live state) or after completion (no-op done state).
  * macOS only — other platforms never enter the machine phases.
+ * @param onInstalled - invoked once the runtime lands (wires the re-lookup).
+ * @returns the install lifecycle state snapshot at kickoff.
  */
-export async function beginManagedSofficeInstall(onInstalled?: () => void): Promise<SofficeInstallState> {
+export function beginManagedSofficeInstall(onInstalled?: () => void): Promise<SofficeInstallState> {
   if (managedSofficePath() !== undefined) {
     state = { phase: 'done', progress: 1 }
-    return { ...state }
+    return Promise.resolve({ ...state })
   }
   const support = managedInstallSupport()
   if (!support.supported || support.url === undefined) {
@@ -106,16 +142,45 @@ export async function beginManagedSofficeInstall(onInstalled?: () => void): Prom
       progress: 0,
       error: 'Managed install is available on macOS; use the guided download for this platform.',
     }
-    return { ...state }
+    return Promise.resolve({ ...state })
   }
-  if (inflight !== undefined) return { ...state }
-  inflight = runManagedInstall(support.url, onInstalled).finally(() => {
+  // A supported platform without a pinned hash must never fetch: downloading
+  // an unverified executable artifact is the failure this gate exists to stop.
+  /* v8 ignore start -- unreachable: managedInstallSupport always pins a sha256 for a supported platform. */
+  if (support.sha256 === undefined) {
+    state = {
+      phase: 'error',
+      progress: 0,
+      error: `No pinned checksum for LibreOffice ${LIBREOFFICE_VERSION} on this machine; refusing the unverified download.`,
+    }
+    return Promise.resolve({ ...state })
+  }
+  /* v8 ignore stop */
+  if (inflight !== undefined) return Promise.resolve({ ...state })
+  inflight = runManagedInstall(support.url, support.sha256, onInstalled).finally(() => {
     inflight = undefined
   })
-  return { ...state }
+  return Promise.resolve({ ...state })
 }
 
-async function runManagedInstall(url: string, onInstalled?: () => void): Promise<void> {
+/**
+ * Verify a downloaded artifact against its pinned SHA-256 before anything
+ * mounts or executes it. Streams the file (never buffered whole) and fails
+ * closed: the caller owns cleanup of the rejected bytes.
+ * @param file - downloaded artifact path.
+ * @param expected - pinned lowercase hex digest.
+ */
+export async function verifyFileSha256(file: string, expected: string): Promise<void> {
+  const hash = createHash('sha256')
+  await pipeline(createReadStream(file), hash)
+  if (hash.digest('hex') !== expected) {
+    throw new Error(
+      'LibreOffice download checksum mismatch — the artifact may be corrupted or tampered with; refusing to install',
+    )
+  }
+}
+
+async function runManagedInstall(url: string, sha256: string, onInstalled?: () => void): Promise<void> {
   const work = await mkdtemp(path.join(tmpdir(), 'babywhale-lo-'))
   try {
     state = {
@@ -127,6 +192,10 @@ async function runManagedInstall(url: string, onInstalled?: () => void): Promise
     await downloadToFile(url, dmg, (fraction) => {
       state = { ...state, progress: Math.min(0.8, fraction * 0.8) }
     })
+    // The gate: nothing mounts, copies, or runs before the hash matches. A
+    // mismatch throws with the work directory (rejected bytes included)
+    // removed by the finally below.
+    await verifyFileSha256(dmg, sha256)
 
     state = { phase: 'installing', progress: 0.85, message: 'Installing into the application support folder' }
     const support = appSupportDir()
@@ -188,7 +257,7 @@ async function downloadToFile(url: string, dest: string, onFraction: (fraction: 
 function run(bin: string, args: string[], timeoutMs = 300_000): void {
   const result = spawnSync(bin, args, { timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] })
   if (result.status !== 0) {
-    const stderr = result.stderr?.toString().trim().slice(0, 300) ?? ''
+    const stderr = result.stderr.toString().trim().slice(0, 300)
     throw new Error(`${path.basename(bin)} ${args[0]} failed${stderr === '' ? '' : `: ${stderr}`}`)
   }
 }

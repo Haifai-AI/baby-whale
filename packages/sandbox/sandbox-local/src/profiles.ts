@@ -15,6 +15,10 @@ import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
  */
 export function bwrapProfileArgs(policy: SandboxPolicy): string[] {
   const args = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-pid', '--proc', '/proc', '--die-with-parent']
+  // Default-deny egress: a file sandbox must not become an exfiltration
+  // channel, so the network namespace stays unshared unless the deployment
+  // explicitly allows egress.
+  if (policy.egress === 'deny') args.push('--unshare-net')
   if (policy.mode === 'workspace-write') {
     args.push('--tmpfs', '/tmp')
     args.push('--bind', policy.workspaceRoot, policy.workspaceRoot)
@@ -50,6 +54,8 @@ function sbplString(path: string): string {
  */
 export function seatbeltProfileArgs(policy: SandboxPolicy): string[] {
   const forms = ['(version 1)', '(allow default)', '(deny file-write*)', `(allow file-write* (literal ${sbplString('/dev/null')}))`]
+  // Default-deny egress, same posture as bwrap's unshared network namespace.
+  if (policy.egress === 'deny') forms.push('(deny network*)')
   const roots = writableRoots(policy)
   if (roots.length > 0) {
     forms.push(`(allow file-write* ${roots.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)

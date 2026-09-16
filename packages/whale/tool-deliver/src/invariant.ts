@@ -10,7 +10,7 @@ import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 const PACKAGE_NAME = '@deepseek-ai/dsh-tool-deliver'
 
 /** Cordis companion plugin name. */
-export const name = 'tool-office-invariant'
+export const name = 'tool-deliver-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 

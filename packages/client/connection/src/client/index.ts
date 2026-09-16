@@ -41,6 +41,9 @@ export {
 export type { ConnectionConfig, ConnectionSinks, ConnectionState }
 export type { ClientConnectionRpc } from '../rpc.ts'
 export type { RpcFetch } from './rpc.ts'
+// Subresource URLs (preview images, downloads) cannot set headers: views
+// append the instance token query through this helper.
+export { resolveApiToken, withApiTokenQuery } from './api-token.ts'
 
 /** Observable Host description published by each completed connection handshake. */
 export interface HostDescriptionSource {

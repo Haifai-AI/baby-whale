@@ -37,7 +37,7 @@ describe('web e2e: cold blank Session visibility', () => {
     expect((await stat(location.path)).size).toBeLessThanOrEqual(1024)
 
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

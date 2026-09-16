@@ -8,6 +8,7 @@
   "files": [
     "src/api-path.ts",
     "src/api-request-trust.ts",
+    "src/api-token-file.ts",
     "src/http-bridge.ts",
     "src/index.ts",
     "src/invariant.ts",
@@ -28,6 +29,12 @@
     },
     {
       "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../util/atomic-write"
+    },
+    {
+      "path": "../../util/home-paths"
     }
   ]
 }

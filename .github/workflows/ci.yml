@@ -42,7 +42,7 @@ jobs:
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / static
     env:
       DSH_GATE_CONCURRENCY: '8'
@@ -94,7 +94,7 @@ jobs:
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / coverage
     env:
       # Partitioning replaces the instrumented share; this budget gives the
@@ -102,6 +102,12 @@ jobs:
       DSH_COVERAGE_MAX_WORKERS: '6'
       DSH_COVERAGE_PARTITIONS: '4'
       DSH_GATE_CONCURRENCY: '3'
+      # Instrumented and exempt-heavy suites both spawn real tools, and a
+      # shared runner's scheduling overhead exceeds Vitest's 5s default: the
+      # Oxlint contract's fix-retry case spent its whole budget waiting for a
+      # child that had not started. The native Windows job already carries
+      # this; the Linux lane needs the same budget for the same reason.
+      DSH_COVERAGE_TEST_TIMEOUT_MS: '30000'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -156,16 +162,24 @@ jobs:
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || 'ubuntu-latest' }}
     name: node 24 / snapshots and artifacts
     env:
-      DSH_GATE_CONCURRENCY: '8'
+      DSH_GATE_CONCURRENCY: '4'
       DSH_NODE_COMPAT_SKIP_TYPECHECK: '1'
-      DSH_OXLINT_THREADS: '8'
-      DSH_PUBLINT_CONCURRENCY: '8'
-      DSH_WEB_SNAPSHOT_WORKERS: '6'
-      # Failover halves snapshot concurrency for the shared 64-core VM.
-      DSH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}
+      DSH_OXLINT_THREADS: '4'
+      DSH_PUBLINT_CONCURRENCY: '4'
+      # The headless model-failure scenario must sleep the provider's whole
+      # retry backoff (~15s) before it can report, and a loaded runner stretches
+      # that past the 30s default. The knob exists in the smoke harness; CI is
+      # what sets it. Its per-test deadline is 105s.
+      DSH_LOADER_SMOKE_TIMEOUT_MS: '90000'
+      DSH_WEB_SNAPSHOT_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '6' || '2' }}
+      # Snapshot scenarios boot real bins and poll session logs every 10ms, so
+      # oversubscribing the box starves their turn waits and reports timeouts
+      # that never happen on a quiet machine. Sized to the actual runner:
+      # 4 vCPU hosted, 64-core failover VM (which still halves for sharing).
+      DSH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '3' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -412,15 +426,25 @@ jobs:
       ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || 'windows-latest' }}
     name: windows node 24 / native complete
     timeout-minutes: 120
     env:
       DSH_COVERAGE_MAX_WORKERS: '6'
-      DSH_COVERAGE_PARTITIONS: '8'
+      # Sized to the runner, like the Linux lane's: the hosted Windows image is
+      # four vCPUs, and eight instrumented partitions on it starved suites whose
+      # budgets are already generous — a randomized differential case and a
+      # twenty-three-grammar lazy load both timed out without being wrong. The
+      # self-hosted failover pool is large enough to keep eight.
+      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '8' || '4' }}
       # Instrumented process and polling fixtures can exceed Vitest's defaults
       # under the complete lane's concurrent gate load.
       DSH_COVERAGE_TEST_TIMEOUT_MS: '30000'
+      # Native Windows spawns Git and Node far slower than the POSIX lanes, and
+      # the Lefthook installer serializes concurrent runs behind its own lock.
+      # Two multi-worktree cases reached the suite's 30s default exactly at the
+      # deadline; the budget is a runner fact, so CI owns it.
+      DSH_LEFTHOOK_TEST_TIMEOUT_MS: '120000'
       DSH_GATE_CONCURRENCY: '4'
       DSH_PUBLINT_CONCURRENCY: '8'
     steps:

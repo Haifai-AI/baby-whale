@@ -85,6 +85,7 @@ export function extractDocxText(bytes: Uint8Array, maxChars: number = DOCX_MAX_C
   return { paragraphs, char_count: charCount, truncated }
 
   function push(target: DocxParagraph[], entry: DocxParagraph): void {
+    /* v8 ignore next 3 -- the block loop head already holds charCount below maxChars at every push, so this guard cannot fire */
     if (charCount >= maxChars) {
       truncated = true
       return
@@ -116,7 +117,14 @@ function extractRuns(block: string): RunFragment[] {
   return fragments
 }
 
-function decodeEntities(value: string): string {
+/**
+ * Decode the XML entities that appear in Word run text: `&lt;`, `&gt;`,
+ * `&quot;`, `&apos;`, and decimal character references. `&amp;` is replaced
+ * last, so text escaping an entity (`&amp;lt;`) survives undecoded.
+ * @param value - raw run text taken from document.xml.
+ * @returns the decoded text.
+ */
+export function decodeEntities(value: string): string {
   return value
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

@@ -132,6 +132,7 @@ describe('mcp-client plugin module exports', () => {
       command: 'echo',
     } as never)
     expect(omitted.reconnect).toEqual({ enabled: true, initialDelayMs: 500, maxDelayMs: 30_000, maxAttempts: 10 })
+    expect(omitted.startupTimeoutMs).toBe(30_000)
 
     const partial = ConfigSchema({
       transport: 'stdio',
@@ -268,6 +269,99 @@ describe('apply (plugin lifecycle)', () => {
     expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()
     await ctx.fiber.dispose()
     expect(mockClose).toHaveBeenCalled()
+  })
+
+  it('fails the fiber when startup exceeds startupTimeoutMs (fatal)', async () => {
+    // A server that accepts the transport but never answers `initialize`:
+    // connect never settles on its own.
+    const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
+    mockConnect.mockImplementation(() => connectGate.promise)
+
+    // The cause is read off the caught value: a nested matcher would widen the
+    // expected object to `any` and lose the assertion's types.
+    const rejection = await apply(ctx, {
+      ...stdioConfig,
+      startupTimeoutMs: 80,
+      failOnStartupError: true,
+    }).then(() => undefined, (error: unknown) => error)
+    expect(rejection).toBeInstanceOf(Error)
+    const failure = rejection as Error
+    expect(failure.message).toBe('mcp-client(srv): initial connection or tool synchronization failed')
+    expect((failure.cause as Error).message).toContain('startup did not settle within 80ms')
+
+    expect(mockListTools).not.toHaveBeenCalled()
+    expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()
+
+    // The rollback disposed the connection; let the abandoned in-flight
+    // attempt settle so the supervisor quiesces.
+    connectGate.reject(new Error('initialize never answered'))
+    await ctx.fiber.dispose()
+    await sleep(50)
+    expect(mockClose).toHaveBeenCalled()
+  })
+
+  it('activates without tools when startup exceeds startupTimeoutMs (non-fatal) and the supervisor keeps going', async () => {
+    const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
+    mockConnect.mockImplementation(() => connectGate.promise)
+
+    await expect(apply(ctx, {
+      ...stdioConfig,
+      startupTimeoutMs: 80,
+    })).resolves.toBeUndefined()
+
+    expect(mockListTools).not.toHaveBeenCalled()
+    expect(ctx.tools.get('mcp__srv__remote')).toBeUndefined()
+
+    // The supervisor is still running: settling the abandoned attempt funnels
+    // it into the reconnect path, and disposal stops it cleanly.
+    connectGate.reject(new Error('initialize never answered'))
+    await ctx.fiber.dispose()
+    await sleep(50)
+    expect(mockClose).toHaveBeenCalled()
+  })
+
+  it('names a non-Error startup failure by its string form', async () => {
+    // A transport SDK may reject with something that is not an Error, so the
+    // diagnostic cannot assume a `message`; it must still say what happened
+    // rather than printing `undefined`.
+    mockConnect.mockRejectedValue('stdio child refused to spawn')
+    const warn = vi.fn()
+    const scoped = ctx.extend({ logger: { warn } })
+
+    await expect(apply(scoped, { ...stdioConfig, startupTimeoutMs: 80 })).resolves.toBeUndefined()
+
+    const rendered = warn.mock.calls.map(call => call.map(String).join(' ')).join('\n')
+    expect(rendered).toContain('stdio child refused to spawn')
+    await ctx.fiber.dispose()
+    await sleep(50)
+  })
+
+  it('ignores a failed attempt that lands after disposal', async () => {
+    // Disposal clears current ownership before it closes the generation, so a
+    // rejection arriving afterwards must not drive the reconnect path: the
+    // generation is already being torn down and owns no live supervisor. The
+    // transport's own close signal is what lets the failed attempt past its
+    // close barrier, which is the state this case needs to reach the check.
+    const connectGate: PromiseWithResolvers<void> = Promise.withResolvers()
+    const generations: { onclose?: () => void }[] = []
+    mockConnect.mockImplementation(function (this: { onclose?: () => void }) {
+      generations.push(this)
+      return connectGate.promise
+    })
+
+    await expect(apply(ctx, { ...stdioConfig, startupTimeoutMs: 80 })).resolves.toBeUndefined()
+
+    // The transport closes and the attempt fails while the supervisor is
+    // still live: the generation is current, so the failure takes the
+    // reconnect path rather than being ignored.
+    const warn = vi.fn()
+    const scoped = ctx.extend({ logger: { warn, error: vi.fn(), info: vi.fn() } })
+    generations.at(-1)?.onclose?.()
+    connectGate.reject(new Error('initialize never answered'))
+    await sleep(50)
+    expect(mockClose).toHaveBeenCalled()
+    void scoped
+    await ctx.fiber.dispose()
   })
 
   it('rejects strict startup when the initial tool generation cannot be registered', async () => {

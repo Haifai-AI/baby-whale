@@ -1,6 +1,7 @@
 /** Browser download state shared by the Session Header button and `/export`. */
 
 import { createSnapshotStore, type SessionId, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { resolveApiToken } from '@deepseek-ai/dsh-client-connection/client'
 
 /** Download phases presented by the shared modal. */
 export type SessionLogDownloadStatus = 'downloading' | 'success' | 'error'
@@ -114,6 +115,13 @@ export class SessionLogDownloadController {
       const url = new URL('/api/session.export', hostBase())
       url.searchParams.set('sessionId', sessionId)
       url.searchParams.set('includeDescendants', 'true')
+      // Both requests need the instance token on the URL itself: the HEAD may
+      // travel through a plain carrier that presents no Authorization header,
+      // and the save hands the URL to the browser's download manager, which
+      // never does. The query string is the one channel both can use, set on
+      // the URL so the fetcher and `save` keep receiving a `URL`.
+      const token = resolveApiToken()
+      if (token !== undefined) url.searchParams.set('token', token)
       const response = await this.fetcher(url, { method: 'HEAD', signal })
       if (!response.ok) {
         const detail = await response.text().catch(() => '')

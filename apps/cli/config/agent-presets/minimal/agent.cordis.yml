@@ -1,10 +1,18 @@
-# The `minimal` agent preset: a fixed-prompt, two-tool coding-agent composition.
+# The `minimal` agent preset: a fixed-prompt coding-agent composition that adds
+# no tools of its own.
 #
 # The persona is the complete system prompt, so global identity, Web orientation,
 # tool guidance, and later assembly listeners cannot add prompt text. Runtime
-# context snapshots are suppressed for this preset, and the model composes only
-# the persistent shell (`bash` on POSIX, `pwsh` on win32) and
+# context snapshots are suppressed for this preset, and this preset contributes
+# only the persistent shell (`bash` on POSIX, `pwsh` on win32) and
 # `str_replace_editor`. Context compaction is absent.
+#
+# Adding no tools is not the same as hiding them: the host plane mounts
+# whale-core and whale-trash (`packages/bundle/web-app/cordis.patch.yml`), whose
+# tools register globally and so reach this agent's catalog as well. The model
+# therefore also sees `whale_task_*` and `whale_trash_*`. Scoping the whale tool
+# set to the preset plane is the open follow-up; until then the preset snapshot
+# pins the inherited list so any change to it stays visible.
 
 - id: persona
   name: '@deepseek-ai/dsh-persona'

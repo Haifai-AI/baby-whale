@@ -20,7 +20,7 @@ import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { ZH_BROWSER_LOCALE, connectFreshWorkspaceZh, saveFailureShot } from './support.ts'
+import { ZH_BROWSER_LOCALE, authHeaders, connectFreshWorkspaceZh, newTestPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/agent-preset-authoring', import.meta.url))
 const SECTION_EXPECTED = join(SNAPSHOT_DIR, 'section.expected.md')
@@ -69,7 +69,7 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
     })
     browser = await chromium.launch()
     // The scenario asserts the shipped Chinese copy, so the browser asks for it.
-    page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    page = await newTestPage(browser, scaffold.apiToken, { viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -261,7 +261,7 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
     await expect.poll(async () => {
       const response = await fetch(`${scaffold.baseUrl}/api/session.list`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...authHeaders(scaffold.apiToken) },
         body: JSON.stringify({
           type: 'client-request', rpcId: 'creator-draft-stage', method: 'session.list', payload: {},
         }),

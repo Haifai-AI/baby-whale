@@ -31,6 +31,7 @@ import {
   type Profile,
 } from '@deepseek-ai/dsh-app-boot'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { OFFICE_REQUIREMENTS_LOCK } from './office-requirements-lock.ts'
 
 /** Shipped agent-preset root: beside this app's own config, in both source and built layouts. */
 const SHIPPED_PRESET_ROOT = fileURLToPath(new URL('../config/agent-presets/', import.meta.url))
@@ -49,7 +50,84 @@ const HARNESS_SKILL_ROOT = fileURLToPath(new URL('../../../.agents/skills/', imp
  * sessions and skill text reference one stable path. Installation is
  * best-effort and NEVER blocks boot: a missing venv degrades to skills'
  * inline bootstrap.
+ *
+ * Supply-chain posture: the background install enforces the pinned,
+ * hash-locked set in `./office-requirements-lock.ts` (`pip
+ * --require-hashes`) — floating installs and installer self-upgrades are
+ * refused by construction, not by review. Bumping the set means editing the
+ * lock AND {@link OFFICE_LIBS_MARKER} so deployed venvs reinstall.
  */
+
+/**
+ * Marker pinning the exact locked set a venv was built from. Bump whenever
+ * `./office-requirements-lock.ts` changes: a stale marker would keep serving
+ * a floating-install venv built from unpinned packages.
+ */
+export const OFFICE_LIBS_MARKER = '.libs-ok-3'
+
+/**
+ * The locked set beside the install log, written by {@link writeOfficeLock}
+ * before either dialect spawns. Node writes it rather than the shell: the set
+ * is 63 KB, which overflows the Windows command line (32,767 characters,
+ * observed as `spawn ENAMETOOLONG`) and wastes an argument vector on POSIX.
+ */
+const OFFICE_LOCK_FILENAME = 'office-requirements.lock'
+
+/**
+ * Write the pinned set for the install script to consume.
+ * @param venvDir - the venv root; must already exist.
+ * @returns the absolute lock-file path.
+ */
+function writeOfficeLock(venvDir: string): string {
+  const requirements = join(venvDir, OFFICE_LOCK_FILENAME)
+  writeFileSync(requirements, OFFICE_REQUIREMENTS_LOCK)
+  return requirements
+}
+
+/**
+ * POSIX background-install script: venv creation plus the hash-enforced
+ * lock install. Exported for tests (the spawn itself stays untestable
+ * without building a real venv).
+ * @param pythonBin - the venv interpreter path the install targets.
+ * @param venvDir - the venv root (also holds the lock copy and marker).
+ * @returns bash lines joined with `&&` by the caller.
+ */
+export function posixOfficeInstallScript(pythonBin: string, venvDir: string): string[] {
+  const requirements = join(venvDir, OFFICE_LOCK_FILENAME)
+  return [
+    'set -e',
+    'echo "--- office venv install started: $(date -u +%FT%TZ)"',
+    `[ -x ${JSON.stringify(pythonBin)} ] || python3 -m venv ${JSON.stringify(venvDir)}`,
+    `${JSON.stringify(pythonBin)} -m pip install --quiet --disable-pip-version-check --require-hashes --upgrade -r ${JSON.stringify(requirements)}`,
+    `touch ${JSON.stringify(join(venvDir, OFFICE_LIBS_MARKER))}`,
+    'echo "--- office venv install finished: $(date -u +%FT%TZ)"',
+  ]
+}
+
+/**
+ * Windows background-install body: the same marker-gated, hash-enforced
+ * install through inbox PowerShell (5.1-safe: no `??`, no ternary, every
+ * path quoted). Exported for tests.
+ * @param pythonExe - the venv interpreter path the install targets.
+ * @param venvDir - the venv root (also holds the lock copy and marker).
+ * @returns PowerShell statements joined with `; ` by the caller.
+ */
+export function windowsOfficeInstallScript(pythonExe: string, venvDir: string): string[] {
+  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`
+  const requirements = join(venvDir, OFFICE_LOCK_FILENAME)
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "Write-Output '--- office venv install started'",
+    '$pyCmd = Get-Command py -ErrorAction SilentlyContinue',
+    'if ($null -eq $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }',
+    'if ($null -eq $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }',
+    "if ($null -eq $pyCmd) { throw 'no Python found (py/python/python3) — install it, then restart the app' }",
+    `if (-not (Test-Path ${quote(pythonExe)})) { & $pyCmd.Source -m venv ${quote(venvDir)} }`,
+    `& ${quote(pythonExe)} -m pip install --quiet --disable-pip-version-check --require-hashes --upgrade -r ${quote(requirements)}`,
+    `New-Item -ItemType File -Force -Path ${quote(join(venvDir, OFFICE_LIBS_MARKER))} | Out-Null`,
+    "Write-Output '--- office venv install finished'",
+  ]
+}
 export function prepareOfficeRuntime(): void {
   const home = process.env.HOME ?? process.env.USERPROFILE
   if (home === undefined || home === '') return
@@ -61,11 +139,10 @@ export function prepareOfficeRuntime(): void {
     return
   }
 
-  const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? `${home}/.whale-office-venv`
-  const pythonBin = `${venvDir}/bin/python`
-  // Marker version bumps force a reinstall after the library set changes
-  // (v2: pymupdf — PDF rasterization for the deck skill's visual-QA loop).
-  const marker = join(venvDir, '.libs-ok-2')
+  const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? join(home, '.whale-office-venv')
+  const pythonBin = join(venvDir, 'bin', 'python')
+  // The marker pins the locked set: bump OFFICE_LIBS_MARKER with the lock.
+  const marker = join(venvDir, OFFICE_LIBS_MARKER)
   // Only advertise a FINISHED install: a half-built venv (binary present,
   // libraries missing) would fail every office script. Until the marker
   // exists the skills fall back to their inline per-task venv bootstrap.
@@ -76,19 +153,12 @@ export function prepareOfficeRuntime(): void {
     return
   }
   mkdirSync(venvDir, { recursive: true })
+  writeOfficeLock(venvDir)
   // Install progress and failures land here instead of /dev/null: a quiet
   // background failure used to surface only as "python missing" much later.
   const installLog = join(venvDir, 'install.log')
   const logFd = openSync(installLog, 'a')
-  const installScript = [
-    'set -e',
-    'echo "--- office venv install started: $(date -u +%FT%TZ)"',
-    `[ -x ${JSON.stringify(pythonBin)} ] || python3 -m venv ${JSON.stringify(venvDir)}`,
-    `${JSON.stringify(pythonBin)} -m pip install --quiet --upgrade pip`,
-    `${JSON.stringify(pythonBin)} -m pip install --quiet openpyxl python-pptx python-docx reportlab pypdf pdfplumber pandas pymupdf`,
-    `touch ${JSON.stringify(marker)}`,
-    'echo "--- office venv install finished: $(date -u +%FT%TZ)"',
-  ].join(' && ')
+  const installScript = posixOfficeInstallScript(pythonBin, venvDir).join(' && ')
   const child = spawn('/bin/bash', ['-c', installScript], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
@@ -105,7 +175,7 @@ export function prepareOfficeRuntime(): void {
 function prepareOfficeRuntimeWindows(home: string): void {
   const venvDir = process.env.DSH_OFFICE_VENV_DIR ?? join(home, '.whale-office-venv')
   const pythonExe = join(venvDir, 'Scripts', 'python.exe')
-  const marker = join(venvDir, '.libs-ok-2')
+  const marker = join(venvDir, OFFICE_LIBS_MARKER)
   if (existsSync(marker)) {
     if (process.env.DSH_OFFICE_PYTHON === undefined && existsSync(pythonExe)) {
       process.env.DSH_OFFICE_PYTHON = pythonExe
@@ -113,23 +183,12 @@ function prepareOfficeRuntimeWindows(home: string): void {
     return
   }
   mkdirSync(venvDir, { recursive: true })
-  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`
+  writeOfficeLock(venvDir)
   // All streams append to the install log inside the script itself, so the
   // spawn stays stdio-ignored (detached fd redirection is unreliable on win32).
   const installLog = join(venvDir, 'install.log')
-  const body = [
-    "$ErrorActionPreference = 'Stop'",
-    "Write-Output '--- office venv install started'",
-    '$pyCmd = Get-Command py -ErrorAction SilentlyContinue',
-    'if ($null -eq $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }',
-    'if ($null -eq $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }',
-    "if ($null -eq $pyCmd) { throw 'no Python found (py/python/python3) — install it, then restart the app' }",
-    `if (-not (Test-Path ${quote(pythonExe)})) { & $pyCmd.Source -m venv ${quote(venvDir)} }`,
-    `& ${quote(pythonExe)} -m pip install --quiet --upgrade pip`,
-    `& ${quote(pythonExe)} -m pip install --quiet openpyxl python-pptx python-docx reportlab pypdf pdfplumber pandas pymupdf`,
-    `New-Item -ItemType File -Force -Path ${quote(marker)} | Out-Null`,
-    "Write-Output '--- office venv install finished'",
-  ].join('; ')
+  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`
+  const body = windowsOfficeInstallScript(pythonExe, venvDir).join('; ')
   const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `& { ${body} } *>> ${quote(installLog)}`], {
     detached: true,
     stdio: 'ignore',

@@ -168,7 +168,7 @@ describe.skipIf(process.platform === 'win32')('terminal-bash real shell', () => 
     const created = await ctx.terminals.spawn(agent, { type: 'shell' })
     expect(sandbox.calls).toEqual([{
       argv: ['/bin/bash', '--noprofile', '--norc', '-i'],
-      policy: { mode: 'workspace-write', workspaceRoot: realpathSync.native(root), sessionId: 'agent-workspace-write' },
+      policy: { mode: 'workspace-write', egress: 'deny', workspaceRoot: realpathSync.native(root), sessionId: 'agent-workspace-write' },
     }])
     await fiber.dispose()
     expect(ctx.terminals.listBackends()).toEqual([])
@@ -285,9 +285,15 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
     process.env.DSH_TEST_SECRET = 'must-not-leak'
     try {
       const { ctx, root, agent } = await harness('danger-full-access', {
-        idleSilenceMs: 300,
-        handoffGraceMs: 300,
-        timeoutMs: 8_000,
+        // The silence bound must outlast a cold pwsh executing its first
+        // command. At 300+300 a loaded runner settled `inferred_idle` while
+        // pwsh was still starting: the command came back echoed and nothing
+        // more, which is a timing loss rather than the readiness contract
+        // this case is about. Generous enough that the exact stdin probe is
+        // what settles the send, which is the assertion below.
+        idleSilenceMs: 5_000,
+        handoffGraceMs: 1_000,
+        timeoutMs: 30_000,
       }, 'pwsh')
       const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
       expect(created.motd).toContain('dsh> ')
@@ -317,9 +323,12 @@ describe.skipIf(!hasPwsh)('terminal-bash pwsh real shell', () => {
 
   it('pins UTF-8 output encoding so non-ASCII output survives the byte decode', async () => {
     const { ctx, root, agent } = await harness('danger-full-access', {
-      idleSilenceMs: 300,
-      handoffGraceMs: 300,
-      timeoutMs: 8_000,
+      // Same budget as the state case: the assertion is about the encoding
+      // the bootstrap pinned, which cannot be observed if the send settles by
+      // silence before pwsh has printed anything.
+      idleSilenceMs: 5_000,
+      handoffGraceMs: 1_000,
+      timeoutMs: 30_000,
     }, 'pwsh')
     const created = await ctx.terminals.spawn(agent, { type: 'shell', name: 'main', cwd: root })
     // The bootstrap itself must have pinned both encodings: the session byte

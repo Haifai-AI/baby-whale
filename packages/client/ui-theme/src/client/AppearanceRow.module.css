@@ -1,57 +1,95 @@
-/* Appearance row (figma 'Frame 2117131228': title + cube row, column gap 8,
- * pad 16/0, hairline separator; the section column strips it when last). */
+/* Appearance row: title + a segmented preference control. The three
+ * preferences are one control, not three cards — a single recessed track with
+ * the active segment lifted out of it reads as one choice, where three
+ * bordered boxes read as three separate destinations.
+ *
+ * Geometry: 2px track inset, 30px segments, 8px inner radius against the
+ * track's 10px, so the lifted segment's corners stay concentric with the
+ * track's. */
 
 .group {
   display: flex;
   flex-direction: column;
+  position: relative;
   gap: 8px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  padding: 10px 0;
+}
+
+/* Inset separator, as on every other settings row. */
+.group::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: var(--dsw-alias-border-l1);
 }
 
 .title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 22px;
+  line-height: 18px;
   color: var(--dsw-alias-label-primary);
 }
 
+/* The recessed track. Its fill is the sunken neutral, one step below the
+   dialog surface, so the unselected segments read as inside the control. */
 .cubeRow {
   display: flex;
   align-items: stretch;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 2px;
+  width: fit-content;
+  min-width: 260px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-fill-secondary);
 }
 
-/* Appearance cube (figma '.Selector Cube' 276x82 r16, pad 20/32, centered
- * icon-over-label column, gap 4); flexed down from the figma width so all
- * three sit on one row in the 800 panel, wrapping when narrower. */
+/* Segment: label and glyph on one line, centered. Transparent at rest so the
+   track shows through; the selected one takes the elevated fill plus the
+   first elevation step, which is what makes it sit above the track. */
 .themeCube {
   box-sizing: border-box;
-  flex: 1 1 180px;
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 0;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 20px 32px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 16px;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration-fast) var(--ds-ease-out),
+    color var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .themeCube:hover:not(.selected) {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
-/* Selected cube: #F5F6F7 fill + #ADB2B8 border (static token — the bluish-400
- * step has no alias-layer name). */
+/* The lifted segment: opaque fill over the track, primary ink, and the
+   contact shadow that reads as its own surface. */
 .selected {
-  background: var(--dsw-alias-bg-module-platform);
-  border-color: var(--dsw-static-neutral-bluish-400);
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+.selected:hover {
+  background: var(--dsw-alias-button-elevated-fill);
 }

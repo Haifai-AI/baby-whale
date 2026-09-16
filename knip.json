@@ -676,6 +676,11 @@
       "ignoreDependencies": [
         "@deepseek-ai/.+"
       ]
+    },
+    "packages/whale/mcp": {
+      "ignoreDependencies": [
+        "zod"
+      ]
     }
   }
 }

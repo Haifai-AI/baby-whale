@@ -77,7 +77,7 @@ describe.skipIf(MODE === 'record')('web e2e: user-explicit skill invocation thro
     })
     await seedUserOnlySkill(scaffold.workspaceCwd)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

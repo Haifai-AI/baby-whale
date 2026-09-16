@@ -31,15 +31,15 @@
 //
 // Both the `scrollbar-gutter: stable` reservation and the sheet's
 // `::-webkit-scrollbar` width are needed for that band, and neither suffices:
-// measured on the running app, deleting either one takes the band from 8 to 0
+// measured on the running app, deleting either one takes the band to 0
 // while the other stays in force. The gutter states that space be reserved; the
 // pseudo-element width is what makes chromium treat the bar as occupying layout
 // space in the first place.
 //
 // That conjunction is why `band` and `timeCoveredBy` are both asserted and
 // neither replaces the other. Removing only the gutter leaves `timeCoveredBy` at
-// 0, because the bar is then 8px wide and the row's right padding is also 8px,
-// so it abuts the timestamp without covering it; `band` catches that case.
+// 0, because the row's own trailing padding still holds the timestamp clear of
+// where the bar would sit; `band` catches that case.
 // Removing both is what produces the reported overlap, and `timeCoveredBy`
 // measures it at 7.
 //
@@ -175,7 +175,12 @@ function measureList(page: Page): Promise<ListMetrics> {
       })
       .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
       .filter(rule => rule.selectorText === '::-webkit-scrollbar-thumb:hover')
-      .map(rule => rule.style.getPropertyValue('background'))
+      // Read the longhand. The sheet must declare `background-color` rather
+      // than the `background` shorthand: a shorthand carrying `var()` next to
+      // any other background longhand is expanded by the CSSOM into longhands
+      // that serialize as empty, so reading `background` here would report the
+      // rule as missing its colour while it rendered one.
+      .map(rule => rule.style.getPropertyValue('background-color'))
     const style = getComputedStyle(list)
     const pseudoWidth = getComputedStyle(list, '::-webkit-scrollbar').width
     const barWidth = pseudoWidth === 'auto' ? 15 : Number.parseFloat(pseudoWidth)
@@ -393,7 +398,7 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
     browser = await chromium.launch()
     // Shorter than the other scenarios' 1000px so SEED_COUNT rows overflow
     // the list with room to spare.
-    page = await newEnglishPage(browser, 800)
+    page = await newEnglishPage(browser, scaffold.apiToken, 800)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -422,7 +427,7 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
     // itself is not pinned — it tracks `scrollbar-width` and the platform.
     expect(metrics.band).toBeGreaterThan(0)
     expect(metrics.scrollbarEdgeOffset).toBe(2)
-    expect(metrics.rowEdgeInset).toBe(12)
+    expect(metrics.rowEdgeInset).toBe(13)
     // The reported symptom, stated directly: no part of the row's relative time
     // lies under the bar. Without either declaration it measures 7 — the `h`
     // of `1h` is the covered part. Unlike the client-edge comparison below it
@@ -472,12 +477,12 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
 
   it('keeps the row background inset when overflow disappears', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-scrollbar-stable-inset'))
-    expect(await measureRowInset(page)).toEqual({ overflows: true, rowEdgeInset: 12 })
+    expect(await measureRowInset(page)).toEqual({ overflows: true, rowEdgeInset: 13 })
     const bucket = page.getByText('Ungrouped', { exact: true }).locator('..').locator('..')
     await bucket.click()
     try {
       await expect.poll(async () => (await measureRowInset(page)).overflows, { timeout: 10_000 }).toBe(false)
-      expect(await measureRowInset(page)).toEqual({ overflows: false, rowEdgeInset: 12 })
+      expect(await measureRowInset(page)).toEqual({ overflows: false, rowEdgeInset: 13 })
     } finally {
       await expandSeededSessions(page)
     }
@@ -494,9 +499,9 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
     // the hover token included.
     expect(light.standardWidth).toBe('auto')
     expect(light.standardColor).toBe('auto')
-    // The pseudo-element path is the one in force: the sheet's own 8px sizing
+    // The pseudo-element path is the one in force: the sheet's own 11px sizing
     // and transparent track reached a container it never names.
-    expect(light.width).toBe('8px')
+    expect(light.width).toBe('11px')
     expect(light.track).toBe('rgba(0, 0, 0, 0)')
     // The resting and the hover rule each read the rebindable indirection, and
     // the two resolve to DIFFERENT colours on this list: the l1 pair arrived

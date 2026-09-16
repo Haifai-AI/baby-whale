@@ -192,7 +192,7 @@ describe('web e2e: continuous conversation grown through the composer', () => {
       sessionEvents.push(event)
     })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser, 900)
+    page = await newEnglishPage(browser, scaffold.apiToken, 900)
     tripwire = watchConsole(page)
     page.on('console', (message) => {
       if (message.type() === 'warning') consoleWarnings.push(message.text())

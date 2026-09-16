@@ -41,4 +41,20 @@ export interface ChatStoreState {
    * Rehydrates as null on persisted snapshots from before this field.
    */
   filePreview?: string | null
+  /**
+   * Tool runs the reader opened against their default (run key = the first
+   * Node key of the run). Only the OPENED direction is stored: a run that does
+   * not fold by default offers no collapse, so the set has no "closed" half.
+   * Read with `?? []` — persisted snapshots from before this field rehydrate
+   * without it.
+   */
+  expandedRuns?: string[]
+  /**
+   * Turns whose process rows (tool calls and reasoning) are hidden, leaving
+   * only the prose. A reading control, not a fold: it is per turn because the
+   * reader decides on the answer they just read, and it never hides text.
+   * Read with `?? []` — persisted snapshots from before this field rehydrate
+   * without it.
+   */
+  hiddenProcessTurns?: number[]
 }

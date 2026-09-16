@@ -24,6 +24,7 @@ function storeOf(ctx: Context): WhaleTaskStore | undefined {
 
 /** The calling session (required for every whale task tool). */
 function sessionOf(exec: ToolExecution): SessionId {
+  /* v8 ignore next -- the create path reaches this only after resolving the calling session's cwd. */
   if (exec.agent === undefined) throw new Error('whale task tools require a calling agent session')
   return exec.agent.session.id
 }

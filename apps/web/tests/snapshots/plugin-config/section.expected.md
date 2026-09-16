@@ -10,6 +10,9 @@
     - button "插件":
       - img
       - text: 插件
+    - button "技能":
+      - img
+      - text: 技能
     - button "Agent 预设":
       - img
       - text: Agent 预设
@@ -21,6 +24,7 @@
   - paragraph: 配置和查看本部署已安装的插件。
   - tablist "插件视图":
     - tab "插件配置" [selected]
+    - tab "MCP 服务器"
     - tab "插件列表"
   - tabpanel "插件配置":
     - list:

@@ -6,11 +6,15 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, stat } from 'node:fs/promises'
 import { UPLOAD_MAX_BYTES, storeUpload } from './uploads-intake.ts'
+import { anchorWorkspacePath } from './workspace-jail.ts'
 
 /** Content types the artifacts.raw channel may serve. Media entries here
  * cover downloads too; the native-PLAYER set lives in artifacts-preview.ts
- * (VIDEO/AUDIO_EXTENSIONS) and is narrower (.mov serves, never plays). */
-const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
+ * (VIDEO/AUDIO_EXTENSIONS) and is narrower (.mov serves, never plays).
+ * Exported as the policy surface for the raw-serving invariant test:
+ * `raw-content-policy.spec.ts` fails any active same-origin document type
+ * that appears here without a matching force-download entry. */
+export const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -34,6 +38,16 @@ const RAW_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.aac': 'audio/aac',
   '.opus': 'audio/opus',
 }
+
+/**
+ * Extensions served as attachments even without `?download=1`: active
+ * content whose script runs when the raw URL is navigated directly
+ * (same-origin with the app). Subresource use (`<img>`) ignores
+ * Content-Disposition and keeps rendering, so in-pane previews are
+ * unaffected — only navigation/download behavior changes. Exported for
+ * the raw-serving invariant test; see {@link RAW_CONTENT_TYPES}.
+ */
+export const FORCE_DOWNLOAD_EXTENSIONS: ReadonlySet<string> = new Set(['.svg'])
 
 /**
  * Parse an HTTP `Range: bytes=...` header into byte offsets. Only the
@@ -3279,18 +3293,18 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     officeRuntime: {
       // Setup-banner snapshot: managed runtime presence, install lifecycle,
       // and the guided page for platforms without an automatic flow.
-      async status(request) {
+      status(request) {
         const managed = managedSofficePath()
         const located = findSoffice()
         const support = managedInstallSupport()
-        return ok(request, {
+        return Promise.resolve(ok(request, {
           soffice: located !== undefined
             ? { found: true, source: managed !== undefined && managed === located ? 'managed' : 'system', path: located }
             : { found: false, source: 'none' },
           install: sofficeInstallState(),
           managedSupported: support.supported,
           ...(support.guideUrl !== undefined ? { guideUrl: support.guideUrl } : {}),
-        })
+        }))
       },
       async install(request) {
         const state = await beginManagedSofficeInstall(resetSofficeLookup)
@@ -3325,7 +3339,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           if (callId === undefined) continue
           const failed = message?.isError === true
             || (message?.content ?? []).some(block => (block.text ?? '').includes('deliver:'))
-          results.set(String(callId), !failed)
+          results.set(callId, !failed)
         }
         const claimed = new Map<string, { readonly seq: number }>()
         for (const event of sourceSession(source).events) {
@@ -3401,10 +3415,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           || (!normalized.startsWith('deliverables/') && !normalized.startsWith('uploads/'))) {
           return new Response('path must live under deliverables/ or uploads/', { status: 403 })
         }
-        const workspaceRoot = resolve(cwd)
-        const boundary = workspaceRoot.endsWith('/') ? workspaceRoot : `${workspaceRoot}/`
-        const resolved = resolve(cwd, normalized)
-        if (!resolved.startsWith(boundary)) {
+        // Symlink-anchoring jail: lexical scope was checked above; the anchor
+        // resolves links and refuses anything not really inside. A missing
+        // file refuses here too (deliberately the same 403 — distinct
+        // missing/escape signals would be a workspace existence oracle).
+        const resolved = await anchorWorkspacePath(cwd, normalized)
+        if (resolved === undefined) {
           return new Response('path escapes the workspace', { status: 403 })
         }
         const ext = (/[.][a-z0-9]+$/i.exec(normalized)?.[0] ?? '').toLowerCase()
@@ -3413,7 +3429,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           'content-type': contentType,
           'accept-ranges': 'bytes',
         }
-        if (query.download === '1') {
+        if (query.download === '1' || FORCE_DOWNLOAD_EXTENSIONS.has(ext)) {
           headers['content-disposition'] = `attachment; filename="${basename(normalized).replaceAll('"', '')}"`
         }
         // Range request (media scrubbing): answer 206 with just the asked
@@ -3475,8 +3491,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       // a general file server.
       async file(query, signal) {
         const cacheDir = previewCacheDir()
-        const resolved = resolve(query.path)
-        if (!resolved.startsWith(resolve(cacheDir)) || !resolved.endsWith('.pdf')) {
+        // The cache jail gets the same boundary discipline as the workspace:
+        // a bare prefix admits same-prefix siblings, and links must anchor.
+        const resolved = await anchorWorkspacePath(cacheDir, query.path)
+        if (resolved === undefined || !resolved.endsWith('.pdf')) {
           return new Response('path is outside the preview cache', { status: 403 })
         }
         try {
@@ -3501,9 +3519,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         if (cwd === undefined) {
           return err(request, { code: 'internal', message: `session "${sessionId}" has no workspace`, details: {} })
         }
-        const absolute = resolve(cwd, path)
-        if (!absolute.startsWith(resolve(cwd))) {
-          return err(request, { code: 'internal', message: 'preview path escapes the workspace', details: {} })
+        // Anchored jail (boundary + symlink resolution): every byte read and
+        // every subprocess input below uses `absolute`. Refusals and missing
+        // files share one message — distinct signals would be a workspace
+        // existence oracle.
+        const absolute = await anchorWorkspacePath(cwd, path)
+        if (absolute === undefined) {
+          return err(request, { code: 'internal', message: 'preview target unreadable', details: {} })
         }
         const ext = (/[.][a-z0-9]+$/i.exec(path)?.[0] ?? '').toLowerCase()
         // Media previews carry identity only — answer before the byte read so
@@ -3592,7 +3614,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               let field = ''
               let quoted = false
               for (let i = 0; i < row.length; i++) {
-                const ch = row[i]
+                const ch = row[i] ?? ''
                 if (quoted) {
                   if (ch === '"' && row[i + 1] === '"') { field += '"'; i++ }
                   else if (ch === '"') quoted = false
@@ -3613,7 +3635,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
                 name: 'csv',
                 total_rows: Math.max(table.length - 1, 0),
                 total_cols: width,
-                ...(table[0]?.every(cell => typeof cell === 'string') ? { header: table[0] ?? [] } : {}),
+                ...(table[0]?.every(cell => typeof cell === 'string') ? { header: table[0] } : {}),
                 rows: table.slice(1).map(row => Array.from({ length: width }, (_, c) => ({ v: row[c] ?? '' }))),
                 truncated: text.length >= 512 * 1024,
               }],
@@ -3624,7 +3646,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         return ok(request, {
           // ParsedPreview is JSON-safe by construction; the wide wire face
           // keeps client-side narrowing local to the gallery renderer.
-          ...(preview !== undefined ? { preview: preview as unknown as Record<string, unknown> } : {}),
+          ...(preview !== undefined ? { preview } : {}),
           size: bytes.byteLength,
         })
       },

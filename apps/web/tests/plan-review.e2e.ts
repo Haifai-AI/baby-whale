@@ -51,7 +51,7 @@ describe('web e2e: plan review takeover round trip', () => {
     browser = await chromium.launch()
     // English page: the decision copy is the surface under test, and the
     // golden pins one language.
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

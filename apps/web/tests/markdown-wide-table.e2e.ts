@@ -38,7 +38,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, newTestPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/markdown-wide-table', import.meta.url))
 const GEOMETRY_EXPECTED = fileURLToPath(
@@ -251,7 +251,7 @@ describe('web e2e: markdown tables fill the column, wide ones break out and scro
     scaffold = await launchWebScaffold({})
     await seedSession(scaffold, wideTableFixture(), SEED_ID)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -415,7 +415,7 @@ describe('web e2e: markdown tables fill the column, wide ones break out and scro
   }, 120_000)
 
   it('reports the same relations on a high-DPI page', async () => {
-    const hidpiPage = await browser.newPage({
+    const hidpiPage = await newTestPage(browser, scaffold.apiToken, {
       viewport: { width: 1100, height: 900 },
       deviceScaleFactor: 2,
       locale: 'en-US',

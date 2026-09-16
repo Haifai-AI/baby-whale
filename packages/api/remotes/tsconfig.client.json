@@ -22,7 +22,6 @@
     },
     {
       "path": "../../credentials/credentials"
-
     },
     {
       "path": "../../context/file-reference"
@@ -40,7 +39,7 @@
       "path": "../../feedback/message-feedback"
     },
     {
-      "path": "../../host/plugin-inventory"
+      "path": "../../whale/mcp"
     },
     {
       "path": "../../interaction/commands"

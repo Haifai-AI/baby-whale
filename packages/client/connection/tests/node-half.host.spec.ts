@@ -1,9 +1,14 @@
 /** Node half: registers the /api prefix route bridging to the api gateway. */
 import { EventEmitter, once } from 'node:events'
 import { createServer, request as httpRequest } from 'node:http'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { PassThrough, Readable } from 'node:stream'
+import { URL } from 'node:url'
+import WebSocket from 'ws'
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiProxy } from '@deepseek-ai/dsh-host-apiproxy/api'
@@ -12,6 +17,27 @@ import { RpcId, type ClientRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { WebServer, WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { API_PATH, apply, HOST_EVENTS_PATH, inject, MUX_EVENTS_PATH, type HostConnectionHandle } from '../src/index.ts'
 import { DEFAULT_MAX_REQUEST_BODY_BYTES } from '../src/http-bridge.ts'
+
+/**
+ * An unpinned boot stores its token under the harness home, so this file
+ * points `DSH_HOME` at a throwaway directory: a suite must never create or
+ * read the developer's real credential, and each run has to start from a home
+ * with no token in it.
+ */
+let testHome: string
+let priorDshHome: string | undefined
+
+beforeAll(async () => {
+  priorDshHome = process.env.DSH_HOME
+  testHome = await mkdtemp(join(tmpdir(), 'dsh-client-connection-home-'))
+  process.env.DSH_HOME = testHome
+})
+
+afterAll(async () => {
+  if (priorDshHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = priorDshHome
+  await rm(testHome, { recursive: true, force: true })
+})
 
 /** Structural webServer fake recording both route registries. */
 function fakeHttpServer(
@@ -35,8 +61,21 @@ function fakeHttpServer(
   }
 }
 
+/** The pinned instance token every mounted tree in this suite enforces. */
+const TEST_TOKEN = 'test-instance-token-0123456789abcdef'
+
+/** The Authorization header a legitimate caller presents. */
+const TOKEN_HEADERS = { authorization: `Bearer ${TEST_TOKEN}` }
+
 /** Bodyless GET carrying the given headers (enough for the trust fence + bridge). */
 function fakeRequest(headers: Record<string, string>, url = `${API_PATH}/session.list`): IncomingMessage {
+  const request = Readable.from([]) as unknown as IncomingMessage
+  Object.assign(request, { url, method: 'GET', headers: { ...TOKEN_HEADERS, ...headers } })
+  return request
+}
+
+/** The same GET without any credential: the token gate must refuse it. */
+function bareRequest(headers: Record<string, string>, url = `${API_PATH}/session.list`): IncomingMessage {
   const request = Readable.from([]) as unknown as IncomingMessage
   Object.assign(request, { url, method: 'GET', headers })
   return request
@@ -45,14 +84,14 @@ function fakeRequest(headers: Record<string, string>, url = `${API_PATH}/session
 /** JSON POST carrying a complete client-request envelope. */
 function fakePost(headers: Record<string, string>, url: string, body: unknown): IncomingMessage {
   const request = Readable.from([Buffer.from(JSON.stringify(body))]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'POST', headers: { 'content-type': 'application/json', ...headers } })
+  Object.assign(request, { url, method: 'POST', headers: { 'content-type': 'application/json', ...TOKEN_HEADERS, ...headers } })
   return request
 }
 
 /** Raw POST for malformed-body and media-type boundary cases. */
 function fakeRawPost(headers: Record<string, string>, url: string, body: string): IncomingMessage {
   const request = Readable.from([Buffer.from(body)]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'POST', headers })
+  Object.assign(request, { url, method: 'POST', headers: { ...TOKEN_HEADERS, ...headers } })
   return request
 }
 
@@ -85,7 +124,7 @@ async function mounted(config?: { trustedHosts?: string[] }): Promise<{
   const upgrades: WebUpgradeRoute[] = []
   ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
   ctx.provide('apiProxy', {} as unknown as ApiProxy)
-  const fiber = ctx.plugin({ inject: [...inject], apply }, config)
+  const fiber = ctx.plugin({ inject: [...inject], apply }, { ...config, apiToken: TEST_TOKEN })
   await fiber.await()
   return { routes, upgrades, dispose: () => fiber.dispose() }
 }
@@ -96,7 +135,7 @@ describe('connection node half', () => {
     expect(DEFAULT_MAX_REQUEST_BODY_BYTES).toBeGreaterThan(Math.ceil(200 * 1024 * 1024 * 4 / 3) + 1024 * 1024)
   })
 
-  it('fails loud when the carrier cap cannot hold the configured image batch', () => {
+  it('fails loud when the carrier cap cannot hold the configured image batch', async () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
@@ -104,8 +143,8 @@ describe('connection node half', () => {
       imageLimits: { maxMessageImageBytes: 20 * 1024 * 1024 },
     } as AttachmentStore)
     ctx.provide('apiProxy', {} as ApiProxy)
-    expect(() => { apply(ctx, { maxRequestBodyBytes: 1024 }) })
-      .toThrow(/must be at least .* aggregate image limit/)
+    await expect(apply(ctx, { maxRequestBodyBytes: 1024 }))
+      .rejects.toThrow(/must be at least .* aggregate image limit/)
     expect(routes).toHaveLength(0)
   })
 
@@ -167,6 +206,212 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('refuses a loopback request without the instance token before the bridge runs', async () => {
+    // Loopback alone proves nothing once the UI is a web page: any site the
+    // user visits can make the browser send loopback requests, so the fence
+    // passes and only the per-instance token stops a stranger's page from
+    // driving the host.
+    const { routes, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(bareRequest({ host: '127.0.0.1:3080' }), response)
+    expect(state.status).toBe(403)
+    expect(state.body).toBe('forbidden')
+    await dispose()
+  })
+
+  it('stores one instance token when none is pinned, and reuses it across boots', async () => {
+    // The minted credential authorizes and nothing else does — loopback alone
+    // stays refused. It is also stored under the harness home and reused by the
+    // next boot, because a page loaded before a restart still presents the
+    // token it was given and must keep working.
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    let minted: string
+    try {
+      const connection = ctx.get('connection') as HostConnectionHandle
+      minted = connection.apiToken
+      expect(minted).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      const authed = fakeResponse()
+      await routes[0]!.handler(bareRequest({
+        host: '127.0.0.1:3080', authorization: `Bearer ${minted}`,
+      }), authed.response)
+      expect(authed.state.status).toBe(404)
+      const stranger = fakeResponse()
+      await routes[0]!.handler(bareRequest({ host: '127.0.0.1:3080' }), stranger.response)
+      expect(stranger.state.status).toBe(403)
+    } finally {
+      await fiber.dispose()
+    }
+
+    // A second boot against the same home presents the same credential, and the
+    // file that carries it is owner-only.
+    const second = new Context()
+    second.provide('webServer', fakeHttpServer([], []) as WebServer)
+    second.provide('apiProxy', {} as unknown as ApiProxy)
+    const secondFiber = second.plugin({ inject: [...inject], apply })
+    await secondFiber.await()
+    try {
+      const reopened = second.get('connection') as HostConnectionHandle
+      expect(reopened.apiToken).toBe(minted)
+    } finally {
+      await secondFiber.dispose()
+    }
+    expect(await readFile(join(testHome, '.api-token'), 'utf8')).toBe(`${minted}\n`)
+    expect((await stat(join(testHome, '.api-token'))).mode & 0o777).toBe(0o600)
+  })
+
+  it('replaces a damaged stored token instead of refusing every request', async () => {
+    // A truncated or hand-edited file holds no reusable credential: the boot
+    // mints a fresh one and overwrites, so damage recovers here rather than
+    // wedging the fence shut for every future request.
+    await writeFile(join(testHome, '.api-token'), 'not a token\n', { mode: 0o600 })
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer([], []) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    try {
+      const connection = ctx.get('connection') as HostConnectionHandle
+      expect(connection.apiToken).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      expect(await readFile(join(testHome, '.api-token'), 'utf8')).toBe(`${connection.apiToken}\n`)
+    } finally {
+      await fiber.dispose()
+    }
+  })
+
+  it('serves anyway when the token cannot be stored', async () => {
+    // An unwritable home (read-only mount, foreign ownership) must not stop the
+    // harness from serving: the boot keeps a usable in-memory token and reports
+    // `durable: false` so the caller can say that open tabs will not survive a
+    // restart. Reached here by pointing the home at a path a file already
+    // occupies, which no directory creation can satisfy.
+    const blocked = join(testHome, 'blocked')
+    await writeFile(blocked, 'not a directory\n', { mode: 0o600 })
+    const { loadOrCreateApiToken } = await import('../src/api-token-file.ts')
+
+    const resolved = await loadOrCreateApiToken(join(blocked, '.api-token'))
+    expect(resolved.durable).toBe(false)
+    // A usable credential for THIS process is still returned.
+    expect(resolved.token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    // And it is a fresh mint each time, because nothing was persisted.
+    const second = await loadOrCreateApiToken(join(blocked, '.api-token'))
+    expect(second.durable).toBe(false)
+    expect(second.token).not.toBe(resolved.token)
+  })
+
+  it('keeps a pinned token authoritative over anything stored', async () => {
+    await writeFile(join(testHome, '.api-token'), `${'s'.repeat(43)}\n`, { mode: 0o600 })
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer([], []) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: TEST_TOKEN })
+    await fiber.await()
+    try {
+      expect((ctx.get('connection') as HostConnectionHandle).apiToken).toBe(TEST_TOKEN)
+      // The operator's choice is not written anywhere: the stored value stands.
+      expect(await readFile(join(testHome, '.api-token'), 'utf8')).toBe(`${'s'.repeat(43)}\n`)
+    } finally {
+      await fiber.dispose()
+    }
+  })
+
+  it('fails the load on a weak pinned instance token', async () => {
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {} as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: 'short' })
+    await expect(fiber).rejects.toThrow(/at least 16 URL-safe/)
+    expect(routes).toHaveLength(0)
+    expect(upgrades).toHaveLength(0)
+  })
+
+  it('refuses a forged instance token', async () => {
+    const { routes, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(bareRequest({
+      host: '127.0.0.1:3080',
+      authorization: 'Bearer 0123456789abcdef0123456789abcdef',
+    }), response)
+    expect(state.status).toBe(403)
+    expect(state.body).toBe('forbidden')
+    await dispose()
+  })
+
+  it('accepts the instance token as a query parameter for headerless transports', async () => {
+    // Some transports cannot set headers; the fence passes and the carrier
+    // answers 404 for a GET unary path — proof the bridge ran on a query
+    // credential.
+    const { routes, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    await routes[0]!.handler(
+      bareRequest({ host: '127.0.0.1:3080' }, `${API_PATH}/session.list?token=${TEST_TOKEN}`),
+      response,
+    )
+    expect(state.status).toBe(404)
+    await dispose()
+  })
+
+  it('rejects a tokenless WebSocket upgrade on loopback before protocol negotiation', async () => {
+    const { upgrades, dispose } = await mounted()
+    const socket = new PassThrough()
+    const chunks: Buffer[] = []
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+    const ended = once(socket, 'end')
+    await upgrades[0]!.handler(bareRequest({ host: '127.0.0.1:3080' }, MUX_EVENTS_PATH), socket, Buffer.alloc(0))
+    await ended
+    expect(Buffer.concat(chunks).toString()).toContain('HTTP/1.1 403 Forbidden')
+    await dispose()
+  })
+
+  it('upgrades a WebSocket presenting the instance token as a query parameter', async () => {
+    // Browsers cannot set WebSocket headers, so the downlink token travels
+    // as `?token=`. The upgrade runs over a real server and client: `ws`
+    // negotiates on a live socket, which a stream fake cannot stand in for.
+    async function * idle(signal: AbortSignal): AsyncGenerator<never> {
+      if (!signal.aborted) {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => { resolve() }, { once: true })
+        })
+      }
+    }
+    const routes: WebRoute[] = []
+    const upgrades: WebUpgradeRoute[] = []
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+    ctx.provide('apiProxy', {
+      events: {
+        mux: (_request: unknown, signal: AbortSignal) => idle(signal),
+        host: (_request: unknown, signal: AbortSignal) => idle(signal),
+      },
+    } as unknown as ApiProxy)
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: TEST_TOKEN })
+    await fiber.await()
+    const server = createServer()
+    server.on('upgrade', (request, socket, head) => {
+      const pathname = new URL(request.url ?? '/', 'http://dsh.internal').pathname
+      if (pathname === MUX_EVENTS_PATH) void upgrades[0]!.handler(request, socket, head)
+      else socket.destroy()
+    })
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+    const port = (server.address() as AddressInfo).port
+    try {
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${MUX_EVENTS_PATH}?token=${TEST_TOKEN}`)
+      await once(socket, 'open')
+      socket.close()
+      await once(socket, 'close')
+    } finally {
+      await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
+      await fiber.dispose()
+    }
+  })
+
   it('pins privileged methods to loopback even for a declared trusted authority', async () => {
     const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
     // The privileged set: native dialogs plus the whole settings/credential
@@ -223,7 +468,7 @@ describe('connection node half', () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
-    const fiber = ctx.plugin({ inject: [...inject], apply })
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { apiToken: TEST_TOKEN })
     await fiber.await()
     expect(routes).toHaveLength(1)
     expect(routes[0]).toMatchObject({ kind: 'prefix', path: API_PATH })
@@ -270,7 +515,7 @@ describe('connection node half', () => {
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
     ctx.provide('apiProxy', {} as unknown as ApiProxy)
-    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'] })
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'], apiToken: TEST_TOKEN })
     await fiber.await()
     const connection = ctx.get('connection') as HostConnectionHandle
     const calls: unknown[] = []
@@ -347,7 +592,7 @@ describe('connection node half', () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
-    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'] })
+    const fiber = ctx.plugin({ inject: [...inject], apply }, { trustedHosts: ['harness.example'], apiToken: TEST_TOKEN })
     await fiber.await()
     const connection = ctx.get('connection') as HostConnectionHandle
     const remove = connection.rpc.handle('/rpc', async (endpoint) => {
@@ -448,7 +693,10 @@ describe('connection node half over a real HTTP server', () => {
   function call(port: number, method: string, host: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const request = httpRequest(
-        { host: '127.0.0.1', port, path: `${API_PATH}/${method}`, method: 'GET', headers: { host } },
+        {
+          host: '127.0.0.1', port, path: `${API_PATH}/${method}`, method: 'GET',
+          headers: { host, authorization: `Bearer ${TEST_TOKEN}` },
+        },
         (response) => {
           response.resume()
           response.on('end', () => { resolve(response.statusCode ?? 0) })

@@ -50,7 +50,7 @@ it('keeps the browser responsive while rendering 100,000 reasoning chunks', asyn
   try {
     scaffold = await launchWebScaffold()
     browser = await chromium.launch({ headless: process.env.DSH_WEB_STRESS_HEADFUL !== '1' })
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     const activePage = page
     await activePage.addInitScript(() => {
       localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId: 'fx-alpha' }))

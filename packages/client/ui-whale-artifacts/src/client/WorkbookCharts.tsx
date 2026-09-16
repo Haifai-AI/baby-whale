@@ -83,6 +83,7 @@ function ValueGrid({ max }: { max: number }) {
 }
 
 function CategoryLabels({ categories, horizontal }: { categories: readonly string[]; horizontal: boolean }) {
+  /* v8 ignore start -- no caller passes horizontal: BarChart draws its own labels against the wider gutter it reserves for them */
   if (horizontal) {
     const band = PLOT_H / Math.max(categories.length, 1)
     return categories.map((category, index) => (
@@ -97,6 +98,7 @@ function CategoryLabels({ categories, horizontal }: { categories: readonly strin
       </text>
     ))
   }
+  /* v8 ignore stop */
   const band = PLOT_W / Math.max(categories.length, 1)
   return categories.map((category, index) => (
     <text

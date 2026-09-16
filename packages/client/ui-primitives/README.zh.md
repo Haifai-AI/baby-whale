@@ -4,6 +4,10 @@
 
 纯 React 原子组件（零 cordis）：StateDot、DisclosureRow、ic_ds_* 图标、Button/Pill/Menu/Modal/Input、Toast 短时横幅、OnboardingSurface 首次使用接管层（portal 到 body 的遮罩加不透明展示层，在且仅在自身生命周期内保持 `#root` 为 `inert`）、markdown 家族（MessageText/MarkdownText/JsonBlock）、只读 JsonTree 检查器、`useAnchoredMaxHeight` 钩子（把底部锚定的浮层高度收敛到锚点上方的视口空间，并在 resize、scroll 与调用方提供的依赖变化时重新测量）、`useAnchoredPosition` 钩子（让固定定位的浮动面板跟住锚点：测量、偏移、按视口边距钳制，并在捕获阶段滚动、窗口缩放与面板自身尺寸变化时重新定位）、TerminalBlock、DiffBlock、ReadBlock、SearchBlock，以及 WebBlock。
 
+## 过程行
+
+`DisclosureRow` 是对话记录中每一个过程行所穿的外壳——工具调用、推理块、斜杠命令、注入的上下文、skill 调用：24px 行高，`--dsw-alias-fill-l2` 上取 `--dsw-radius-sm` 的 20px 前置方块，8px 间距，标题为 `label-primary` 的 13px/22px medium，再 8px 间距，其后是调用方传入的 `collapsedContent`。方块让每一行都有明确的左边缘，而标题相对其旁内容的字重差就是边界——该行不绘制任何分隔字形，因为 2–3px 的圆点合成后约为 2:1，读起来既不是标点也不是边界。两类行之间的等级差异由调用方覆盖（`titleClassName`）表达，而不是第二套外壳：推理行设为 `label-secondary`，比工具调用的 `label-primary` 低一级色阶，使环境性的思考退到真正做了工作的调用之后。可展开的行是一个点击目标，悬停时以 `--dsw-alias-interactive-bg-hover` 铺底，同时前置字形交叉淡入为 chevron。两个拥有 props 未能表达的展开交互的消费方——Bash 行与 Skill 行——手写了这套标记，必须与之保持一致。依据见[过程行外壳 Agent Note](../../../.agents/notes/implemented/simplification/2026-09-14-transcript-process-row-chrome.zh.md)。
+
 ## 悬浮卡片
 
 `HoverCard` 通过指针离开宽限期，使采用 portal 渲染的预览在跨过与锚点之间的间隙时仍可触及。消费方还可传入 `copyText`：此时卡片为指针与键盘激活提供按钮语义，其无障碍名称会在 `copyLabel` 前缀后包含该值，通过包内剪贴板辅助函数原样写入该值，并且只有宿主接受写入后，才会临时将内容替换为 `copiedLabel`。与卡片相交的非折叠文本选区会阻止指针点击激活；成功反馈保持卡片原有高度，并随卡片关闭或在一秒后清除。`copyLabel` 和 `copiedLabel` 采用 label prop，是因为这个 zero-cordis 原子组件无法读取应用 locale；省略 `copyText` 时，卡片维持只读且可选择文本的行为。历史依据见[已归档的悬浮卡片复制 Agent Note](../../../.agents/notes/archived/feature/2026-07-31-hover-card-click-copy.md)。

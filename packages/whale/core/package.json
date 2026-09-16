@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-whale-core",
   "description": "Whale scheduled-task core: durable workspace task store over storage domains, IANA-timezone cron scheduling, HQ-session delivery, and the model-facing whale_task_* tools",
-  "version": "0.1.1-rc.2",
+  "version": "0.1.9",
   "publishConfig": {
     "access": "public"
   },
@@ -32,6 +32,7 @@
   "files": [
     "lib/index.js",
     "lib/invariant.js",
+    "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",

@@ -18,7 +18,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { homedir, platform, arch } from 'node:os'
+import { homedir, platform, arch, tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -115,13 +115,58 @@ async function releaseByTag(tag) {
   return pickAsset(await response.json())
 }
 
-/** Verify a downloaded file against the release's sha256 digest (when published). */
-async function verifyDigest(file, digest) {
-  if (typeof digest !== 'string' || !digest.startsWith('sha256:')) return
-  const expected = digest.slice('sha256:'.length)
+/**
+ * Parse a `<hex>  <name>` checksum sidecar (the GNU shasum text format the
+ * bundle workflow publishes beside every zip). The named file must equal the
+ * downloaded asset: a sidecar for another file verifies nothing.
+ */
+function parseChecksumSidecar(text, assetName) {
+  const line = text.split(/\r?\n/).map(entry => entry.trim()).find(entry => entry.length > 0)
+  const match = /^([0-9a-fA-F]{64})\s+\*?(.+)$/.exec(line ?? '')
+  if (match === null || match[2] !== assetName) return undefined
+  return match[1].toLowerCase()
+}
+
+/**
+ * Resolve the REQUIRED sha256 hex digest for a release asset: the release
+ * API's digest field when well-formed, else the `<asset>.sha256` sidecar.
+ * Dies when neither yields a usable digest — a bundle that executes on this
+ * machine is never unverified, so releases predating sidecars cannot be
+ * fetched (already-installed runtimes keep running; only fresh downloads
+ * pass this gate).
+ */
+async function resolveDigest(release) {
+  if (typeof release.digest === 'string' && release.digest.length > 0) {
+    const prefix = 'sha256:'
+    if (!release.digest.startsWith(prefix) || !/^[0-9a-fA-F]{64}$/.test(release.digest.slice(prefix.length))) {
+      die(`release digest for ${release.name} is malformed — refusing the unverified bundle`)
+    }
+    return release.digest.slice(prefix.length).toLowerCase()
+  }
+  let response
+  try {
+    response = await fetch(`${release.url}.sha256`, { headers: { 'user-agent': 'bwhale-launcher' } })
+  } catch {
+    die(`cannot reach the checksum sidecar for ${release.name} — refusing the unverified bundle`)
+  }
+  if (!response.ok) {
+    die(`release ${release.version} carries no checksum sidecar for ${release.name} (HTTP ${response.status}) — refusing the unverified bundle`)
+  }
+  const hex = parseChecksumSidecar(await response.text(), release.name)
+  if (hex === undefined) {
+    die(`checksum sidecar for ${release.name} is malformed or names another file — refusing the unverified bundle`)
+  }
+  return hex
+}
+
+/**
+ * Verify a downloaded file against the resolved sha256 hex digest. The gate
+ * between download and execution: a mismatch removes the bytes and stops.
+ */
+async function verifyDigest(file, expectedHex) {
   const hash = createHash('sha256')
   await pipeline(createReadStream(file), hash)
-  if (hash.digest('hex') !== expected) {
+  if (hash.digest('hex') !== expectedHex.toLowerCase()) {
     rmSync(file, { force: true })
     die('download checksum mismatch — the bundle may be corrupted or tampered with; retry')
   }
@@ -132,15 +177,15 @@ async function download(url, dest, size, digest) {
   mkdirSync(path.dirname(dest), { recursive: true })
   const partial = `${dest}.part`
   // A finished-but-unrenamed .part from a previous crashed run is re-verified
-  // (size, then checksum when published) before reuse — never trusted blind.
+  // (size, then the resolved checksum) before reuse — never trusted blind.
   if (size > 0 && existsSync(partial) && statSync(partial).size === size) {
     try {
       await verifyDigest(partial, digest)
       log('bwhale: reusing the completed download from the previous run')
       return partial
     } catch {
-      // verifyDigest already removed the bad file and exited on mismatch;
-      // any other failure falls through to a fresh download below.
+      // A mismatch already removed the bad file and exited; any other
+      // failure (vanished file, read error) falls through to a download.
     }
   }
   const response = await fetch(url, { redirect: 'follow' })
@@ -229,6 +274,22 @@ function pruneOldInstalls(activeDir, activeName) {
   }
 }
 
+/**
+ * Read the running server's instance API token for the entry-URL fragment.
+ * `dsh web` rewrites this file (user-only permissions) on every boot; the
+ * path convention mirrors `apiTokenFile` in the web bundle.
+ */
+function readInstanceToken() {
+  let text
+  try {
+    text = readFileSync(path.join(tmpdir(), `dsh-web-${PORT}.token`), 'utf8')
+  } catch {
+    return undefined
+  }
+  const token = text.split(/\r?\n/)[0]?.trim()
+  return token === undefined || token.length === 0 ? undefined : `#token=${token}`
+}
+
 /** Ensure the runtime bundle exists at the wanted version; fetch+install if not. */
 async function ensureRuntime(wanted) {
   const existing = readInstalled()
@@ -239,8 +300,11 @@ async function ensureRuntime(wanted) {
     pruneOldInstalls(existing.dir, release.name)
     return existing // already exactly this version
   }
+  // The digest resolves BEFORE the 400MB fetch: a release without usable
+  // digest material is refused without downloading anything.
+  const digest = await resolveDigest(release)
   log(`bwhale: fetching Baby Whale ${release.version} runtime (${Math.round((release.size ?? 0) / 1048576) || '~400'} MB, once)`)
-  const archive = await download(release.url, path.join(ROOT, 'cache', release.name), release.size, release.digest)
+  const archive = await download(release.url, path.join(ROOT, 'cache', release.name), release.size, digest)
   const dir = runtimeDir(release.version)
   rmSync(dir, { recursive: true, force: true })
   unzip(archive, path.join(ROOT, 'runtime'))
@@ -285,11 +349,16 @@ async function cmdStart(argv) {
   try {
     const probe = await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(1500) })
     if (probe.ok) {
-      log(`bwhale: Baby Whale is already running at http://127.0.0.1:${PORT}/`)
+      // The running server's instance token (written by `dsh web` on every
+      // boot) travels as the entry-URL fragment, exactly like a fresh boot's
+      // handoff. Absent file (a server predating tokens): the plain URL, same
+      // as before — old servers fence nothing.
+      const entry = `http://127.0.0.1:${PORT}/${readInstanceToken() ?? ''}`
+      log(`bwhale: Baby Whale is already running at ${entry}`)
       // --no-open is honored here AND passed through to `dsh web` below.
       if (!argv.includes('--no-open')) {
         const open = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open'
-        spawnSync(open, [`http://127.0.0.1:${PORT}/`], { stdio: 'ignore' })
+        spawnSync(open, [entry], { stdio: 'ignore' })
       }
       return
     }

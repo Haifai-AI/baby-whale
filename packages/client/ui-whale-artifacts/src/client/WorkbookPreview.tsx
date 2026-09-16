@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import type { JSX } from 'react'
+import { withApiTokenQuery } from '@deepseek-ai/dsh-client-connection/client'
 import { ArtifactStudioBody, type OfficePreviewData } from '@deepseek-ai/dsh-client-ui-whale-artifact/client'
 import type { WhaleArtifactsKey } from './locales.ts'
 import { WorkbookCharts, type WorkbookChart } from './WorkbookCharts.tsx'
@@ -92,7 +93,11 @@ export function WorkbookPreview({ data, t }: {
         {tab === 'original' && hasOriginal && (
           <iframe
             title={data.file_name}
-            src={`/api/artifacts.file?path=${encodeURIComponent(data.pdfPath ?? '')}`}
+            src={
+              /* v8 ignore start -- hasOriginal proved pdfPath is a non-empty string, so the empty fallback is a type-narrowing no-op */
+              withApiTokenQuery(`/api/artifacts.file?path=${encodeURIComponent(data.pdfPath ?? '')}`)
+              /* v8 ignore stop */
+            }
             className={css.pdfFrame}
           />
         )}

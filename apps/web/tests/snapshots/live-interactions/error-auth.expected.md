@@ -19,6 +19,7 @@
 - status:
   - text: This turn failedAPI key is invalid
   - code: AUTH
+- button "隐藏本轮的调用与思考": 过程
 - textbox "Message the agent"
 - button "Commands":
   - img

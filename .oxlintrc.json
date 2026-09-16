@@ -20,6 +20,17 @@
     "**/.node-next-types-*/**",
     "**/.oxlint-contract-*/**", // Scratch files created by the executable lint-contract tests.
     "**/oxlint-contract-*", // Flat probes use real TypeScript project include paths.
+    // A compiled `src/types.ts` left beside its source by a build step. The
+    // repository lints the source plane or the artifact plane, never a mix, and
+    // this residue is the artifact plane landing in the source tree: it is
+    // always untracked, it is tsc-formatted rather than repository-formatted,
+    // and linting it reports the emit's style as a source defect. Hand-written
+    // declarations under `src/` keep other names (`css-modules.d.ts`), so no
+    // tracked file matches this pattern.
+    "**/src/types.d.ts",
+    "**/src/types.d.ts.map",
+    "**/src/types.js",
+    "**/src/types.js.map",
     "packages/typert/generator/tests/fixtures/type-model/**", // tsgolint rejects this fixture's preserved project shapes before rules run.
     "website/.generated/**",
     "vendor/**", // Vendored source keeps upstream style and idioms.

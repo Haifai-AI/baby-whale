@@ -109,7 +109,15 @@ async function deepseekDefaultsServer(): Promise<DeepSeekDefaultsServer> {
     request.on('end', () => {
       requests.push(JSON.parse(body) as JsonObject)
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      let keepAlives = 3
+      // 20 comments at 60ms hold the stream with no data for 1200ms, against
+      // the fixture's 1000ms `streamIdleTimeoutMs`. The comment phase must
+      // outlast the idle window or the scenario proves nothing: the watchdog
+      // has to be given the chance to fire, and only the comments stop it.
+      // The window in turn has to clear the runner's scheduling jitter — at
+      // the previous 150ms, a loaded runner stalled the client's reads past
+      // the window, the watchdog threw TIMEOUT, and the retry policy answered
+      // with a second request where the scenario pins one.
+      let keepAlives = 20
       const write = (): void => {
         if (keepAlives-- > 0) {
           response.write(': keep-alive\n\n')
@@ -123,7 +131,7 @@ async function deepseekDefaultsServer(): Promise<DeepSeekDefaultsServer> {
           '',
         ].join('\n\n'))
       }
-      setTimeout(write, 60)
+      setTimeout(write, 30)
     })
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))

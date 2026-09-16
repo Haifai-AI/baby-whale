@@ -5,12 +5,13 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, type ConnectionHandle } from '../src/client/index.ts'
+import { createWebConnectionRpc } from '../src/client/rpc.ts'
 import type { RpcMessage } from '../src/client/api.ts'
 import { RpcId } from '../src/client/api.ts'
 import { FixtureApiClient } from '../src/client/fixture.ts'
 import { WebApiClient } from '../src/client/web-api-client.ts'
 
-type Win = { location?: { hostname: string; search: string; origin?: string } }
+type Win = { location?: { hostname: string; search: string; origin?: string; hash?: string } }
 type WebSocketGlobal = { WebSocket?: typeof WebSocket }
 
 const originalWebSocket = globalThis.WebSocket
@@ -49,6 +50,9 @@ class FakeWebSocket extends EventTarget {
 
 afterEach(() => {
   delete (globalThis as Win).location
+  // A case that stubs the page's storage for the instance token must not leak
+  // it into the next one.
+  vi.unstubAllGlobals()
   sockets.length = 0
   if (originalWebSocket === undefined) delete (globalThis as WebSocketGlobal).WebSocket
   else globalThis.WebSocket = originalWebSocket
@@ -192,6 +196,76 @@ describe('connection client apply', () => {
     }
     expect(seen.some(u => u.includes('/api/host.describe'))).toBe(true)
     expect(seen.some(u => u.includes('/api/respond'))).toBe(true)
+  })
+
+  /** Pin this case's page globals: no stored token, only the entry-URL fragment. */
+  function pageWithToken(token: string): void {
+    vi.stubGlobal('sessionStorage', { getItem: (): string | null => null, setItem: (): void => {} })
+    ;(globalThis as Win).location = { hostname: 'localhost', search: '', origin: 'http://localhost:3080', hash: `#token=${token}` }
+  }
+
+  it('presents the captured instance token on HTTP calls and the WebSocket URL', async () => {
+    // The server fence rejects an unauthenticated /api call, and a browser
+    // cannot set headers on a WebSocket, so the token rides the query there.
+    pageWithToken('apply-spec-token-0000')
+    ;(globalThis as WebSocketGlobal).WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    const original = globalThis.fetch
+    const seen: { authorization: string | null }[] = []
+    globalThis.fetch = (_input: URL | RequestInfo, init?: RequestInit) => {
+      seen.push({ authorization: new Headers(init?.headers).get('authorization') })
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }
+    try {
+      const handle = await mount()
+      await (handle.api as WebApiClient).host.describe({}).catch(() => undefined)
+      const client = handle.api as WebApiClient
+      const abort = new AbortController()
+      const frame = client.events.mux({}, abort.signal, () => {})[Symbol.asyncIterator]().next()
+      await vi.waitFor(() => { expect(sockets).toHaveLength(1) })
+      abort.abort()
+      await frame.catch(() => undefined)
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(seen[0]?.authorization).toBe('Bearer apply-spec-token-0000')
+    expect(sockets[0]?.url).toBe('ws://localhost:3080/api/events.mux?token=apply-spec-token-0000')
+  })
+
+  it('presents the token on the default RPC transport', async () => {
+    pageWithToken('rpc-default-token-0000')
+    const seen: { authorization: string | null }[] = []
+    const original = globalThis.fetch
+    globalThis.fetch = (_input: URL | RequestInfo, init?: RequestInit) => {
+      seen.push({ authorization: new Headers(init?.headers).get('authorization') })
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }
+    try {
+      await createWebConnectionRpc().call('/api', 'goals/create', {}).catch(() => undefined)
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.authorization).toBe('Bearer rpc-default-token-0000')
+  })
+
+  it('lets an explicit RPC transport own its own credentials', async () => {
+    // The default transport presents the instance token; a caller that supplies
+    // one is asserting it handles credentials itself, so nothing is added.
+    pageWithToken('ignored-by-explicit-transport')
+    const seen: { authorization: string | null }[] = []
+    const original = globalThis.fetch
+    globalThis.fetch = (_input: URL | RequestInfo, init?: RequestInit) => {
+      seen.push({ authorization: new Headers(init?.headers).get('authorization') })
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }
+    try {
+      const rpc = createWebConnectionRpc((input, init) => globalThis.fetch(input, init))
+      await rpc.call('/api', 'goals/create', {}).catch(() => undefined)
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.authorization).toBeNull()
   })
 
   it('opens one WebSocket per downlink, parses frames, and aborts both without using fetch', async () => {

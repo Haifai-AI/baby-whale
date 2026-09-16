@@ -81,7 +81,7 @@ describe('web e2e: skill invocation policy through the real host', () => {
     scaffold = await launchWebScaffold({})
     await seedSkills(scaffold.workspaceCwd)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

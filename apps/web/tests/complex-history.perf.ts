@@ -854,7 +854,7 @@ async function launchPerformanceWorld(
       await seedSession(scaffold, longHistoryFixture(), LONG_SESSION_ID)
     }
     const setupMs = performance.now() - setupStarted
-    page = await newEnglishPage(options.browser)
+    page = await newEnglishPage(options.browser, scaffold.apiToken)
     return {
       scaffold,
       page,

@@ -1,4 +1,6 @@
 import { memo } from 'react'
+import { IconInspectOutline12, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNodeViewProps, TurnTailOwnerProps } from '../contract/slots.ts'
 import { MessageIconActions } from './MessageIconActions.tsx'
@@ -11,6 +13,7 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
   node, openFile, openFilePreview, forkAt, renderSlot, renderSlotChain, t, useSession,
+  processControl,
 }: TurnTailNodeViewProps) {
   const data = node.data
   const hasLaterChatNode = useSession(snapshot =>
@@ -23,7 +26,32 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const closing = data.closing
   const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile, openFilePreview, sessionId }
   const tail = renderSlotChain('conversation.chat.turnTail', owner)
-  if (closing === null) return tail === null ? null : <div className={css.root}>{tail}</div>
+  // The process control lives in the turn's own footer, where the reader
+  // arrives after reading it — one control per turn rather than a chevron on
+  // every other row. It renders only when the turn can be toggled at all.
+  const control = processControl === undefined ? null : (
+    <Tooltip label={t(processControl.hidden ? 'chat.process.show' : 'chat.process.hide')}>
+      <button
+        type="button"
+        className={clsx(css.processToggle, processControl.hidden && css.processToggleActive)}
+        aria-pressed={processControl.hidden}
+        aria-label={t(processControl.hidden ? 'chat.process.show' : 'chat.process.hide')}
+        onClick={processControl.toggle}
+      >
+        <IconInspectOutline12 />
+        <span>{t('chat.process.label')}</span>
+      </button>
+    </Tooltip>
+  )
+  if (closing === null) {
+    if (tail === null && control === null) return null
+    return (
+      <div className={css.root}>
+        {tail}
+        {control}
+      </div>
+    )
+  }
   const runMs = turn.start === undefined || turn.end === undefined
     ? undefined
     : Math.max(0, turn.end.time - turn.start.time)
@@ -46,7 +74,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         onBranch={() => { forkAt(closing.finalNode.seq) }}
         branchUnavailable={data.branchUnavailable || hasLaterChatNode}
         className={css.actions}
-        extraActions={assistantActions}
+        extraActions={control === null ? assistantActions : <>{control}{assistantActions}</>}
         t={t}
       />
     </div>

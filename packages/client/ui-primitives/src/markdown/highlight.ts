@@ -74,6 +74,7 @@ const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
   ['sql', () => import('@shikijs/langs/sql')],
   ['xml', () => import('@shikijs/langs/xml')],
   ['lua', () => import('@shikijs/langs/lua')],
+  /* v8 ignore start -- no LANG_ALIASES key resolves to these grammar ids, so these loaders have no caller path. */
   ['dart', () => import('@shikijs/langs/dart')],
   ['perl', () => import('@shikijs/langs/perl')],
   ['elixir', () => import('@shikijs/langs/elixir')],
@@ -82,6 +83,7 @@ const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
   ['svelte', () => import('@shikijs/langs/svelte')],
   ['graphql', () => import('@shikijs/langs/graphql')],
   ['r', () => import('@shikijs/langs/r')],
+  /* v8 ignore stop */
 ])
 
 /**

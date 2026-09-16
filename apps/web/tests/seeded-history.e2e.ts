@@ -26,7 +26,7 @@ import {
   launchWebScaffold, parseSeedFixture, realizeSeedFixture, recordFixture, renderSeedFixture, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { authHeaders, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/seeded-history', import.meta.url))
 const SEED = fileURLToPath(new URL('./snapshots/seeded-history/seed.jsonl', import.meta.url))
@@ -204,7 +204,7 @@ describe('web e2e: seeded history renders through cold resume', () => {
       await seedSession(scaffold, realizedWithCompaction, SEED_ID)
     }
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -234,7 +234,7 @@ describe('web e2e: seeded history renders through cold resume', () => {
     // real HTTP wire against the booted real host.
     const response = await fetch(`${scaffold.baseUrl}/api/session.history`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...authHeaders(scaffold.apiToken) },
       body: JSON.stringify({
         type: 'client-request', rpcId: 'seeded-projections', method: 'session.history',
         payload: { sessionId: SEED_ID },
@@ -339,8 +339,10 @@ describe('web e2e: seeded history renders through cold resume', () => {
     expect(await disclosure.getAttribute('aria-expanded')).toBe('false')
     const collapsedIcon = disclosure.locator('svg').first()
     const collapsedIconBox = await collapsedIcon.boundingBox()
-    expect(collapsedIconBox?.width).toBe(14)
-    expect(collapsedIconBox?.height).toBe(14)
+    // 13 inside the shared process-row leading tile (see DESIGN.md, Process
+    // Row): every transcript row wears one 20px tile with a 13px glyph.
+    expect(collapsedIconBox?.width).toBe(13)
+    expect(collapsedIconBox?.height).toBe(13)
 
     await disclosure.click()
     await expect.poll(() => disclosure.getAttribute('aria-expanded')).toBe('true')

@@ -25,7 +25,20 @@ const tsxPackageDirectory = dirname(fileURLToPath(import.meta.resolve('tsx/packa
 const fixtures: string[] = []
 // Multi-worktree cases spawn several Git and Node subprocesses; native Windows
 // coverage concurrency can delay them without changing installer behavior.
-const MULTI_PROCESS_TEST_TIMEOUT_MS = 30_000
+// The override follows the loader-smoke precedent: a shared runner's budget is
+// a deployment fact, so CI sets it rather than the suite guessing. Windows
+// needs more than the 30s default — two cases exceeded it at exactly the
+// deadline, and the installer's own serialization lock makes concurrent runs
+// wait on each other.
+const MULTI_PROCESS_TEST_TIMEOUT_MS = (() => {
+  const raw = process.env.DSH_LEFTHOOK_TEST_TIMEOUT_MS
+  if (raw === undefined || raw === '') return 30_000
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+    throw new Error(`DSH_LEFTHOOK_TEST_TIMEOUT_MS must be a positive integer, got ${JSON.stringify(raw)}.`)
+  }
+  return parsed
+})()
 
 interface Fixture {
   container: string

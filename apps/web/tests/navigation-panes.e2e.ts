@@ -103,7 +103,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
   }, 120_000)
 
   beforeEach(async () => {
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     slotErrors = []
     page.on('console', (message) => {
@@ -321,7 +321,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     expect(content).toContain('FIRST_DONE')
     await dialog.getByText('Close', { exact: true }).click()
 
-    const observer = await newEnglishPage(browser)
+    const observer = await newEnglishPage(browser, scaffold.apiToken)
     const observerTripwire = watchConsole(observer)
     const observerSlotErrors: string[] = []
     let observerDownloads = 0

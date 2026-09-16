@@ -1,18 +1,29 @@
-/* Tree rows: project 34px, session 32px, radius 8, indent step 22px
-   (16px slot + 6px gap). Hover swaps
-   are pure CSS: project folder -> chevron + action buttons; session time ->
-   ellipsis button. */
+/* Sidebar rows.
+ *
+ * Geometry is the macOS source list: a 28px row, a 6px corner, a 20px indent
+ * step, and 13px labels. The previous 32/34px rows with 14px labels were sized
+ * for a touch target the user does not have — this is a pointer surface in a
+ * desktop-width window, and the extra four pixels per row cost a whole extra
+ * session in the visible list.
+ *
+ * Selection is the accent fill with inverted ink, which is the strongest
+ * convention Apple has: the selected source-list row is the one blue thing in
+ * the column, and it answers "where am I" without a second glance. Every
+ * descendant that draws in `currentColor` (the state dot, chevrons) inverts
+ * with it, so a selected row stays one object rather than a blue box with
+ * coloured confetti on it. */
 
 .projectRow,
 .sessionRow {
   display: flex;
   align-items: center;
   gap: 6px;
-  border-radius: 8px;
-  padding: 0 8px;
+  border-radius: var(--dsw-radius-sm);
+  padding: 0 6px;
   cursor: pointer;
   user-select: none;
   color: var(--dsw-alias-label-primary);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .projectRow:hover,
@@ -20,8 +31,28 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.sessionRow.selected {
-  background: var(--dsw-alias-interactive-bg-hover);
+.sessionRow.selected,
+.searchResultRow.selected {
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-weight: 500;
+}
+
+/* Trailing metadata recedes on the accent fill by opacity rather than by a
+   second colour: a grey that reads correctly on the sidebar is illegible on
+   blue, and white at 70% is the same relationship in both palettes. */
+.sessionRow.selected .time,
+.sessionRow.selected .meta,
+.sessionRow.selected .slot,
+.sessionRow.selected .iconButton,
+.sessionRow.selected .chevron {
+  color: var(--dsw-alias-label-primary-foreground);
+  opacity: 0.75;
+}
+
+.sessionRow.selected .iconButton:hover {
+  color: var(--dsw-alias-label-primary-foreground);
+  opacity: 1;
 }
 
 .searchResultRow {
@@ -29,10 +60,10 @@
   flex-direction: column;
   align-items: stretch;
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   box-sizing: border-box;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   padding: 4px 8px;
   background: transparent;
   cursor: pointer;
@@ -41,10 +72,6 @@
 }
 
 .searchResultRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.searchResultRow.selected {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
@@ -60,8 +87,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .searchResultMeta {
@@ -77,8 +104,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 17px;
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .searchResultWorkspace {
@@ -93,9 +120,14 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* Compact one-line Workspace row after removing the session-count subtitle. */
+.searchResultRow.selected .searchResultSnippet,
+.searchResultRow.selected .searchResultWorkspace {
+  color: var(--dsw-alias-label-primary-foreground);
+  opacity: 0.8;
+}
+
 .projectRow {
-  height: 34px;
+  height: 30px;
   align-items: center;
   box-sizing: border-box;
 }
@@ -104,13 +136,13 @@
   height: 20px;
 }
 
-/* Session cell (figma): pad 8, a 16px status slot, then a 4px title gap. */
+/* Session cell: pad 6, a 16px status slot, then a 4px title gap. */
 .sessionRow {
-  height: 32px;
+  height: 28px;
   gap: 0;
   /* Mount fade: session rows appear by unfolding a group (or the tree
      mounting). Stable row keys keep already-visible rows from replaying it. */
-  animation: row-in 150ms var(--ds-ease-in-out);
+  animation: row-in 150ms var(--ds-ease-out);
 }
 
 .sessionRow .title {
@@ -148,7 +180,6 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
-
 /* Project leading slot: folder by default, expand arrow on row hover. */
 .projectRow .chevron { display: none; }
 .projectRow:hover .chevron { display: inline-flex; }
@@ -156,7 +187,7 @@
 
 /* Expand arrow (filled triangle): points right closed, rotates to point down open. */
 .arrow {
-  transition: transform 150ms var(--ds-ease-in-out);
+  transition: transform 150ms var(--ds-ease-out);
 }
 
 .arrowOpen {
@@ -176,19 +207,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .renameInput {
   min-width: 0;
-  font-size: 14px;
-  line-height: 20px;
-  padding: 0 2px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 4px;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 3px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-button-elevated-fill);
-  color: inherit;
+  color: var(--dsw-alias-label-primary);
   outline: none;
 }
 
@@ -200,15 +231,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 20px;
+  font-size: 11px;
+  line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
 }
 
 .time {
   flex: none;
-  font-size: 12px;
-  line-height: 20px;
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -216,13 +248,12 @@
   flex: none;
 }
 
-/* Trailing action buttons surface on hover only (figma 27:4668 / 27:4656):
-   bare 16px glyphs, gap 12, tertiary grey. */
+/* Trailing action buttons surface on hover only: bare 16px glyphs, gap 10. */
 .rowActions {
   flex: none;
   display: none;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .projectRow:hover .rowActions,
@@ -237,11 +268,11 @@
   display: none;
 }
 
-/* An open row menu pins the hover affordances (figma: the row keeps its
-   hover fill while its dropdown is up). */
+/* An open row menu pins the hover affordances (the row keeps its hover fill
+   while its dropdown is up). */
 .projectRow.menuOpen,
 .sessionRow.menuOpen {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-active);
 }
 
 /* Session drag insert marker: a leading chevron and 2px rule between rows,
@@ -286,40 +317,40 @@
   bottom: -7px;
 }
 
-/* Hover-card body (figma 169:16903): dark surface, fixed colors both themes. */
+/* Hover-card body rides the tooltip material, which is already the inverse
+   surface in both palettes — literal near-white greys here would keep working
+   in light and turn to mud the moment the palette moved. */
 .hoverContent {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .hoverTitle {
-  font-size: 14px;
-  line-height: 20px;
-  color: #FFFFFF;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-tooltip-fg);
   overflow-wrap: break-word;
 }
 
-.hoverPath {
-  font-size: 12px;
-  line-height: 16px;
-  color: #CFD3D6;
-  word-break: break-all;
-}
-
+.hoverPath,
 .hoverTime {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 16px;
-  color: #CFD3D6;
+  color: var(--dsw-alias-tooltip-fg);
+  opacity: 0.65;
+  word-break: break-all;
 }
 
 .hoverStatus {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 20px;
-  color: #ADB2B8;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-tooltip-fg);
+  opacity: 0.75;
 }
 
 .iconButton {
@@ -330,7 +361,7 @@
   width: 16px;
   height: 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--dsw-radius-xs);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -341,8 +372,6 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* Chevrons ride the caption grey (#ADB2B8); the folder glyph stays one step
-   darker (tertiary, #81858C) per the cell spec. */
 .chevron {
   color: var(--dsw-alias-label-caption);
 }

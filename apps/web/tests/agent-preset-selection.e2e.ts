@@ -24,7 +24,7 @@ import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { authHeaders, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/agent-preset-selection', import.meta.url))
 const HERO_EXPECTED = join(SNAPSHOT_DIR, 'hero.expected.md')
@@ -144,10 +144,10 @@ async function seedSubagent(scaffold: WebScaffold, parentId: SessionId): Promise
  * @param baseUrl - the scaffold's origin.
  * @returns the live session's preset, or undefined before it is listed.
  */
-async function livePreset(baseUrl: string): Promise<string | undefined> {
+async function livePreset(baseUrl: string, apiToken: string): Promise<string | undefined> {
   const response = await fetch(`${baseUrl}/api/session.list`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...authHeaders(apiToken) },
     body: JSON.stringify({
       type: 'client-request', rpcId: 'agent-preset-live', method: 'session.list', payload: {},
     }),
@@ -182,7 +182,7 @@ describe('web e2e: agent-preset selection', () => {
     await seedSubagent(scaffold, seededId)
     await seedWorkspaceSkill(scaffold.workspaceCwd)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -228,7 +228,7 @@ describe('web e2e: agent-preset selection', () => {
 
     // The chip stages; the blank session the workspace connect produced is
     // what the stage lands on. The host's own answer is what comes back.
-    await expect.poll(() => livePreset(scaffold.baseUrl), { timeout: 15_000 }).toBe('minimal')
+    await expect.poll(() => livePreset(scaffold.baseUrl, scaffold.apiToken), { timeout: 15_000 }).toBe('minimal')
   })
 
   it('re-reads the slash catalog through the composition the switch installed', async () => {
@@ -258,7 +258,7 @@ describe('web e2e: agent-preset selection', () => {
     // instead of leaving the session reading the narrower composition.
     await page.getByRole('button', { name: 'Minimal mode' }).click()
     await page.getByRole('menuitem', { name: /^Standard mode/ }).first().click()
-    await expect.poll(() => livePreset(scaffold.baseUrl), { timeout: 15_000 }).toBe('standard')
+    await expect.poll(() => livePreset(scaffold.baseUrl, scaffold.apiToken), { timeout: 15_000 }).toBe('standard')
 
     await composer.fill('/')
     await expect.poll(() => menuOptions(page), { timeout: 15_000 })

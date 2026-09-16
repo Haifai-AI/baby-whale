@@ -169,7 +169,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           files=()
-          for f in dist/*.zip; do [ -e "$f" ] && files+=("$f"); done
+          # Every zip ships with its .sha256 sidecar (written by
+          # make-bundle.sh/ps1): the launcher refuses a bundle whose sidecar
+          # is missing, so an asset without one must never publish alone.
+          for f in dist/*.zip; do
+            [ -e "$f" ] || continue
+            files+=("$f")
+            [ -e "$f.sha256" ] || { echo "missing checksum sidecar for $f" >&2; exit 1; }
+            files+=("$f.sha256")
+          done
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             && gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber \
             || gh release create "$GITHUB_REF_NAME" "${files[@]}" \

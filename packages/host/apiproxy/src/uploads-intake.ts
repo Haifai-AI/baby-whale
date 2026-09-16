@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-tool-apiproxy/src/uploads-intake
  */
 
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, stat, unlink, writeFile } from 'node:fs/promises'
 import nodePath from 'node:path'
 
 /** Inclusive byte cap per uploaded file; mirrors the read tools' input cap. */
@@ -52,6 +52,30 @@ export async function stampedCandidate(
 }
 
 /**
+ * Ensure the uploads directory is a real directory before anything lands in
+ * it. A planted symlink (or file) at `uploads/` would redirect the recursive
+ * `mkdir` and every subsequent write outside the workspace — so the object
+ * itself is inspected: symlinks are removed and recreated as directories
+ * (removing the link never touches its target), non-directories fail loud,
+ * and only then is the directory created.
+ * @param workspace - the session's workspace root (header cwd).
+ * @returns the absolute uploads directory.
+ */
+export async function ensureUploadsDir(workspace: string): Promise<string> {
+  const directory = nodePath.join(workspace, UPLOADS_DIRNAME)
+  const stance = await lstat(directory).catch(() => undefined)
+  if (stance !== undefined) {
+    if (stance.isSymbolicLink()) {
+      await unlink(directory)
+    } else if (!stance.isDirectory()) {
+      throw new Error(`uploads intake: ${directory} exists and is not a directory`)
+    }
+  }
+  await mkdir(directory, { recursive: true })
+  return directory
+}
+
+/**
  * Store one upload payload.
  * @param workspace - the session's workspace root (header cwd).
  * @param filename - raw proposed filename.
@@ -65,8 +89,7 @@ export async function storeUpload(
   bytes: Uint8Array,
   now: () => number = Date.now,
 ): Promise<{ path: string; name: string; size: number }> {
-  const directory = nodePath.join(workspace, UPLOADS_DIRNAME)
-  await mkdir(directory, { recursive: true })
+  const directory = await ensureUploadsDir(workspace)
   const sanitized = sanitizeFilename(filename)
   const stamped = await stampedCandidate(
     directory,

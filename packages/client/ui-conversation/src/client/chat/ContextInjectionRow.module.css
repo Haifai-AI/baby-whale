@@ -12,24 +12,17 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* Separator and producer name beside the role title: ToolRow's summary geometry,
-   so the two disclosure rows keep one 24px rhythm and one separator shape. */
-.sep {
-  flex: none;
-  width: 2px;
-  height: 2px;
-  margin: 0 8px;
-  border-radius: 1px;
-  background: var(--dsw-alias-label-caption);
-}
-
+/* The producer name beside the role title: one ramp step above the summary, at
+   the verb's own weight, so the row reads as three ranked parts without a
+   separator glyph. */
 .source {
   flex: none;
   min-width: 0;
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -40,17 +33,18 @@
   min-width: 0;
   overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Aligned to the row title's axis (the 20px tile plus the chrome's 8px gap). */
 .body {
   box-sizing: border-box;
-  width: calc(100% - 22px);
+  width: calc(100% - 28px);
   max-height: 141px;
-  margin: 4px 0 0 22px;
+  margin: 4px 0 0 28px;
   overflow: auto;
   padding: 10px 16px 12px 12px;
   border: none;

@@ -31,8 +31,27 @@ interface BrowserOpenRecord {
   dshHomePresent: boolean
 }
 
+/**
+ * The launcher's printed entry URL with its two per-boot values removed: the
+ * listening port becomes `{{port}}` and the instance token fragment is
+ * dropped. The token is a credential minted at every start, so a snapshot
+ * that pinned it would both churn and commit a secret.
+ * @param url - the printed `dsh web: <url>` value.
+ * @returns the stable shape the snapshots pin.
+ */
 function normalizeLocalUrl(url: string): string {
-  return url.replace(/:\d+$/, ':{{port}}')
+  const [withoutFragment] = url.split('#')
+  return (withoutFragment ?? url).replace(/:\d+$/, ':{{port}}')
+}
+
+/**
+ * Whether a printed URL carries the instance token as its fragment, which is
+ * how the launcher hands a browser the credential it must present on `/api`.
+ * @param url - the printed `dsh web: <url>` value.
+ * @returns true when the fragment holds a non-empty token.
+ */
+function carriesApiToken(url: string): boolean {
+  return /#token=.+/.test(url)
 }
 
 describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot', () => {
@@ -74,6 +93,9 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
       opening,
       readyUrl: normalizeLocalUrl(readyUrl),
       openedUrl: normalizeLocalUrl(opened.url),
+      // The handed-off URL must carry the instance token: the browser learns
+      // the credential there and nowhere else.
+      tokenPresent: carriesApiToken(opened.url),
       status: opened.status,
       bootManifest: opened.bootManifest,
       apiKeyPresent: opened.apiKeyPresent,
@@ -90,6 +112,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
         "readyUrl": "http://127.0.0.1:{{port}}",
         "status": 200,
         "stderr": "",
+        "tokenPresent": true,
       }
     `)
   })
@@ -124,7 +147,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
     const readyUrl = /dsh web: (http:\/\/[^\s]+)/u.exec(result.stdout)?.[1]
     const diagnostic = result.stderr.split(/\r?\n/u)
       .find(line => line.startsWith('web-app: could not open the default browser because '))
-      ?.replace(/http:\/\/127\.0\.0\.1:\d+/u, 'http://127.0.0.1:{{port}}')
+      ?.replace(/http:\/\/127\.0\.0\.1:\d+(#token=[^\s]*)?/u, 'http://127.0.0.1:{{port}}')
 
     expect({
       diagnostic,
@@ -132,6 +155,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
       opened: result.stdout.includes('dsh browser-open: '),
       opening: result.stdout.includes(openingMessage),
       readyUrl: readyUrl === undefined ? undefined : normalizeLocalUrl(readyUrl),
+      tokenPresent: readyUrl !== undefined && carriesApiToken(readyUrl),
     }).toMatchInlineSnapshot(`
       {
         "diagnostic": "web-app: could not open the default browser because fixture desktop unavailable; visit http://127.0.0.1:{{port}} manually",
@@ -139,6 +163,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
         "opened": false,
         "opening": true,
         "readyUrl": "http://127.0.0.1:{{port}}",
+        "tokenPresent": true,
       }
     `)
   })
@@ -176,6 +201,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
       exitCode: result.exitCode,
       opening: result.stdout.includes(openingMessage),
       readyUrl: readyUrl === undefined ? undefined : normalizeLocalUrl(readyUrl),
+      tokenPresent: readyUrl !== undefined && carriesApiToken(readyUrl),
       opened: result.stdout.includes('dsh browser-open: '),
       stderr: result.stderr,
     }).toMatchInlineSnapshot(`
@@ -185,6 +211,7 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
         "opening": false,
         "readyUrl": "http://127.0.0.1:{{port}}",
         "stderr": "",
+        "tokenPresent": true,
       }
     `)
   })

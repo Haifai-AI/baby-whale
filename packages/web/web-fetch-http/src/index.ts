@@ -10,6 +10,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
+import { assertEgressAllowHosts } from './egress.ts'
 import { HttpFetchProvider } from './provider.ts'
 import type { HttpFetchLimits } from './provider.ts'
 
@@ -44,6 +45,13 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /**
+   * Bare-host egress exceptions for private destinations (loopback,
+   * private ranges, link-local, metadata): exact hostnames or IP literals
+   * (no scheme, port, or path) that skip the default-deny egress gate —
+   * the operator opt-in for internal hosts such as dev servers.
+   */
+  egressAllowHosts?: string[]
 }
 
 export const Config: z<Config> = z.object({
@@ -53,6 +61,7 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().default(30_000),
   maxRedirects: z.number().default(5),
   userAgent: z.string().default(DEFAULT_USER_AGENT),
+  egressAllowHosts: z.array(z.string()).default([]),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -89,7 +98,9 @@ export function apply(ctx: Context, config: Config): void {
   assertPositiveFinite('maxBodyChars', resolved.maxBodyChars)
   assertTimeoutMs(resolved.timeoutMs)
   assertNonNegativeInteger('maxRedirects', resolved.maxRedirects)
+  assertEgressAllowHosts(resolved.egressAllowHosts)
   const limits: HttpFetchLimits = {
+    egressAllowHosts: resolved.egressAllowHosts,
     maxUrlLength: resolved.maxUrlLength,
     maxResponseBytes: resolved.maxResponseBytes,
     maxBodyChars: resolved.maxBodyChars,

@@ -36,6 +36,40 @@ describe('SessionLogDownloadController', () => {
     })
   })
 
+  it('carries the instance token on the URL that both the HEAD and the save receive', async () => {
+    // The download manager never sends an Authorization header, so the token
+    // has to ride the URL the anchor is handed. Nothing else in this suite
+    // pinned it, which is how a rewrite that dropped the parameter shipped.
+    vi.stubGlobal('sessionStorage', {
+      getItem: (): string | null => 'export-spec-token-0000',
+      setItem: (): void => {},
+    })
+    const fetcher = vi.fn(async () => new Response('zip', { status: 200 }))
+    const save = vi.fn()
+    const controller = new SessionLogDownloadController(fetcher, save)
+
+    await controller.download(SID)
+
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit]
+    expect(url.searchParams.get('token')).toBe('export-spec-token-0000')
+    expect(save).toHaveBeenCalledWith(
+      expect.stringContaining('token=export-spec-token-0000'),
+      'dsh-session-session-export-controller.zip',
+    )
+  })
+
+  it('leaves the URL untouched when this tab holds no token', async () => {
+    vi.stubGlobal('sessionStorage', { getItem: (): string | null => null, setItem: (): void => {} })
+    vi.stubGlobal('location', { hash: '', pathname: '/', search: '' })
+    const fetcher = vi.fn(async () => new Response('zip', { status: 200 }))
+    const controller = new SessionLogDownloadController(fetcher, vi.fn())
+
+    await controller.download(SID)
+
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit]
+    expect(url.searchParams.has('token')).toBe(false)
+  })
+
   it('collapses concurrent gestures and preserves a dismissed dialog', async () => {
     const response = Promise.withResolvers<Response>()
     const fetcher = vi.fn(() => response.promise)

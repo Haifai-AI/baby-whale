@@ -66,7 +66,8 @@
 
 # Readers only (xlsx_read / csv_read / docx_text). Creation happens through
 # user-authored Python run via the bash tool above; finished files surface as
-# deliverables through the deliver tool.
+# deliverables through the deliver tool. Agent-scoped rows: the session's own
+# catalog, never the process-global plane.
 - id: tool-office
   name: '@deepseek-ai/dsh-tool-office'
 

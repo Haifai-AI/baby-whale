@@ -51,7 +51,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       : { replayFixture: FIXTURE, replayOverride: REPLAY_OVERRIDE, paceMs: REPLAY_PACE_MS })
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { sessionEvents.push(event) })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -100,7 +100,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
 
   it.skipIf(MODE === 'record')('shows active Plan as the warn-state status action', async () => {
     const activeScaffold = await launchWebScaffold()
-    const activePage = await newEnglishPage(browser)
+    const activePage = await newEnglishPage(browser, scaffold.apiToken)
     const activeTripwire = watchConsole(activePage)
     try {
       await activePage.goto(activeScaffold.baseUrl, { waitUntil: 'load' })

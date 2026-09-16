@@ -94,7 +94,7 @@ describe('web e2e: CJK-adjacent Markdown strong emphasis', () => {
     scaffold = await launchWebScaffold({})
     await seedSession(scaffold, markdownFixture(), SEED_ID)
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    page = await newEnglishPage(browser, scaffold.apiToken)
     tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })

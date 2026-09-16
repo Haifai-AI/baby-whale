@@ -1,4 +1,13 @@
-/* Shared disclosure header: [16px leading] gap 6 [title 14/24]. */
+/* Shared process-row chrome: a 20px leading tile, an 8px gap, and the verb on
+   the 13px control step at medium weight.
+ *
+ * Every row in the transcript that reports process — a tool call, a reasoning
+ * block, a command, an injected context — is this one row. The tile is what
+ * gives it a definite left edge, so a row reads as an object on the text axis
+ * rather than as another line of grey prose; the verb's weight step over the
+ * meta text beside it is what separates what happened from what it happened
+ * to. Both replace decoration: the 3px separator dot these rows used to carry
+ * measured 1.98:1 on the canvas and carried no meaning of its own. */
 
 .root {
   display: flex;
@@ -12,27 +21,38 @@
   overflow: hidden;
   display: flex;
   align-items: center;
+  gap: 8px;
   height: 24px;
   min-width: 0;
+  border-radius: var(--dsw-radius-sm);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-out);
 }
 
 .row[data-expandable] {
   cursor: pointer;
 }
 
+/* The row is one click target; the wash is what says so. It spans the text
+   column exactly, so its edges land on the same axis as the prose. */
+.row[data-expandable]:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The leading tile. Sized from the slot, so a consumer that controls the
+   slot through `leadingClassName` controls the tile with it. */
 .leading {
   position: relative;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
   padding: 0;
   border: none;
-  background: none;
-  color: var(--dsw-alias-label-tertiary);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-fill-l2);
+  color: var(--dsw-alias-label-secondary);
 }
 
 button.leading {
@@ -42,7 +62,7 @@ button.leading {
 .iconIdle {
   display: inline-flex;
   opacity: 1;
-  transition: opacity 100ms ease;
+  transition: opacity 100ms var(--ds-ease-out);
 }
 
 .chevronHover {
@@ -50,7 +70,7 @@ button.leading {
   inset: 0;
   margin: auto;
   opacity: 0;
-  transition: opacity 100ms ease;
+  transition: opacity 100ms var(--ds-ease-out);
 }
 
 .row:hover .iconIdle {
@@ -61,9 +81,13 @@ button.leading {
   opacity: 1;
 }
 
+/* The verb: the row's one strong note. Primary ink at 500 against the 400
+   meta text beside it is a full weight step, which the previous pairing of
+   14px/400 over 13px/400 was not. */
 .title {
   flex: none;
-  font-size: 14px;
-  line-height: 24px;
-  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
 }

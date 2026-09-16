@@ -511,6 +511,7 @@ describe('per-call sandbox policy resolution', () => {
     // the calling session's identity rides along for backend per-session state.
     expect(bash.requests[0]?.sandboxPolicy).toEqual({
       mode: 'read-only',
+      egress: 'deny',
       workspaceRoot: resolvePath(realpathSync.native(sessionCwd)),
       sessionId: 'policy-session',
     })
@@ -521,6 +522,7 @@ describe('per-call sandbox policy resolution', () => {
     await call(ctx, 'pwsh', { command: 'Write-Output hi', description: 'say hi' })
     expect(bash.requests[0]?.sandboxPolicy).toEqual({
       mode: 'read-only',
+      egress: 'deny',
       workspaceRoot: resolvePath(realpathSync.native(process.cwd())),
     })
 

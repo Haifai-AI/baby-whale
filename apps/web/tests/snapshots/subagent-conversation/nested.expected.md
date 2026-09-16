@@ -11,9 +11,11 @@
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
+    - tab "Artifacts"
 - text: Give one concrete event sourcing example. {{clock}}
 - button "Copy":
   - img
+- button "隐藏本轮的调用与思考": 过程
 - status:
   - strong: This subagent is read-only for now
   - text: The parent session is offline; reopen it to continue sending messages.

@@ -105,7 +105,11 @@ probePromise()
         rm(configPath, { force: true }),
       ])
     }
-  }, 20_000)
+    // Seven files across six TypeScript projects, each typed program loaded
+    // from scratch: about 27s on the Windows lane, where the platform's file
+    // scanner inspects every read, against under 5s locally. The budget covers
+    // the lane, not the claim — the case asserts which project owns each file.
+  }, 120_000)
 
   it('runs JavaScript compatibility and nursery rules', async () => {
     const suffix = randomUUID()

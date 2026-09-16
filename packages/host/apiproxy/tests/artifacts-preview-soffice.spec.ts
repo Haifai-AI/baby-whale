@@ -169,6 +169,21 @@ describe('findSoffice', () => {
     reset()
   })
 
+  it('omits the Windows install location on a host that is not Windows', async () => {
+    // The candidate list is built once at module load from `process.platform`,
+    // so its non-Windows arm needs a module instance of its own: on the Windows
+    // lane every other import resolves the list with win32 already true, and the
+    // per-file branch gate would otherwise never observe this arm there.
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    vi.stubEnv('ProgramFiles', String.raw`D:\Program Files`)
+    vi.resetModules()
+    const { findSoffice: lookup, resetSofficeLookup: reset } = await import('../src/artifacts-preview.ts')
+    expect(lookup()).toBeUndefined()
+    expect(probes.map(probe => probe.bin))
+      .not.toContain(String.raw`D:\Program Files\LibreOffice\program\soffice.exe`)
+    reset()
+  })
+
   it('probes the candidates in order and answers with the first that reports a version', () => {
     probeAccepts = bin => bin === '/usr/bin/soffice'
     expect(findSoffice()).toBe('/usr/bin/soffice')

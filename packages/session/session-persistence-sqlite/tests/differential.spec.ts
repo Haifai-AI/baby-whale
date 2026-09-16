@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { CallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import SessionStore, { type SessionEvent } from '@deepseek-ai/dsh-session'
+import SessionStore, { type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionPersistenceSqlite from '@deepseek-ai/dsh-session-persistence-sqlite'
@@ -14,6 +14,17 @@ import { meta } from '../../session-persistence/tests/contract.ts'
 import { testSql } from './test-sql.ts'
 
 type BackendName = 'jsonl-zstd' | 'sqlite'
+
+/**
+ * Randomized cases in the cross-backend property. Every case durably
+ * materializes a session in both backends, and on the native Windows CI runner a
+ * materialization plus its appends costs about a second: 100 cases ran past
+ * three minutes there, and a larger budget cannot rescue a case count that does
+ * not fit the lane. Twenty-five matches the repo's other durable-heavy
+ * properties, and the deterministic packing matrix below keeps the exhaustive
+ * partition and reopen coverage.
+ */
+const RANDOMIZED_CASES = 25
 
 interface MountedBackend {
   readonly persistence: SessionPersistence
@@ -170,6 +181,43 @@ async function verifyBackend(
   }
 }
 
+/**
+ * Verify one randomized case against a backend that stays mounted for the whole
+ * property. Sessions accumulate in the shared store, so the store-wide
+ * assertions {@link verifyBackend} makes for its sole session become a count and
+ * a membership check. Reopen equivalence is asserted by the deterministic matrix
+ * test, which remounts a freshly materialized log.
+ * @param name - backend label used in failure messages.
+ * @param persistence - the backend, mounted once for every case.
+ * @param header - this case's session metadata.
+ * @param events - this case's logical log.
+ * @param sizes - append batch sizes, cycled across the log.
+ * @param sessionCount - sessions the store holds once this case is written.
+ */
+async function verifySharedCase(
+  name: BackendName,
+  persistence: SessionPersistence,
+  header: SessionHeader,
+  events: readonly SessionEvent[],
+  sizes: readonly number[],
+  sessionCount: number,
+): Promise<void> {
+  await persistence.create(header)
+  for (const batch of batches(events, sizes)) await persistence.append(header.id, batch)
+  expect(await persistence.inspect(header.id), name).toEqual({ meta: header, events })
+  const listed = await persistence.list()
+  expect(listed.length, name).toBe(sessionCount)
+  expect(listed.map(entry => entry.id), name).toContain(header.id)
+  const revisionOf = async (): Promise<string | undefined> =>
+    (await persistence.listSnapshots()).find(entry => entry.header.id === header.id)?.revision
+  const revision = await revisionOf()
+  for (let fromSeq = 0; fromSeq <= events.length + 1; fromSeq += 1) {
+    expect((await persistence.readFrom(header.id, fromSeq)).events, `${name} seq ${fromSeq}`)
+      .toEqual(events.slice(fromSeq))
+  }
+  expect(await revisionOf(), name).toBe(revision)
+}
+
 const streamChunkArbitrary: fc.Arbitrary<StreamChunk> = fc.oneof(
   fc.record({ type: fc.constant<'text-delta'>('text-delta'), index: fc.nat(2), text: fc.string() }),
   fc.record({ type: fc.constant<'reasoning-delta'>('reasoning-delta'), index: fc.nat(2), text: fc.string() }),
@@ -262,17 +310,27 @@ describe('SQLite cross-backend differential behavior', () => {
   }, 30_000)
 
   it('matches JSONL/Zstandard across randomized logical logs and append partitions', async () => {
-    await fc.assert(fc.asyncProperty(randomWorkload, async ({ events, batchSizes }) => {
-      const directory = await freshDirectory('dsh-sqlite-property-')
-      for (const name of ['jsonl-zstd', 'sqlite'] as const) {
-        await verifyBackend(name, join(directory, name), events, batchSizes)
-      }
-    }), { numRuns: 100, seed: 0x5A17E })
-    // A hundred randomized cases, each writing both backends twice over. The
-    // budget is the original one: raising it to three minutes was measured and
-    // did not bring the case inside any bound on the native Windows lane,
-    // where it has failed on every run since the fork's first — a finding for
-    // its own change, not something a larger number fixes.
-  }, 60_000)
+    const directory = await freshDirectory('dsh-sqlite-property-')
+    const backends: readonly (readonly [BackendName, MountedBackend])[] = [
+      ['jsonl-zstd', await mount('jsonl-zstd', join(directory, 'jsonl'))],
+      ['sqlite', await mount('sqlite', join(directory, 'sqlite'))],
+    ]
+    try {
+      // Each case is one more session in both already-open stores. A case costs
+      // one durable materialization per backend (a JSONL staging file, fsync,
+      // write-through publish, and a SQLite commit), so the case count is what
+      // the budget buys, not the log size — see RANDOMIZED_CASES.
+      let sessionCount = 0
+      await fc.assert(fc.asyncProperty(randomWorkload, async ({ events, batchSizes }) => {
+        sessionCount += 1
+        const header = { ...meta(`differential-${sessionCount}`, '/work'), delegationDepth: 0 }
+        for (const [name, backend] of backends) {
+          await verifySharedCase(name, backend.persistence, header, events, batchSizes, sessionCount)
+        }
+      }), { numRuns: RANDOMIZED_CASES, seed: 0x5A17E })
+    } finally {
+      for (const [, backend] of backends) await backend.dispose()
+    }
+  }, 120_000)
 
 })

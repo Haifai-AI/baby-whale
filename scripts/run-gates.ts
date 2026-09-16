@@ -208,7 +208,7 @@ export function gatesForMode(selected: Mode): Gate[] {
     case 'ci-primary':
       return ciPrimaryGates()
     case 'ci-linux-primary':
-      return [...ciPrimaryGates(), webSnapshotGate(['built-package-invariants'])]
+      return [...ciPrimaryGates(), webSnapshotGate(['built-package-invariants'], ['snapshot'])]
     case 'ci-static':
       return ciStaticGates({ ownsBuild: false })
     case 'ci-lint-contracts-ready':
@@ -429,7 +429,7 @@ function ciConsumerGates(): Gate[] {
     // catalog contract; the whale-era composition drift (trash/tasks on the
     // global plane) and stale goldens keep it red. Reports on every run until
     // the tool-plane follow-up lands and the goldens are re-recorded.
-    forkDebt(webSnapshotGate(validatedBuild)),
+    forkDebt(webSnapshotGate(validatedBuild, ['snapshot'])),
     pnpmScript('doc-typecheck', 'doc-typecheck:contracts-ready', {
       needs: validatedBuild,
       env: { DSH_DOC_TYPECHECK_USE_BUILD_OUTPUT: '1' },
@@ -442,7 +442,20 @@ function ciConsumerGates(): Gate[] {
   ]
 }
 
-function webSnapshotGate(needs: string[]): Gate {
+/**
+ * The browser snapshot gate, which must not overlap the build-backed snapshot
+ * gate. Its HMR case edits a client plugin source and runs `pnpm run dev:web`
+ * to prove a real hot reload, and that rebuilds each client package's bundled
+ * half in place — the exact artifacts the client build record digests. Running
+ * the two together made `built-boot` fail with "client artifacts differ" and
+ * took the surrounding e2e cases down with it, since their bundles changed
+ * underneath them. Serializing costs nothing: this gate is fork debt and
+ * reports independently.
+ * @param needs - gates that must pass before the build exists.
+ * @param after - gates that must settle first, because this one mutates them.
+ * @returns the configured gate.
+ */
+function webSnapshotGate(needs: string[], after: string[]): Gate {
   const workerRaw = process.env.DSH_WEB_SNAPSHOT_WORKERS
   if (workerRaw !== undefined && workerRaw !== '') {
     const workers = Number.parseInt(workerRaw, 10)
@@ -454,6 +467,7 @@ function webSnapshotGate(needs: string[]): Gate {
       displayCommand: `DSH_SNAPSHOT=replay DSH_WEB_SNAPSHOT_WORKERS=${workers} pnpm run test:web:ci`,
       env: { DSH_SNAPSHOT: 'replay' },
       needs,
+      after,
       streamOutput: true,
     })
   }
@@ -462,6 +476,7 @@ function webSnapshotGate(needs: string[]): Gate {
     displayCommand: 'DSH_SNAPSHOT=replay pnpm run test:web:built',
     env: { DSH_SNAPSHOT: 'replay' },
     needs,
+    after,
   })
 }
 

@@ -158,7 +158,17 @@ jobs:
             exit 0
           fi
           echo "//registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN" > ~/.npmrc
-          npm publish ./npm/bwhale --access public
+          # The npm channel follows the same rule as the release channel below:
+          # a prerelease version publishes under `next`, never `latest`, so
+          # `npm install -g @haifai/bwhale` cannot hand a rehearsal to someone
+          # who asked for the stable launcher. The version also has to move:
+          # npm refuses to republish an existing version, and the launcher is
+          # outside the workspace, so `release:dsh` does not bump it.
+          case "$GITHUB_REF_NAME" in
+            *-*) npm_tag_args=(--tag next) ;;
+            *)   npm_tag_args=() ;;
+          esac
+          npm publish ./npm/bwhale --access public "${npm_tag_args[@]}"
 
       - name: Publish release (tag runs only)
         # Concurrency-safe: the four matrix jobs race here, so the first

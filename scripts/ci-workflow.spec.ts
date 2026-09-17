@@ -566,6 +566,24 @@ describe('Git hooks', () => {
     // A bare `--latest` outside that case would defeat the branch above.
     expect(step.run).not.toMatch(/--generate-notes\s+--latest/)
   })
+
+  it('keeps a prerelease launcher off the npm latest dist-tag', () => {
+    const workflow = loadWorkflow('.github/workflows/bundle.yml')
+    const step = workflowSteps(workflow, 'bundle').find(
+      candidate => isRecord(candidate) && typeof candidate.name === 'string'
+        && candidate.name.startsWith('Publish npm package'),
+    )
+    if (!isRecord(step) || typeof step.run !== 'string') {
+      throw new TypeError('bundle.yml must define the npm publishing step')
+    }
+
+    // The launcher is a second distribution channel with the same hazard: npm
+    // takes `latest` unless told otherwise, so a rehearsal tag would hand the
+    // preview launcher to everyone running `npm install -g @haifai/bwhale`.
+    expect(step.run).toContain('*-*) npm_tag_args=(--tag next)')
+    expect(step.run).toContain('*)   npm_tag_args=()')
+    expect(step.run).toContain('"${npm_tag_args[@]}"')
+  })
 })
 
 function loadWorkflow(path: string): Record<string, unknown> {

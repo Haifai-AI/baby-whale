@@ -22,7 +22,9 @@ npm 启动器是 `npm install -g @haifai/bwhale` 所跟随的那条。除非另�
 
 安装预览是显式行为。要么从 npm 安装启动器（`npm install -g @haifai/bwhale@next`）并用 `BWHALE_VERSION=v0.2.0-preview bwhale` 固定运行时，要么直接抓取该标签的 zip 及其校验和 sidecar。启动器通过 `releaseByTag` 解析固定的标签，而它能找到预发布 release。
 
-`scripts/ci-workflow.spec.ts` 固定了两个步骤：各自的 `case` 两个分支、各自的数组展开，以及对 GitHub release 而言不存在会架空该分支的裸 `--generate-notes --latest`。
+两个打包脚本还必须在命名资产所用的版本上保持一致。`make-bundle.ps1` 只接受 `^\d+\.\d+\.\d+$`，因此预发布标签会落到应用版本，Windows 资产只有在两者恰好相等时才与标签匹配；`make-bundle.sh` 接受一个宽松的 glob，它还会放行诸如 `0.2.0-` 之类的值。两者现在求值同一个模式 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`，因此预发布版本完整保留，而分支名或畸形标签会回退。Windows 作业带有 `continue-on-error`，所以不匹配会发布一个没有 Windows bundle 的 release，且没有任何红灯。
+
+`scripts/ci-workflow.spec.ts` 固定两个工作流步骤：各自的 `case` 两个分支、各自的数组展开，以及对 GitHub release 而言不存在会架空该分支的裸 `--generate-notes --latest`。`scripts/bundle-asset-naming.spec.ts` 让两个打包脚本与启动器互相约束：它求值每个打包脚本实际发布的守卫（POSIX 那个通过 `bash`，PowerShell 那个用从脚本中提取的模式），断言两者都保留标签版本、都对非发布引用回退，并断言启动器从标签重建出的名称正是两个打包脚本所写入的名称。
 
 ## Alternatives considered
 

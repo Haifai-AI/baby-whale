@@ -24,7 +24,14 @@ Set-Location (Join-Path $PSScriptRoot '..')
 $VERSION = $env:RELEASE_VERSION
 if ($null -eq $VERSION) { $VERSION = '' }
 $VERSION = $VERSION -replace '^v', ''
-if ($VERSION -notmatch '^\d+\.\d+\.\d+$') {
+# Accept a prerelease segment: a prefix of the release is still that release.
+# The anchored patch-only form this used to require rejected `0.2.0-preview`
+# and fell back to the app version, so the asset name matched the tag by
+# coincidence — and `bwhale` looks the asset up by the tag's exact version, so
+# any drift would have published a release with no Windows bundle. The POSIX
+# twin in make-bundle.sh always accepted a suffixed version; this now agrees
+# with it.
+if ($VERSION -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
   $VERSION = (node -p "require('./apps/cli/package.json').version")
 }
 $PLATFORM = 'windows'

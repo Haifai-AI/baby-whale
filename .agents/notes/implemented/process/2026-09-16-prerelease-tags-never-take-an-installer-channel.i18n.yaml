@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-16-prerelease-tags-never-take-an-installer-channel.md
-2026-09-16-prerelease-tags-never-take-an-installer-channel.md: a06dff98955c9de0b8f0f9009c816e83ff6eaa59
-2026-09-16-prerelease-tags-never-take-an-installer-channel.zh.md: 4672eef3e398b2cbd08c2ec100b3e09f21563efd
+2026-09-16-prerelease-tags-never-take-an-installer-channel.md: 855f3c48bd5de64e07832ade71260156ffbcb43f
+2026-09-16-prerelease-tags-never-take-an-installer-channel.zh.md: 4ba2fce96f7c4dd9e5d2253e0bf80ea5bf8611ad

@@ -22,7 +22,9 @@ A prerelease release therefore carries its bundle zips and checksum sidecars as 
 
 Installing a preview is an explicit act. Either install the launcher from npm (`npm install -g @haifai/bwhale@next`) and pin the runtime with `BWHALE_VERSION=v0.2.0-preview bwhale`, or fetch the tag's zip and its checksum sidecar directly. The launcher resolves a pinned tag through `releaseByTag`, which finds a prerelease release.
 
-`scripts/ci-workflow.spec.ts` pins both steps: each case's two arms, its array expansion, and — for the GitHub release — the absence of a bare `--generate-notes --latest` that would defeat the branch.
+The two packers also had to agree on the version they name the asset with. `make-bundle.ps1` accepted only `^\d+\.\d+\.\d+$`, so a prerelease tag fell through to the app version and the Windows asset matched the tag only when the two happened to be equal; `make-bundle.sh` accepted a loose glob that also admitted values like `0.2.0-`. Both now evaluate one pattern, `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`, so a prerelease version survives intact while a branch name or a malformed tag falls back. The Windows job runs `continue-on-error`, so a mismatch would have shipped a release with no Windows bundle and no red check.
+
+`scripts/ci-workflow.spec.ts` pins the two workflow steps: each case's two arms, its array expansion, and — for the GitHub release — the absence of a bare `--generate-notes --latest` that would defeat the branch. `scripts/bundle-asset-naming.spec.ts` holds the packers and the launcher to each other: it evaluates each packer's shipped guard (the POSIX one through `bash`, the PowerShell one as the pattern extracted from the script), asserts both keep the tag's version and both fall back for a non-release ref, and asserts the name the launcher reconstructs from the tag is the one both packers write.
 
 ## Alternatives considered
 

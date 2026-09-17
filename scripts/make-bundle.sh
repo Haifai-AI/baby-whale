@@ -12,12 +12,15 @@ cd "$(dirname "$0")/.."
 # Version: CI passes the tag (RELEASE_VERSION) on release builds so the asset
 # name always matches the release tag the launcher searches for; anything else
 # (or a non semver value, e.g. a branch name) falls back to the app version.
+# The pattern accepts a prerelease suffix and nothing else, which is the rule
+# make-bundle.ps1 applies: the asset name the launcher reconstructs from the
+# tag has to be the one this writes, so a value one packer keeps and the other
+# rejects would publish a release with no bundle for that platform.
 VERSION="${RELEASE_VERSION:-}"
 VERSION="${VERSION#v}"
-case "$VERSION" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *) VERSION="$(node -p "require('./apps/cli/package.json').version")" ;;
-esac
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  VERSION="$(node -p "require('./apps/cli/package.json').version")"
+fi
 OS="$(uname -s)"           # Darwin / Linux
 ARCH="$(uname -m)"         # arm64 / aarch64 / x86_64
 [ "$ARCH" = "aarch64" ] && ARCH="arm64"  # Linux arm runners report aarch64

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-whale-trash",
   "description": "Whale undo layer: backups every overwritten file to a workspace .whale-trash, with model-facing list/restore tools",
-  "version": "0.1.9",
+  "version": "0.2.0-preview.1",
   "publishConfig": {
     "access": "public"
   },

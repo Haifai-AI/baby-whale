@@ -544,6 +544,28 @@ describe('Git hooks', () => {
       expect(pairing).toMatchObject({ exclude: ['.agents/notes/archived/**'] })
     }
   })
+
+  it('never publishes a prerelease tag as the release an updater follows', () => {
+    const workflow = loadWorkflow('.github/workflows/bundle.yml')
+    const step = workflowSteps(workflow, 'bundle').find(
+      candidate => isRecord(candidate) && typeof candidate.name === 'string'
+        && candidate.name.startsWith('Publish release'),
+    )
+    if (!isRecord(step) || typeof step.run !== 'string') {
+      throw new TypeError('bundle.yml must define the release publishing step')
+    }
+
+    // `bwhale` resolves updates through `releases/latest`, which skips
+    // prereleases but NOT the `--latest` flag. The step must therefore choose
+    // its release flag from the tag: a version with a prerelease segment is a
+    // rehearsal and must never become the release every installed user's
+    // updater resolves to.
+    expect(step.run).toContain('*-*) release_args=(--prerelease)')
+    expect(step.run).toContain('*)   release_args=(--latest)')
+    expect(step.run).toContain('"${release_args[@]}"')
+    // A bare `--latest` outside that case would defeat the branch above.
+    expect(step.run).not.toMatch(/--generate-notes\s+--latest/)
+  })
 })
 
 function loadWorkflow(path: string): Record<string, unknown> {
@@ -564,6 +586,12 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
     throw new TypeError(`workflow must define the ${job} job`)
   }
   return workflow.jobs[job]
+}
+
+function workflowSteps(workflow: Record<string, unknown>, job: string): unknown[] {
+  const steps = workflowJob(workflow, job).steps
+  if (!Array.isArray(steps)) throw new TypeError(`${job} must define steps`)
+  return steps
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -178,7 +178,19 @@ jobs:
             [ -e "$f.sha256" ] || { echo "missing checksum sidecar for $f" >&2; exit 1; }
             files+=("$f.sha256")
           done
+          # A prerelease-tagged version is a rehearsal, and `bwhale` resolves
+          # updates through `releases/latest` — which ignores prereleases but
+          # NOT the `--latest` flag. Publishing one as latest would push a
+          # rehearsal onto every installed user, so the flag follows the
+          # version: a semver prerelease segment publishes `--prerelease`
+          # without `--latest`, and an updater that follows `latest` never
+          # sees it. `--generate-notes` still names the delta from the last
+          # release, prerelease or not.
+          case "$GITHUB_REF_NAME" in
+            *-*) release_args=(--prerelease) ;;
+            *)   release_args=(--latest) ;;
+          esac
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             && gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber \
             || gh release create "$GITHUB_REF_NAME" "${files[@]}" \
-                 --title "$GITHUB_REF_NAME" --generate-notes --latest
+                 --title "$GITHUB_REF_NAME" --generate-notes "${release_args[@]}"

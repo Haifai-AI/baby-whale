@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-settings-skills",
   "description": "Skills settings section: per-skill enable toggles over the standard settings.update RPC, grouped by discovery source",
-  "version": "0.1.9",
+  "version": "0.2.0-preview.1",
   "publishConfig": {
     "access": "public"
   },

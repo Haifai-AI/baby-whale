@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-whale-artifacts",
   "description": "Artifacts tab: gallery of the session's produced and uploaded files, with inline preview and open-in-app",
-  "version": "0.1.9",
+  "version": "0.2.0-preview.1",
   "publishConfig": {
     "access": "public"
   },

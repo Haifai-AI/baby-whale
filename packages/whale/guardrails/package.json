@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-whale-guardrails",
   "description": "Whale coworker guardrails: approval-first overwrite fences, workspace-escape denial, and untrusted-content guidance",
-  "version": "0.1.9",
+  "version": "0.2.0-preview.1",
   "publishConfig": {
     "access": "public"
   },

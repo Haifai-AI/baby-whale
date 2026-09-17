@@ -1,6 +1,6 @@
 {
   "name": "@haifai/bwhale",
-  "version": "0.1.9",
+  "version": "0.2.0-preview.1",
   "description": "Baby Whale \u2014 local-first knowledge-work coworker. One command: bwhale. Fetches its runtime once, starts the app, opens your browser. Nothing leaves your machine.",
   "license": "MIT",
   "publishConfig": {
